@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -445,6 +447,114 @@ func TestInterruptedWorkRecoversOnOpen(t *testing.T) {
 	defer st.Close()
 	var status string
 	if err = st.db.QueryRow(`SELECT status FROM jobs WHERE id='stale'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" {
+		t.Fatalf("status = %s", status)
+	}
+}
+
+func TestSQLiteUsesWALAndBusyTimeout(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var mode string
+	if err = st.db.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(mode, "wal") {
+		t.Fatalf("journal_mode = %s", mode)
+	}
+	var timeout int
+	if err = st.db.QueryRow(`PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+		t.Fatal(err)
+	}
+	if timeout != 5000 {
+		t.Fatalf("busy_timeout = %d", timeout)
+	}
+}
+
+func TestTwoStoresCannotClaimTheSameJob(t *testing.T) {
+	dir := t.TempDir()
+	first, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	ctx := context.Background()
+	if _, err = first.EnqueueJob(ctx, "monitor_account", 1, `{}`, "monitor:1:wal", 3); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := first.ClaimJob(ctx)
+	if err != nil || claimed.ID == "" {
+		t.Fatalf("first claim = %#v err=%v", claimed, err)
+	}
+	_, err = second.ClaimJob(ctx)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("second store must not claim the same job, err=%v", err)
+	}
+}
+
+func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
+	if err = st.AddOutbox(ctx, event, []string{"telegram", "email"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddOutbox(ctx, event, []string{"telegram", "email"}); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM notification_outbox`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("outbox count = %d err=%v", count, err)
+	}
+	first, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("claimed the same outbox row twice: %#v", first)
+	}
+	_, err = st.ClaimOutbox(ctx)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected no remaining outbox, err=%v", err)
+	}
+}
+
+func TestInterruptedOutboxRecoversOnOpen(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.db.Exec(`INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES('stale-outbox','evt','telegram','{}','sending',1,5,unixepoch()-300,'',unixepoch()-300,unixepoch()-300)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	st, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var status string
+	if err = st.db.QueryRow(`SELECT status FROM notification_outbox WHERE id='stale-outbox'`).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
 	if status != "queued" {
