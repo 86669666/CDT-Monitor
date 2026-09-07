@@ -407,3 +407,29 @@ test('about built_at keeps opaque build stamps', async ({ page }) => {
   await page.getByRole('button', { name: '关于' }).click()
   await expect(page.locator('.about-version small')).toHaveText('abc1234 · github-run-12345')
 })
+
+
+test('setup posts the chosen timezone', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let timezone = ''
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { timezone?: string }
+    timezone = body.timezone || ''
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+  await expect(page.getByLabel('系统时区')).toHaveValue('Asia/Shanghai')
+  await page.getByLabel('系统时区').fill('Asia/Taipei')
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(timezone).toBe('Asia/Taipei')
+})
