@@ -408,7 +408,7 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	if action != "start" && action != "stop" {
 		return "", errors.New("action must be start or stop")
 	}
-	if transient(account.InstanceStatus) {
+	if inFlight(account.InstanceStatus) {
 		return "", fmt.Errorf("instance is currently %s", account.InstanceStatus)
 	}
 	if config.KeepAlive && action == "stop" {
@@ -536,6 +536,10 @@ func inTimeRange(current, start, end string) bool {
 
 func transient(status string) bool {
 	return status == domain.StatusStarting || status == domain.StatusStopping || status == "Pending" || status == domain.StatusUnknown
+}
+
+func inFlight(status string) bool {
+	return status == domain.StatusStarting || status == domain.StatusStopping || status == "Pending"
 }
 
 func usagePercent(traffic, maxTraffic float64) float64 {
