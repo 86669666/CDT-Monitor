@@ -200,3 +200,62 @@ test('refresh-all sends the CSRF header from the cdt_csrf cookie', async ({ page
   await expect(page.getByText('已强制刷新 1 个实例')).toBeVisible()
   expect(refreshCsrf).toBe(csrf)
 })
+
+
+test('wizard keeps step one until the password contract is met', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill('short')
+  await passwords.nth(1).fill('short')
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByText('管理员密码至少需要 10 个字符')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
+
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill('Different-Password-42!')
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByText('两次输入的密码不一致')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
+
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+})
+
+test('login surfaces lock and rate-limit envelopes', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+  let attempt = 0
+  await page.route('**/api/v1/auth/login', (route) => {
+    attempt += 1
+    if (attempt === 1) {
+      return route.fulfill({ status: 429, json: { error: { code: 'rate_limited', message: '登录尝试过多，请稍后再试' } } })
+    }
+    return route.fulfill({ status: 429, json: { error: { code: 'login_locked', message: '登录已临时锁定 15 分钟' } } })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('登录尝试过多，请稍后再试')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('登录已临时锁定 15 分钟')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
+
+test('history chart surfaces the history_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'history_failed', message: '历史流量加载失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('alert')).toContainText('历史流量加载失败')
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
