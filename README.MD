@@ -228,7 +228,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 
 | Workflow | 触发条件 | 输出 |
 | --- | --- | --- |
-| `CI` | `dev`/`main`/`work/**` push、PR | 前端构建、Go race test、vet、Linux build |
+| `CI` | `dev`/`main`/`work/**` push、PR、手动 | 前端构建、Go race test、vet、Linux build（不发布镜像） |
 | `Automatic Release` | `main` push 或手动 | 自动计算 patch 版本、创建 tag 并调用正式发布流程 |
 | `Release Binaries` | 自动发布、`v*.*.*` tag 或手动 | Linux/Windows/macOS 二进制、SHA-256 校验和及 GitHub Release |
 | `Container Images` | `dev`/tag 或手动 | 先在 runner 上校验 linux/amd64 与 linux/arm64；发布另见下方 |

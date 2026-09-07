@@ -32,7 +32,7 @@
 
 | Workflow | 原行为 | 本 fork |
 | --- | --- | --- |
-| `CI` | `dev`/`main`/PR | 增加 `work/**`，给隔离工作流分支做 verify |
+| `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true` |
 | `Release Binaries` | tag / 手动 / 被自动发布调用 | 同上变量，否则整条 job 跳过 |
 | `Container Images` | `dev`/tag 构建后 `push: true` | 仍可做本机 load 校验；push 需要上述变量 |

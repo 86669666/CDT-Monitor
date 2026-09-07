@@ -1,9 +1,18 @@
 name: CI
 
+# Verify only: frontend build, Go test/vet, linux/amd64 binary.
+# No GHCR/Docker Hub/GitHub Release. Manual dispatch is for when
+# GitHub has registered workflows on this fork; it still does not publish.
+
 on:
   pull_request:
   push:
     branches: [dev, main, 'work/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
