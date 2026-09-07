@@ -2,23 +2,13 @@ import { useMemo, useState } from 'react'
 import {
   Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
+import { resolveTimeZone } from './timezone'
 
 type ChartPoint = { at: number; traffic: number }
 type DisplayPoint = { at: number; traffic: number | null }
 type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number }
 
 const HOUR = 60 * 60 * 1000
-const DEFAULT_TIME_ZONE = 'Asia/Shanghai'
-
-export function resolveTimeZone(timeZone?: string) {
-  const zone = timeZone?.trim() || DEFAULT_TIME_ZONE
-  try {
-    Intl.DateTimeFormat('en-US', { timeZone: zone }).format(new Date())
-    return zone
-  } catch {
-    return DEFAULT_TIME_ZONE
-  }
-}
 
 function zonedParts(timestamp: number, timeZone: string): ZonedParts {
   const parts = new Intl.DateTimeFormat('en-US', {

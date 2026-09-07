@@ -4,6 +4,7 @@ import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
   TEST_PASSWORD,
+  dashboardAccount,
   dashboardConfig,
   dashboardStatus,
   emptyHistory,
@@ -310,4 +311,23 @@ test('history chart labels follow config timezone', async ({ page }) => {
   await expect(sparseBar).toBeVisible()
   await sparseBar.hover()
   await expect(page.locator('.recharts-tooltip-label')).toHaveText(expectedDay)
+})
+
+
+test('dashboard timestamps follow config timezone', async ({ page }) => {
+  const at = '2026-09-07T16:00:00.000Z'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    system_last_run: at,
+    accounts: [{ ...dashboardAccount, last_updated: at }],
+  }, { ...dashboardConfig, timezone: 'Asia/Shanghai' })
+
+  await page.goto('/')
+  const expected = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    at,
+  )
+  await expect(page.locator('.overview-time b')).toHaveText(expected)
+  await expect(page.locator('.account-card__footer')).toContainText(expected)
 })

@@ -9,6 +9,7 @@ import {
   Trash2, UserCog, Webhook, X, Zap,
 } from 'lucide-react'
 import { APIError, api, fetchLatestReleaseFromGitHub, waitForJob } from './api'
+import { DEFAULT_TIME_ZONE, resolveTimeZone } from './timezone'
 import {
   APIKeyRecord, APIKeysResponse, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyResponse,
   History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
@@ -123,7 +124,7 @@ export default function App() {
         />
       )}
       {adminOpen && <AdminSettingsPanel onClose={() => setAdminOpen(false)} notify={notify} />}
-      {historyAccount && <HistoryModal account={historyAccount} timeZone={config?.timezone || 'Asia/Shanghai'} onClose={() => setHistoryAccount(null)} />}
+      {historyAccount && <HistoryModal account={historyAccount} timeZone={config?.timezone || DEFAULT_TIME_ZONE} onClose={() => setHistoryAccount(null)} />}
       <ToastStack items={toasts} />
     </>
   )
@@ -337,7 +338,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         <IconButton label="菜单" className="mobile-menu" ariaExpanded={mobileMenu} ariaControls="dashboard-actions" onClick={() => setMobileMenu(!mobileMenu)}>{mobileMenu ? <X /> : <Menu />}</IconButton>
       </header>
 
-      <section className="overview-head"><div><p className="eyebrow">LIVE INFRASTRUCTURE</p><h1>资源控制台</h1><p className="muted">{new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}</p></div><div className="overview-time"><Clock3 size={17} /><span>上次任务</span><b>{status.system_last_run ? formatTime(status.system_last_run) : '尚未运行'}</b></div></section>
+      <section className="overview-head"><div><p className="eyebrow">LIVE INFRASTRUCTURE</p><h1>资源控制台</h1><p className="muted">{new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long', timeZone: resolveTimeZone(config.timezone) })}</p></div><div className="overview-time"><Clock3 size={17} /><span>上次任务</span><b>{status.system_last_run ? formatTime(status.system_last_run, config.timezone) : '尚未运行'}</b></div></section>
       <section className="metric-strip">
         <Metric icon={<Server />} label="实例总数" value={`${status.accounts.length}`} suffix="台" tone="blue" />
         <Metric icon={<Activity />} label="运行中" value={`${running}`} suffix="台" tone="green" />
@@ -350,14 +351,14 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         <button className="empty-state" onClick={onSettings}><Cloud /><h3>添加第一个云端实例</h3><p>进入设置完成 AccessKey 与实例信息配置</p><span>打开设置<ChevronRight size={16} /></span></button>
       ) : (
         <section className="account-grid">
-          {status.accounts.map((account) => <AccountCard key={account.id} account={account} busy={refreshingAll ? 'refresh' : busy[account.id]} keepAlive={config.keep_alive} billingEnabled={config.enable_billing} onAction={(action) => void runAction(account, action)} onHistory={() => onHistory(account)} />)}
+          {status.accounts.map((account) => <AccountCard key={account.id} account={account} busy={refreshingAll ? 'refresh' : busy[account.id]} keepAlive={config.keep_alive} billingEnabled={config.enable_billing} timeZone={config.timezone} onAction={(action) => void runAction(account, action)} onHistory={() => onHistory(account)} />)}
         </section>
       )}
     </main>
   )
 }
 
-function AccountCard({ account, busy, keepAlive, billingEnabled, onAction, onHistory }: { account: AccountSummary; busy?: string; keepAlive: boolean; billingEnabled: boolean; onAction: (action: 'start' | 'stop' | 'refresh') => void; onHistory: () => void }) {
+function AccountCard({ account, busy, keepAlive, billingEnabled, timeZone, onAction, onHistory }: { account: AccountSummary; busy?: string; keepAlive: boolean; billingEnabled: boolean; timeZone: string; onAction: (action: 'start' | 'stop' | 'refresh') => void; onHistory: () => void }) {
   const statusTone = statusClass(account.instance_status)
   const currency = account.currency === 'USD' ? '$' : '¥'
   const hasBilling = account.monthly_cost !== undefined || account.balance !== undefined
@@ -375,7 +376,7 @@ function AccountCard({ account, busy, keepAlive, billingEnabled, onAction, onHis
       <div className="progress-track"><i style={{ width: `${Math.min(100, account.percentage)}%` }} className={account.over_threshold ? 'danger' : account.percentage >= account.threshold * .8 ? 'warning' : ''} /></div>
       <div className="progress-meta"><span>{account.percentage.toFixed(2)}% 已使用</span><span>阈值 {account.threshold}%</span></div>
       <footer className="account-card__footer">
-        <span className={account.stale ? 'stale' : ''}><Clock3 size={14} />{account.last_updated ? formatTime(account.last_updated) : '等待首次同步'}</span>
+        <span className={account.stale ? 'stale' : ''}><Clock3 size={14} />{account.last_updated ? formatTime(account.last_updated, timeZone) : '等待首次同步'}</span>
         <div className="control-group">
           <IconButton label="刷新实例" disabled={!!busy} onClick={() => onAction('refresh')}>{busy === 'refresh' ? <LoaderCircle className="spin" /> : <RefreshCw />}</IconButton>
           {account.instance_status === 'Stopped' && <IconButton label="开机" disabled={!!busy} tone="positive" onClick={() => onAction('start')}>{busy === 'start' ? <LoaderCircle className="spin" /> : <Play />}</IconButton>}
@@ -834,8 +835,8 @@ function ToastStack({ items }: { items: Toast[] }) { return <div className="toas
 
 function statusClass(status: string) { if (status === 'Running') return 'positive'; if (status === 'Stopped') return 'negative'; if (status === 'Starting' || status === 'Stopping' || status === 'Pending') return 'warning'; return 'neutral' }
 function statusLabel(status: string) { return ({ Running: '运行中', Stopped: '已停止', Starting: '启动中', Stopping: '停止中', Pending: '等待中', Unknown: '未知' } as Record<string, string>)[status] || status }
-function formatTime(value: string) { return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }
-function formatDate(value: string) { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
+function formatTime(value: string, timeZone?: string) { return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: resolveTimeZone(timeZone) }) }
+function formatDate(value: string, timeZone?: string) { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: resolveTimeZone(timeZone) }) }
 function passkeyAvailable() { return location.protocol === 'https:' && window.isSecureContext && 'PublicKeyCredential' in window && 'credentials' in navigator }
 function decodeBase64(value: unknown) { if (typeof value !== 'string') return value; const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)); return Uint8Array.from(binary, (character) => character.charCodeAt(0)).buffer }
 function decodeRequestOptions(options: Record<string, unknown>): PublicKeyCredentialRequestOptions {
