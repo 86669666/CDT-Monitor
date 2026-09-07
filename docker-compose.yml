@@ -1,6 +1,19 @@
+# Local-only Compose for the 86669666/CDT-Monitor fork.
+# Tags ghcr.io/86669666/cdt-monitor:local after a local build.
+# Do not run `docker compose push` or otherwise publish this tag.
+name: cdt-monitor
+
 services:
   cdt-monitor:
-    image: ghcr.io/wang4386/cdt-monitor:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: local
+        COMMIT: unknown
+        BUILT_AT: local
+    image: ghcr.io/86669666/cdt-monitor:local
+    pull_policy: build
     container_name: cdt-monitor
     restart: unless-stopped
     init: true
@@ -10,7 +23,7 @@ services:
       CDT_DATA_DIR: /data
       CDT_LISTEN: :8080
       CDT_WORKERS: 4
-      TZ: Asia/Shanghai
+      TZ: Asia/Taipei
     volumes:
       - cdt-data:/data
     healthcheck:
