@@ -331,3 +331,39 @@ test('dashboard timestamps follow config timezone', async ({ page }) => {
   await expect(page.locator('.overview-time b')).toHaveText(expected)
   await expect(page.locator('.account-card__footer')).toContainText(expected)
 })
+
+
+test('settings dates follow config timezone', async ({ page }) => {
+  const at = '2026-09-07T16:00:00.000Z'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, timezone: 'Asia/Shanghai' })
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') return route.fulfill({ json: { success: true } })
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '时区日志', created_at: at }] } })
+  })
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: {
+    keys: [{ id: 1, name: '桌面小组件', scopes: ['widget:read'], created_at: at }],
+  } }))
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: {
+    passkeys: [{ id: 1, name: '办公室电脑', created_at: at }],
+  } }))
+
+  await page.goto('/')
+  const expected = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    at,
+  )
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('时区日志')).toBeVisible()
+  await expect(page.locator('.log-row span')).toContainText(expected)
+
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.getByText('桌面小组件')).toBeVisible()
+  await expect(page.locator('.key-row time')).toContainText(expected)
+  await page.locator('.settings-panel').getByRole('button', { name: '关闭' }).click()
+
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.getByText('办公室电脑')).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText(expected)
+})

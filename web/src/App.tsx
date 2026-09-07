@@ -123,7 +123,7 @@ export default function App() {
           notify={notify}
         />
       )}
-      {adminOpen && <AdminSettingsPanel onClose={() => setAdminOpen(false)} notify={notify} />}
+      {adminOpen && <AdminSettingsPanel onClose={() => setAdminOpen(false)} notify={notify} timeZone={config?.timezone || DEFAULT_TIME_ZONE} />}
       {historyAccount && <HistoryModal account={historyAccount} timeZone={config?.timezone || DEFAULT_TIME_ZONE} onClose={() => setHistoryAccount(null)} />}
       <ToastStack items={toasts} />
     </>
@@ -420,8 +420,8 @@ function SettingsPanel({ initial, onClose, onSaved, notify }: { initial: Config;
           {tab === 'general' && <GeneralSettings config={config} onChange={setConfig} />}
           {tab === 'accounts' && <AccountSettings config={config} onChange={setConfig} />}
           {tab === 'notify' && <NotificationSettings config={config} onChange={setConfig} notify={notify} />}
-          {tab === 'keys' && <APIKeySettings notify={notify} />}
-          {tab === 'logs' && <LogSettings notify={notify} />}
+          {tab === 'keys' && <APIKeySettings notify={notify} timeZone={config.timezone} />}
+          {tab === 'logs' && <LogSettings notify={notify} timeZone={config.timezone} />}
           {tab === 'about' && <AboutSettings notify={notify} />}
         </div>
         {(tab === 'general' || tab === 'accounts' || tab === 'notify') && <footer className="settings-footer"><button className="button button--primary" onClick={() => void save()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Save />}保存更改</button></footer>}
@@ -535,7 +535,7 @@ function WebhookTemplateModal({ name, provider, form, onChange, onClose, onApply
   return <div className="modal-layer modal-layer--nested" role="dialog" aria-modal="true" aria-label={`${name} 模板配置`}><div className="modal-scrim" onClick={onClose} /><section className="glass-card webhook-template-modal"><header><div><p className="eyebrow">WEBHOOK TEMPLATE</p><h2>配置 {name}</h2></div><IconButton label="关闭" onClick={onClose}><X /></IconButton></header><p className="muted">填写渠道关键配置后，系统会自动生成 URL、Headers 和 Body。</p><div className="form-grid settings-form">{provider === 'bark' && field('key', 'Bark Key', 'text', '设备 Key')}{provider === 'wxpusher' && <>{field('appToken', 'AppToken', 'text', 'AT_…')}{field('uid', 'UID', 'text', 'UID_…')}</>}{provider === 'dingtalk' && <>{field('token', '机器人 Access Token', 'text', 'access_token')}{field('secret', '加签密钥（可选）', 'password', 'SEC…')}</>}{provider === 'wecom' && field('key', '微信群机器人 Key', 'text', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')}</div><footer className="settings-footer"><button className="button button--secondary" onClick={onClose}>取消</button><button className="button button--primary" onClick={onApply}><Check />生成 Webhook</button></footer></section></div>
 }
 
-function APIKeySettings({ notify }: { notify: (message: string, tone?: Toast['tone']) => void }) {
+function APIKeySettings({ notify, timeZone }: { notify: (message: string, tone?: Toast['tone']) => void; timeZone: string }) {
   const [keys, setKeys] = useState<APIKeyRecord[]>([])
   const [name, setName] = useState('桌面小组件')
   const [scopes, setScopes] = useState(['widget:read'])
@@ -565,11 +565,11 @@ function APIKeySettings({ notify }: { notify: (message: string, tone?: Toast['to
     <div className="key-create"><Field label="名称"><input value={name} onChange={(event) => setName(event.target.value)} /></Field><div className="scope-row">{[['widget:read', '读取状态'], ['instance:control', '控制实例'], ['cron:run', '触发任务']].map(([scope, label]) => <label key={scope} className={scopes.includes(scope) ? 'scope-chip active' : 'scope-chip'}><input type="checkbox" checked={scopes.includes(scope)} onChange={() => toggle(scope)} />{label}</label>)}</div><button className="button button--primary" disabled={!name || scopes.length === 0} onClick={() => void create()}><Plus />创建 Key</button></div>
     {token && <div className="token-reveal"><ShieldCheck /><div className="token-reveal__body"><b>仅显示一次</b><code>{token}</code></div><IconButton label="复制" onClick={() => { void navigator.clipboard.writeText(token); notify('已复制到剪贴板', 'success') }}><Copy /></IconButton></div>}
     {error && <div className="inline-error"><AlertTriangle size={16} />{error}<button className="text-button" onClick={() => void load()}>重试</button></div>}
-    {loading ? <div className="subtle-empty"><LoaderCircle className="spin" />加载 API Key</div> : <div className="key-list">{keys.map((key) => <div className={`key-row ${key.revoked_at ? 'disabled' : ''}`} key={key.id}><div className="key-icon"><KeyRound /></div><div><b>{key.name}</b><span>{(Array.isArray(key.scopes) ? key.scopes : []).join(' · ') || '未配置权限'}</span></div><time>{key.last_used_at ? `最近使用 ${formatDate(key.last_used_at)}` : `创建于 ${formatDate(key.created_at)}`}</time>{!key.revoked_at && <IconButton label="撤销" tone="danger" onClick={() => void revoke(key.id)}><Trash2 /></IconButton>}</div>)}</div>}
+    {loading ? <div className="subtle-empty"><LoaderCircle className="spin" />加载 API Key</div> : <div className="key-list">{keys.map((key) => <div className={`key-row ${key.revoked_at ? 'disabled' : ''}`} key={key.id}><div className="key-icon"><KeyRound /></div><div><b>{key.name}</b><span>{(Array.isArray(key.scopes) ? key.scopes : []).join(' · ') || '未配置权限'}</span></div><time>{key.last_used_at ? `最近使用 ${formatDate(key.last_used_at, timeZone)}` : `创建于 ${formatDate(key.created_at, timeZone)}`}</time>{!key.revoked_at && <IconButton label="撤销" tone="danger" onClick={() => void revoke(key.id)}><Trash2 /></IconButton>}</div>)}</div>}
   </div>
 }
 
-function LogSettings({ notify }: { notify: (message: string, tone?: Toast['tone']) => void }) {
+function LogSettings({ notify, timeZone }: { notify: (message: string, tone?: Toast['tone']) => void; timeZone: string }) {
   const [tab, setTab] = useState<'action' | 'heartbeat'>('action')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const load = useCallback(async () => {
@@ -583,10 +583,10 @@ function LogSettings({ notify }: { notify: (message: string, tone?: Toast['tone'
   }, [notify, tab])
   useEffect(() => { void load() }, [load])
   const clear = async () => { try { await api(`/api/v1/logs?tab=${tab}`, { method: 'DELETE', body: '{}' }); setLogs([]); await load(); notify('日志已清空', 'success') } catch (cause) { notify(cause instanceof Error ? cause.message : '日志清理失败', 'error') } }
-  return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<FileClock />} title="运行日志" subtitle="EVENT STREAM" /><div className="log-actions"><Segmented value={tab} options={[['action', '动作'], ['heartbeat', '心跳']]} onChange={(value) => setTab(value as typeof tab)} /><IconButton label="清空" tone="danger" onClick={() => void clear()}><Trash2 /></IconButton></div></div><div className="log-list">{logs.length === 0 && <div className="subtle-empty"><FileClock />暂无日志</div>}{logs.map((log) => <div className="log-row" key={log.id}><i className={`log-dot log-dot--${log.type}`} /><div><p>{log.message}</p><span>{formatDate(log.created_at)} · {log.type.toUpperCase()}</span></div></div>)}</div></div>
+  return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<FileClock />} title="运行日志" subtitle="EVENT STREAM" /><div className="log-actions"><Segmented value={tab} options={[['action', '动作'], ['heartbeat', '心跳']]} onChange={(value) => setTab(value as typeof tab)} /><IconButton label="清空" tone="danger" onClick={() => void clear()}><Trash2 /></IconButton></div></div><div className="log-list">{logs.length === 0 && <div className="subtle-empty"><FileClock />暂无日志</div>}{logs.map((log) => <div className="log-row" key={log.id}><i className={`log-dot log-dot--${log.type}`} /><div><p>{log.message}</p><span>{formatDate(log.created_at, timeZone)} · {log.type.toUpperCase()}</span></div></div>)}</div></div>
 }
 
-function AdminSettingsPanel({ onClose, notify }: { onClose: () => void; notify: (message: string, tone?: Toast['tone']) => void }) {
+function AdminSettingsPanel({ onClose, notify, timeZone }: { onClose: () => void; notify: (message: string, tone?: Toast['tone']) => void; timeZone: string }) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -630,7 +630,7 @@ function AdminSettingsPanel({ onClose, notify }: { onClose: () => void; notify: 
     <header><div><p className="eyebrow">ADMINISTRATION</p><h2>管理员设置</h2></div><IconButton label="关闭" onClick={onClose}><X /></IconButton></header>
     <div className="settings-content"><div className="settings-section admin-settings-content">
       <section className="admin-block"><SectionTitle icon={<LockKeyhole />} title="修改管理员密码" subtitle="PASSWORD ROTATION" /><div className="form-grid settings-form"><Field label="当前密码"><input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></Field><Field label="新密码"><input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></Field><Field label="确认新密码"><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></Field></div><button className="button button--primary" disabled={passwordBusy || !currentPassword || !newPassword || !confirmPassword} onClick={() => void updatePassword()}>{passwordBusy ? <LoaderCircle className="spin" /> : <Save />}保存新密码</button></section>
-      <section className="admin-block"><SectionTitle icon={<Fingerprint />} title="Passkey" subtitle="HTTPS DEVICE AUTHENTICATORS" /><p className="muted admin-note">Passkey 私钥只保存在设备或密码管理器中，服务端仅保存公钥。创建和登录必须使用 HTTPS。</p><div className="passkey-create"><Field label="设备名称"><input value={passkeyName} onChange={(event) => setPasskeyName(event.target.value)} placeholder="办公室电脑" /></Field><button className="button button--secondary" disabled={passkeyBusy || !passkeyAvailable()} onClick={() => void createPasskey()}>{passkeyBusy ? <LoaderCircle className="spin" /> : <Fingerprint />}创建 Passkey</button></div>{!passkeyAvailable() && <p className="inline-hint">当前连接不是 HTTPS，Passkey 创建按钮已禁用。</p>}<div className="passkey-list">{passkeys.length === 0 ? <div className="subtle-empty"><Fingerprint />尚未创建 Passkey</div> : passkeys.map((passkey) => <div className="passkey-row" key={passkey.id}><Fingerprint /><div><b>{passkey.name}</b><span>{passkey.last_used_at ? `最近使用 ${formatDate(passkey.last_used_at)}` : `创建于 ${formatDate(passkey.created_at)}`}</span></div><IconButton label="删除 Passkey" tone="danger" onClick={() => void removePasskey(passkey.id)}><Trash2 /></IconButton></div>)}</div></section>
+      <section className="admin-block"><SectionTitle icon={<Fingerprint />} title="Passkey" subtitle="HTTPS DEVICE AUTHENTICATORS" /><p className="muted admin-note">Passkey 私钥只保存在设备或密码管理器中，服务端仅保存公钥。创建和登录必须使用 HTTPS。</p><div className="passkey-create"><Field label="设备名称"><input value={passkeyName} onChange={(event) => setPasskeyName(event.target.value)} placeholder="办公室电脑" /></Field><button className="button button--secondary" disabled={passkeyBusy || !passkeyAvailable()} onClick={() => void createPasskey()}>{passkeyBusy ? <LoaderCircle className="spin" /> : <Fingerprint />}创建 Passkey</button></div>{!passkeyAvailable() && <p className="inline-hint">当前连接不是 HTTPS，Passkey 创建按钮已禁用。</p>}<div className="passkey-list">{passkeys.length === 0 ? <div className="subtle-empty"><Fingerprint />尚未创建 Passkey</div> : passkeys.map((passkey) => <div className="passkey-row" key={passkey.id}><Fingerprint /><div><b>{passkey.name}</b><span>{passkey.last_used_at ? `最近使用 ${formatDate(passkey.last_used_at, timeZone)}` : `创建于 ${formatDate(passkey.created_at, timeZone)}`}</span></div><IconButton label="删除 Passkey" tone="danger" onClick={() => void removePasskey(passkey.id)}><Trash2 /></IconButton></div>)}</div></section>
     </div></div>
   </section></div>
 }
