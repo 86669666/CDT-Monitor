@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { CSRF_COOKIE, CSRF_HEADER } from '../src/api'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -7,6 +8,7 @@ import {
   dashboardStatus,
   emptyHistory,
   expectKnownKeys,
+  jobFixture,
   mockDashboardReads,
   mockInitStatus,
   mockUnauthorizedSession,
@@ -160,4 +162,41 @@ test('setup account payload only uses documented account fields', async ({ page 
     max_traffic: 200,
     secret_configured: false,
   })
+})
+
+test('refresh-all sends the CSRF header from the cdt_csrf cookie', async ({ page }) => {
+  const csrf = 'test-csrf'
+  await mockInitStatus(page, true)
+  let authed = false
+  let refreshCsrf = ''
+  await page.route('**/api/v1/auth/login', async (route) => {
+    authed = true
+    await route.fulfill({ json: { success: true, csrf_token: csrf } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardStatus })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    refreshCsrf = route.request().headers()[CSRF_HEADER.toLowerCase()] || ''
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-1', 'queued')] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'refresh-1'
+    return route.fulfill({ json: jobFixture(id, 'completed') })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  await page.context().addCookies([{ name: CSRF_COOKIE, value: csrf, url: page.url() }])
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByText('已强制刷新 1 个实例')).toBeVisible()
+  expect(refreshCsrf).toBe(csrf)
 })
