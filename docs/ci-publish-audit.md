@@ -45,3 +45,7 @@
 - 不要在 `86669666/CDT-Monitor` 上设置 `ENABLE_PRODUCTION_PUBLISH` 或 `ENABLE_DOCKERHUB_PUBLISH`，除非有单独的发布授权。
 - 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD` 去推 `qninq/cdt-monitor`。
 - 不要 force-push，不要用本分支做 production deploy。
+
+## 远端质量门（尚未证明）
+
+截至 `2026-09-07T20:50Z`，`gh api repos/86669666/CDT-Monitor/actions/runs` 返回 `total_count: 0`。仓库 Actions 权限是 enabled，但默认分支仍是上游 workflow，本 fork 还没有观察到任何 run。因此 `work/ops` 上的 CI YAML 变更不能写成已经在 candidate SHA 上绿色。要得到远端 verify，需要打开指向 `main` 的 PR（`pull_request` 已在上游 `ci.yml` 里）或把 workflow 合入默认分支。不要为了跑 Actions 去发布镜像或打生产 tag。

@@ -192,7 +192,7 @@ GET /monitor.php?key=<具有 cron:run scope 的 API Key>
 
 ### Android 桌面小组件
 
-仓库中的 [`android-widget`](android-widget/README.md) 是基于 `/api/v1/widget/summary` 的 Android 小组件原型，源码暂时随主项目保存，供后续研究和完善。当前不作为正式稳定客户端发布。
+仓库中的 [`android-widget`](android-widget/README.md) 是基于 `/api/v1/widget/summary` 的 Android 小组件原型，源码暂时随主项目保存，供后续研究和完善。当前不作为正式稳定客户端发布。本机 ops 工作区缺少 JDK 17 / Android SDK / Gradle，本地出包记为 blocker；构建走手动 Actions workflow。
 
 ## 相关链接
 

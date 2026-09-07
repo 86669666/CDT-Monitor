@@ -27,6 +27,19 @@ cd android-widget
 gradle assembleRelease bundleRelease
 ```
 
+### 本机工具链（ops writer host）
+
+检查时间：2026-09-08 04:50 Asia/Taipei（`2026-09-07T20:50Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。
+
+| 依赖 | 本机状态 |
+| --- | --- |
+| JDK 17 / `java` / `javac` | 不存在，`JAVA_HOME` 为空 |
+| Android SDK 35 / `sdkmanager` / `adb` | 不在 PATH |
+| Gradle 8.10.2 | 不在 PATH |
+| Gradle Wrapper | 仓库 `android-widget/` 内没有 `gradlew` |
+
+因此 `gradle assembleDebug` / `assembleRelease` 在本机是 blocker。支持的构建路径仍是手动触发 `.github/workflows/android-widget.yml`。签名密钥只通过 Actions secrets 注入，keystore 不要进 git。
+
 产物位于 `app/build/outputs/`：
 
 - `apk/debug/*universal*.apk`：可直接安装的通用 debug APK。

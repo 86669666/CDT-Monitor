@@ -1,5 +1,9 @@
 name: Android Widget
 
+# Manual-only prototype build. Keystore secrets are optional GitHub secrets.
+# Do not assume a local JDK/SDK/Gradle toolchain; this workflow is the
+# supported package path for the 86669666 fork.
+
 on:
   workflow_dispatch:
 
