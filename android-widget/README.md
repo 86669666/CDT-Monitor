@@ -20,11 +20,11 @@ Authorization: Bearer <API Key>
 
 ## 本地构建
 
-需要 JDK 17、Android SDK 35 和 Gradle 8.10.2：
+需要 JDK 17、Android SDK 35。Gradle 由仓库内 Wrapper 固定为 8.10.2，不要依赖宿主机 `gradle`：
 
 ```bash
 cd android-widget
-gradle assembleRelease bundleRelease
+./gradlew assembleRelease bundleRelease
 ```
 
 ### 本机工具链（ops writer host）
@@ -35,10 +35,10 @@ gradle assembleRelease bundleRelease
 | --- | --- |
 | JDK 17 / `java` / `javac` | 不存在，`JAVA_HOME` 为空 |
 | Android SDK 35 / `sdkmanager` / `adb` | 不在 PATH |
-| Gradle 8.10.2 | 不在 PATH |
-| Gradle Wrapper | 仓库 `android-widget/` 内没有 `gradlew` |
+| Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 已加入，distribution 8.10.2） |
+| Gradle Wrapper | 已加入 `gradlew` / `gradle-wrapper.jar`；本机仍缺 JDK，所以 **没有** 跑过 `./gradlew` |
 
-因此 `gradle assembleDebug` / `assembleRelease` 在本机是 blocker。支持的构建路径仍是手动触发 `.github/workflows/android-widget.yml`。签名密钥只通过 Actions secrets 注入，keystore 不要进 git。
+因此本机出包仍是 blocker（缺 JDK/SDK），不要把 Wrapper 入库写成 APK 已验证。支持的构建路径仍是手动触发 `.github/workflows/android-widget.yml`（现改为 `./gradlew`）。签名密钥只通过 Actions secrets 注入，keystore 不要进 git。
 
 产物位于 `app/build/outputs/`：
 

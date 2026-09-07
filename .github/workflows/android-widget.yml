@@ -35,8 +35,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
 
       - name: Prepare release signing
         env:
@@ -54,7 +52,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_VERSION_CODE: ${{ github.run_number }}
           ANDROID_VERSION_NAME: 1.0.1
-        run: gradle assembleDebug assembleRelease bundleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleDebug assembleRelease bundleRelease --no-daemon --stacktrace
 
       - name: Upload Android packages
         uses: actions/upload-artifact@v4
