@@ -12,28 +12,6 @@ import (
 	"github.com/wang4386/CDT-Monitor/internal/store"
 )
 
-type billingTestProvider struct{}
-
-func (billingTestProvider) GetTraffic(context.Context, domain.Account, string) (float64, error) {
-	return 1.25, nil
-}
-
-func (billingTestProvider) GetInstanceStatus(context.Context, domain.Account, string) (string, error) {
-	return domain.StatusRunning, nil
-}
-
-func (billingTestProvider) ControlInstance(context.Context, domain.Account, string, string, string) error {
-	return nil
-}
-
-func (billingTestProvider) GetAccountBalance(context.Context, domain.Account, string) (aliyun.BillingBalance, error) {
-	return aliyun.BillingBalance{Amount: 123.45, Currency: "CNY"}, nil
-}
-
-func (billingTestProvider) GetInstanceBill(context.Context, domain.Account, string, string) (aliyun.BillingBill, error) {
-	return aliyun.BillingBill{TotalCost: 23.456}, nil
-}
-
 func TestProcessAccountFetchesMissingBillingCache(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -62,7 +40,7 @@ func TestProcessAccountFetchesMissingBillingCache(t *testing.T) {
 		t.Fatalf("accounts=%v err=%v", accounts, err)
 	}
 
-	engine := New(st, billingTestProvider{}, notify.New(), slog.Default(), 1)
+	engine := New(st, newFakeProvider(), notify.New(), slog.Default(), 1)
 	if _, err = engine.processAccount(ctx, accounts[0].ID, false); err != nil {
 		t.Fatal(err)
 	}

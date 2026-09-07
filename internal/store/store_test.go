@@ -196,6 +196,39 @@ func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	}
 }
 
+func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	got, err := st.AcquireLease(ctx, "monitor", "owner-a", time.Minute)
+	if err != nil || !got {
+		t.Fatalf("first acquire = %v err=%v", got, err)
+	}
+	got, err = st.AcquireLease(ctx, "monitor", "owner-a", time.Minute)
+	if err != nil || !got {
+		t.Fatalf("same-owner refresh = %v err=%v", got, err)
+	}
+	got, err = st.AcquireLease(ctx, "monitor", "owner-b", time.Minute)
+	if err != nil || got {
+		t.Fatalf("other owner must wait for expiry, got %v err=%v", got, err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE scheduler_leases SET expires_at=unixepoch()-1 WHERE name='monitor'`); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.AcquireLease(ctx, "monitor", "owner-b", time.Minute)
+	if err != nil || !got {
+		t.Fatalf("expired lease should be takeable, got %v err=%v", got, err)
+	}
+	got, err = st.AcquireLease(ctx, "monitor", "owner-a", time.Minute)
+	if err != nil || got {
+		t.Fatalf("previous owner must not steal a live lease, got %v err=%v", got, err)
+	}
+}
+
 func TestActionEventCanBeReleasedAfterFailure(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
