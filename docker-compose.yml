@@ -20,6 +20,8 @@ services:
     init: true
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "43210:8080"
     environment:

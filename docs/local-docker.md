@@ -17,7 +17,7 @@ ghcr.io/86669666/cdt-monitor:local
 1. `node:22-alpine` 构建 `web/`，产物落到 `internal/web/dist`。
 2. `golang:1.24-alpine` 按 `TARGETOS` / `TARGETARCH` 交叉编译 `./cmd/cdt-monitor`（`CGO_ENABLED=0`）。
 3. `alpine:3.21` 只提供 CA 证书。
-4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `no-new-privileges`。
+4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `no-new-privileges` 和 `cap_drop: ALL`（监听 8080，不需要 `NET_BIND_SERVICE`）。
 
 运行镜像里没有 shell、包管理器或阿里云凭据。AccessKey、通知密钥和管理员密码都在首次 Web 向导写入数据卷，不要放进 Compose 或镜像构建参数。
 
@@ -55,9 +55,10 @@ TZ=Asia/Shanghai docker compose up -d
 ## 本机验证范围
 
 - 已验证：`docker compose config` 解析为本地 build + `ghcr.io/86669666/cdt-monitor:local`。
-- 可选：`docker compose build --dry-run`（不真正构建）。
-- 完整 `docker compose build` / `up` 需要拉取 Node/Go/Alpine 基础镜像，耗时更长；未要求发布，也不是本 fork 的质量门。
-- 不要把一次成功的本机构建写成 GHCR 发布完成。
+- 已验证：`docker compose build --dry-run`。
+- 已验证（`2026-09-07T22:42Z` / 2026-09-08 06:42 Asia/Taipei）：`docker compose build` 在本机打出 `ghcr.io/86669666/cdt-monitor:local`（`sha256:ef9fbb591a54…`，约 13.2MB，`USER 65532:65532`，fork `IMAGE_SOURCE`，镜像 HEALTHCHECK 存在）。`docker run --rm --network none … version` 输出 `cdt-monitor local (unknown, local, linux/amd64)`。
+- **没有** `docker push` / `docker compose push` / GHCR login。不要把这次本机构建写成已经发布。
+- 未做 `docker compose up`（会留下长期进程）；未做远端 CI。
 
 ## 和上游安装文档的关系
 
