@@ -155,13 +155,13 @@ test('top refresh forces every configured instance and reports completion', asyn
   await page.route('**/api/v1/accounts/refresh', (route) => {
     refreshAllCalls += 1
     expect(route.request().method()).toBe('POST')
-    return route.fulfill({ status: 202, json: { jobs: [{ id: 'refresh-1', status: 'pending' }, { id: 'refresh-2', status: 'pending' }] } })
+    return route.fulfill({ status: 202, json: { jobs: [{ id: 'refresh-1', status: 'queued', type: 'refresh_account', account_id: 1, attempts: 0, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { id: 'refresh-2', status: 'queued', type: 'refresh_account', account_id: 2, attempts: 0, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } })
   })
   await page.route('**/api/v1/jobs/**', (route) => {
     const id = route.request().url().split('/').pop() || ''
     const count = (jobPolls.get(id) || 0) + 1
     jobPolls.set(id, count)
-    return route.fulfill({ json: { id, status: count > 1 ? 'completed' : 'running' } })
+    return route.fulfill({ json: { id, type: 'refresh_account', status: count > 1 ? 'completed' : 'running', attempts: count, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() } })
   })
 
   await page.setViewportSize({ width: 390, height: 844 })

@@ -1,11 +1,32 @@
 import { expect, test } from '@playwright/test'
+import {
+  ACCOUNT_OBJECT_KEYS,
+  CONFIG_OBJECT_KEYS,
+  TEST_PASSWORD,
+  dashboardConfig,
+  dashboardStatus,
+  emptyHistory,
+  expectKnownKeys,
+  mockDashboardReads,
+  mockInitStatus,
+  mockUnauthorizedSession,
+} from './harness'
 
 async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(1)
 }
 
-test('installation and dashboard render on desktop and mobile', async ({ page }, testInfo) => {
+test('installation wizard posts the setup contract and reaches the dashboard', async ({ page }, testInfo) => {
+  await mockInitStatus(page, false)
+  let setupBody: Record<string, unknown> | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    expect(route.request().method()).toBe('POST')
+    setupBody = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
   await expectNoHorizontalOverflow(page)
@@ -17,8 +38,8 @@ test('installation and dashboard render on desktop and mobile', async ({ page },
 
   await page.setViewportSize({ width: 1440, height: 1000 })
   const passwords = page.locator('input[type="password"]')
-  await passwords.nth(0).fill('Visual-Test-Password-42!')
-  await passwords.nth(1).fill('Visual-Test-Password-42!')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
   await page.getByRole('button', { name: '继续' }).click()
   await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
   await page.getByRole('button', { name: '继续' }).click()
@@ -26,6 +47,24 @@ test('installation and dashboard render on desktop and mobile', async ({ page },
   await page.getByRole('button', { name: '完成安装' }).click()
 
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(setupBody).toBeTruthy()
+  expectKnownKeys(setupBody!, CONFIG_OBJECT_KEYS)
+  expect(setupBody).toMatchObject({
+    admin_password: TEST_PASSWORD,
+    traffic_threshold: 95,
+    enable_schedule_notification: false,
+    shutdown_mode: 'KeepCharging',
+    threshold_action: 'stop_and_notify',
+    keep_alive: false,
+    api_interval: 600,
+    enable_billing: false,
+    timezone: 'Asia/Shanghai',
+    accounts: [],
+  })
+  const notifications = setupBody!.notifications as Record<string, Record<string, unknown>>
+  expect(notifications.email).toMatchObject({ enabled: false, port: 465, security: 'ssl', password_configured: false })
+  expect(notifications.telegram).toMatchObject({ enabled: false, token_configured: false, proxy_type: 'none', proxy_password_configured: false })
+  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('dashboard-desktop.png'), fullPage: true })
 
@@ -34,7 +73,24 @@ test('installation and dashboard render on desktop and mobile', async ({ page },
   await page.screenshot({ path: testInfo.outputPath('dashboard-mobile.png'), fullPage: true })
 })
 
-test('secure login renders and authenticates on desktop and mobile', async ({ page }, testInfo) => {
+test('secure login authenticates with the password contract', async ({ page }, testInfo) => {
+  await mockInitStatus(page, true)
+  let authed = false
+  await page.route('**/api/v1/auth/login', async (route) => {
+    expect(route.request().method()).toBe('POST')
+    expect(JSON.parse(route.request().postData() || '{}')).toEqual({ password: TEST_PASSWORD })
+    authed = true
+    await route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardStatus })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   await expectNoHorizontalOverflow(page)
@@ -44,7 +100,64 @@ test('secure login renders and authenticates on desktop and mobile', async ({ pa
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('login-mobile.png'), fullPage: true })
 
-  await page.getByLabel('管理员密码').fill('Visual-Test-Password-42!')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
   await page.getByRole('button', { name: '安全登录' }).click()
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+})
+
+test('login surfaces the API invalid-credentials envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+  await page.route('**/api/v1/auth/login', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'invalid_credentials', message: '密码错误' } },
+  }))
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('密码错误')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
+
+test('history chart renders empty sampling state from the history contract', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: emptyHistory }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByText('等待采样数据')).toBeVisible()
+})
+
+test('setup account payload only uses documented account fields', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let account: Record<string, unknown> | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+    account = body.accounts?.[0]
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5contract')
+  await page.getByLabel('实例 ID').fill('i-contract')
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(account).toMatchObject({
+    access_key_id: 'LTAI5contract',
+    instance_id: 'i-contract',
+    region_id: 'cn-hongkong',
+    site_type: 'china',
+    max_traffic: 200,
+    secret_configured: false,
+  })
 })

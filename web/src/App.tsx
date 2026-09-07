@@ -10,13 +10,13 @@ import {
 } from 'lucide-react'
 import { APIError, api, fetchLatestReleaseFromGitHub, waitForJob } from './api'
 import {
-  APIKeyRecord, Account, AccountSummary, Config, History, Job, LogEntry, PasskeyRecord,
-  StatusResponse, SystemInfo, defaultConfig, emptyAccount,
+  APIKeyRecord, APIKeysResponse, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyResponse,
+  History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
+  PasskeysResponse, StatusResponse, SystemInfo, defaultConfig, emptyAccount,
 } from './types'
 
 type Phase = 'loading' | 'setup' | 'login' | 'dashboard' | 'fatal'
 type Toast = { id: number; tone: 'success' | 'error' | 'info'; message: string }
-type PasskeyCeremony = { session_id: string; public_key: { publicKey: Record<string, unknown> } }
 type SelectOption = { value: string; label: string; meta?: string }
 type SelectPosition = { left: number; top: number; width: number; maxHeight: number; placement: 'up' | 'down' }
 
@@ -73,7 +73,7 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const init = await api<{ initialized: boolean }>('/api/v1/system/init-status')
+        const init = await api<InitStatus>('/api/v1/system/init-status')
         if (!init.initialized) {
           setPhase('setup')
           return
@@ -177,7 +177,7 @@ function SetupWizard({ onComplete, notify }: { onComplete: () => Promise<void>; 
       const cleaned = structuredClone(config)
       cleaned.admin_password = password
       cleaned.accounts = cleaned.accounts.filter((account) => account.access_key_id.trim())
-      await api('/api/v1/setup', { method: 'POST', body: JSON.stringify(cleaned) })
+      await api<AuthSuccess>('/api/v1/setup', { method: 'POST', body: JSON.stringify(cleaned) })
       notify('系统初始化完成', 'success')
       await onComplete()
     } catch (cause) {
@@ -236,7 +236,7 @@ function Login({ onComplete }: { onComplete: () => Promise<void> }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError('')
     try {
-      await api('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ password }) })
+      await api<AuthSuccess>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ password }) })
       await onComplete()
     } catch (cause) { setError(cause instanceof Error ? cause.message : '登录失败') }
     finally { setBusy(false) }
@@ -300,7 +300,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
     if (refreshingAll) return
     setRefreshingAll(true)
     try {
-      const result = await api<{ jobs?: Job[] }>('/api/v1/accounts/refresh', { method: 'POST', body: '{}' })
+      const result = await api<JobsResponse>('/api/v1/accounts/refresh', { method: 'POST', body: '{}' })
       const jobs = Array.isArray(result.jobs) ? result.jobs : []
       if (jobs.length === 0) {
         await onRefresh(true)
@@ -545,7 +545,7 @@ function APIKeySettings({ notify }: { notify: (message: string, tone?: Toast['to
     setLoading(true)
     setError('')
     try {
-      const value = await api<{ keys?: APIKeyRecord[] }>('/api/v1/api-keys')
+      const value = await api<APIKeysResponse>('/api/v1/api-keys')
       setKeys(Array.isArray(value.keys) ? value.keys.filter((key) => !key.revoked_at) : [])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'API Key 列表加载失败')
@@ -555,7 +555,7 @@ function APIKeySettings({ notify }: { notify: (message: string, tone?: Toast['to
   }, [])
   useEffect(() => { void load() }, [load])
   const create = async () => {
-    try { const result = await api<{ token: string }>('/api/v1/api-keys', { method: 'POST', body: JSON.stringify({ name, scopes }) }); setToken(result.token); await load() }
+    try { const result = await api<CreateAPIKeyResponse>('/api/v1/api-keys', { method: 'POST', body: JSON.stringify({ name, scopes }) }); setToken(result.token); await load() }
     catch (error) { notify(error instanceof Error ? error.message : '创建失败', 'error') }
   }
   const toggle = (scope: string) => setScopes((current) => current.includes(scope) ? current.filter((value) => value !== scope) : [...current, scope])
@@ -573,7 +573,7 @@ function LogSettings({ notify }: { notify: (message: string, tone?: Toast['tone'
   const [logs, setLogs] = useState<LogEntry[]>([])
   const load = useCallback(async () => {
     try {
-      const value = await api<{ logs?: LogEntry[] | null }>(`/api/v1/logs?tab=${tab}`)
+      const value = await api<LogsResponse>(`/api/v1/logs?tab=${tab}`)
       setLogs(Array.isArray(value.logs) ? value.logs : [])
     } catch (cause) {
       setLogs([])
@@ -595,7 +595,7 @@ function AdminSettingsPanel({ onClose, notify }: { onClose: () => void; notify: 
   const [passkeyBusy, setPasskeyBusy] = useState(false)
   const loadPasskeys = useCallback(async () => {
     try {
-      const result = await api<{ passkeys?: PasskeyRecord[] }>('/api/v1/admin/passkeys')
+      const result = await api<PasskeysResponse>('/api/v1/admin/passkeys')
       setPasskeys(Array.isArray(result.passkeys) ? result.passkeys : [])
     } catch (cause) { notify(cause instanceof Error ? cause.message : 'Passkey 列表加载失败', 'error') }
   }, [notify])
