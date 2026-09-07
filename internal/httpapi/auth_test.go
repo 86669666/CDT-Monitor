@@ -290,3 +290,51 @@ func TestLegacyMonitorRequiresCronScope(t *testing.T) {
 		t.Fatalf("missing cron status = %d body = %s", missing.Code, missing.Body.String())
 	}
 }
+
+func loginAttempt(t *testing.T, handler http.Handler, password, remoteAddr, forwardedFor string) *httptest.ResponseRecorder {
+	t.Helper()
+	headers := map[string]string{}
+	if forwardedFor != "" {
+		headers["X-Forwarded-For"] = forwardedFor
+	}
+	request := httptest.NewRequest(http.MethodPost, "https://monitor.example.com/api/v1/auth/login", strings.NewReader(`{"password":"`+password+`"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.RemoteAddr = remoteAddr
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func TestLoginLockoutIgnoresSpoofedForwardedFor(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 5; i++ {
+		response := loginAttempt(t, handler, "wrong-password-xx", "203.0.113.10:443", "198.51.100.1")
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d body = %s", i+1, response.Code, response.Body.String())
+		}
+	}
+	locked := loginAttempt(t, handler, testAdminPassword, "203.0.113.10:443", "198.51.100.9")
+	if locked.Code != http.StatusTooManyRequests || !strings.Contains(locked.Body.String(), "login_locked") {
+		t.Fatalf("spoofed X-Forwarded-For must not bypass lockout, status = %d body = %s", locked.Code, locked.Body.String())
+	}
+}
+
+func TestLoginLockoutTrustsForwardedForFromLoopback(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 5; i++ {
+		response := loginAttempt(t, handler, "wrong-password-xx", "127.0.0.1:8080", "198.51.100.20")
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d body = %s", i+1, response.Code, response.Body.String())
+		}
+	}
+	ok := loginAttempt(t, handler, testAdminPassword, "127.0.0.1:8080", "198.51.100.21")
+	if ok.Code != http.StatusOK {
+		t.Fatalf("loopback proxy should isolate client IPs, status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}

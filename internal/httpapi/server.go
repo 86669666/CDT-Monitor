@@ -883,14 +883,19 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 }
 
 func clientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" && trustedProxy(host) {
 		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return r.RemoteAddr
+	return host
+}
+
+func trustedProxy(ip string) bool {
+	parsed := net.ParseIP(ip)
+	return parsed != nil && (parsed.IsLoopback() || parsed.IsPrivate())
 }
 
 func decodeJSON(r *http.Request, target any) error {
