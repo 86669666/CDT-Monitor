@@ -21,7 +21,7 @@ func TestMigratesLegacySecretsAndPassword(t *testing.T) {
 	_, err = db.Exec(`
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, access_key_id TEXT, access_key_secret TEXT, region_id TEXT, instance_id TEXT, max_traffic REAL, schedule_enabled INTEGER DEFAULT 0, start_time TEXT, stop_time TEXT, traffic_used REAL DEFAULT 0, instance_status TEXT DEFAULT 'Unknown', updated_at INTEGER DEFAULT 0, last_keep_alive_at INTEGER DEFAULT 0);
-INSERT INTO settings(key,value) VALUES('admin_password','legacy-password'),('notify_tg_token','legacy-token');
+INSERT INTO settings(key,value) VALUES('admin_password','legacy-password'),('notify_tg_token','legacy-token'),('notify_wh_secret','legacy-webhook-secret');
 INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_traffic) VALUES('LTAIlegacy','legacy-secret','cn-hongkong','i-legacy',200);
 `)
 	if err != nil {
@@ -34,15 +34,30 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 		t.Fatal(err)
 	}
 	defer st.Close()
-	var token, secret string
+	var token, secret, webhook string
 	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_tg_token'`).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_secret'`).Scan(&webhook); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.db.QueryRow(`SELECT access_key_secret FROM accounts WHERE id=1`).Scan(&secret); err != nil {
 		t.Fatal(err)
 	}
-	if !security.IsEncrypted(token) || !security.IsEncrypted(secret) {
+	if !security.IsEncrypted(token) || !security.IsEncrypted(webhook) || !security.IsEncrypted(secret) {
 		t.Fatal("legacy secrets were not encrypted")
+	}
+	telegram, err := st.Decrypt(token)
+	if err != nil || telegram != "legacy-token" {
+		t.Fatalf("telegram token = %q err=%v", telegram, err)
+	}
+	webhookPlain, err := st.Decrypt(webhook)
+	if err != nil || webhookPlain != "legacy-webhook-secret" {
+		t.Fatalf("webhook secret = %q err=%v", webhookPlain, err)
+	}
+	storedSecret, err := st.AccountSecret(context.Background(), 1)
+	if err != nil || storedSecret != "legacy-secret" {
+		t.Fatalf("account secret = %q err=%v", storedSecret, err)
 	}
 	valid, err := st.VerifyAdminPassword(context.Background(), "legacy-password")
 	if err != nil || !valid {
@@ -68,6 +83,9 @@ func TestAccountIDsRemainStable(t *testing.T) {
 	}
 	accounts, _ := st.ListAccounts(ctx)
 	id := accounts[0].ID
+	if accounts[0].AccessKeySecret != "" || !accounts[0].SecretConfigured {
+		t.Fatal("list accounts must not include access key secret")
+	}
 	config.AdminPassword = ""
 	config.Accounts[0].ID = id
 	config.Accounts[0].AccessKeySecret = ""
@@ -273,6 +291,71 @@ func TestUpdateAdminPasswordKeepsCurrentSessionOnly(t *testing.T) {
 	}
 	if valid, _ := st.ValidateSession(ctx, other); valid {
 		t.Fatal("other sessions must be invalidated")
+	}
+}
+
+func TestSessionStoresHashNotPlaintext(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	token, err := st.CreateSession(context.Background(), "127.0.0.1", "test", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT token_hash FROM sessions`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored == "" || stored == token {
+		t.Fatal("session token was stored in plaintext")
+	}
+	if stored != security.TokenHash(token) {
+		t.Fatalf("stored hash = %q", stored)
+	}
+	valid, err := st.ValidateSession(context.Background(), token)
+	if err != nil || !valid {
+		t.Fatal("hashed session must still validate")
+	}
+	valid, err = st.ValidateSession(context.Background(), "not-the-token")
+	if err != nil || valid {
+		t.Fatal("unknown session token must not validate")
+	}
+}
+
+func TestExpiredAPIKeyIsRejected(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	token := "cdt_expired_test_token"
+	_, err = st.db.Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at,expires_at) VALUES('expired',?,'["widget:read"]',unixepoch(),unixepoch()-30)`, security.TokenHash(token))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(context.Background(), token); err == nil {
+		t.Fatal("expired API key must not validate")
+	}
+}
+
+func TestAPIKeyHashIsStoredNotToken(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	_, token, err := st.CreateAPIKey(context.Background(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT token_hash FROM api_keys`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored == "" || stored == token || stored == token[len("cdt_"):] {
+		t.Fatal("API key token was stored in plaintext")
 	}
 }
 

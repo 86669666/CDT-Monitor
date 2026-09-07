@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -797,7 +798,14 @@ func clearAuthCookies(w http.ResponseWriter, r *http.Request) {
 
 func validCSRF(r *http.Request) bool {
 	cookie, err := r.Cookie("cdt_csrf")
-	return err == nil && cookie.Value != "" && r.Header.Get("X-CDT-CSRF") == cookie.Value
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	header := r.Header.Get("X-CDT-CSRF")
+	if header == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) == 1
 }
 
 func requestSecure(r *http.Request) bool {
