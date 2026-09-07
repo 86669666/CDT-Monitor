@@ -19,8 +19,10 @@ on:
 permissions:
   contents: write
 
+# Binary GitHub Releases stay opt-in. Leave ENABLE_PRODUCTION_PUBLISH unset on this fork.
 jobs:
   frontend:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +43,7 @@ jobs:
           if-no-files-found: error
 
   build:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: frontend
     name: ${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
     runs-on: ubuntu-latest
@@ -100,6 +103,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: build
     runs-on: ubuntu-latest
     steps:

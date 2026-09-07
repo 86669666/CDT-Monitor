@@ -15,9 +15,10 @@ permissions:
   contents: write
   packages: write
 
+# Publishing stays opt-in on this fork. Leave ENABLE_PRODUCTION_PUBLISH unset.
 jobs:
   tag:
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip release]') }}
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' && (github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip release]')) }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}

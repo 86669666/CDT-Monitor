@@ -62,3 +62,5 @@ TZ=Asia/Shanghai docker compose up -d
 ## 和上游安装文档的关系
 
 [README.MD](../README.MD) 里的 Docker 安装示例仍展示上游已发布镜像，方便对照。本 fork 的默认 Compose 文件已经改为本地构建。若只想跑上游镜像，请显式使用 README 中的 `image:` 片段，而不是这份仓库 Compose。
+
+CI 工作流的镜像名与发布开关见 [CI 发布与密钥审计](ci-publish-audit.md)。
