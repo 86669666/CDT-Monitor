@@ -259,3 +259,22 @@ test('history chart surfaces the history_failed envelope', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText('历史流量加载失败')
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
+
+
+test('wizard surfaces the setup_failed envelope and stays on install', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'system is already initialized' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('system is already initialized')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
