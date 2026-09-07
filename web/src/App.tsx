@@ -123,7 +123,7 @@ export default function App() {
         />
       )}
       {adminOpen && <AdminSettingsPanel onClose={() => setAdminOpen(false)} notify={notify} />}
-      {historyAccount && <HistoryModal account={historyAccount} onClose={() => setHistoryAccount(null)} />}
+      {historyAccount && <HistoryModal account={historyAccount} timeZone={config?.timezone || 'Asia/Shanghai'} onClose={() => setHistoryAccount(null)} />}
       <ToastStack items={toasts} />
     </>
   )
@@ -680,7 +680,7 @@ function SiteFavicon({ domain, label }: { domain: string; label: string }) {
   return <span className="about-link__favicon" data-state={state}><img className={state === 'failed' ? 'is-hidden' : ''} src={`https://a.favicon.im/${domain}`} alt={`${label} favicon`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onLoad={() => setState('loaded')} onError={() => setState('failed')} />{state === 'loading' && <LoaderCircle className="spin" aria-hidden="true" />}{state === 'failed' && <Globe2 aria-hidden="true" />}</span>
 }
 
-function HistoryModal({ account, onClose }: { account: AccountSummary; onClose: () => void }) {
+function HistoryModal({ account, timeZone, onClose }: { account: AccountSummary; timeZone: string; onClose: () => void }) {
   const [history, setHistory] = useState<History | null>(null)
   const [range, setRange] = useState<'hourly' | 'daily'>('hourly')
   const [error, setError] = useState('')
@@ -692,7 +692,7 @@ function HistoryModal({ account, onClose }: { account: AccountSummary; onClose: 
       .catch((cause) => setError(cause instanceof Error ? cause.message : '历史流量加载失败'))
   }, [account.id])
   const data = (history?.[range] || []).map((point) => ({ at: new Date(point.at).getTime(), traffic: Math.round(point.traffic * 1000) / 1000 }))
-  return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal-scrim" onClick={onClose} /><section className="chart-modal glass-card"><header><div><p className="eyebrow">TRAFFIC HISTORY</p><h2>{account.remark || account.account}</h2></div><IconButton label="关闭" onClick={onClose}><X /></IconButton></header><Segmented value={range} options={[['hourly', '24 小时'], ['daily', '30 天']]} onChange={(value) => setRange(value as typeof range)} /><div className="chart-area" aria-label="流量历史图表">{error ? <div className="subtle-empty" role="alert"><AlertTriangle />{error}</div> : !history ? <LoaderCircle className="spin chart-loader" /> : data.length === 0 ? <div className="subtle-empty"><HistoryIcon />等待采样数据</div> : <Suspense fallback={<LoaderCircle className="spin chart-loader" />}><HistoryChart data={data} range={range} /></Suspense>}</div></section></div>
+  return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal-scrim" onClick={onClose} /><section className="chart-modal glass-card"><header><div><p className="eyebrow">TRAFFIC HISTORY</p><h2>{account.remark || account.account}</h2></div><IconButton label="关闭" onClick={onClose}><X /></IconButton></header><Segmented value={range} options={[['hourly', '24 小时'], ['daily', '30 天']]} onChange={(value) => setRange(value as typeof range)} /><div className="chart-area" aria-label="流量历史图表">{error ? <div className="subtle-empty" role="alert"><AlertTriangle />{error}</div> : !history ? <LoaderCircle className="spin chart-loader" /> : data.length === 0 ? <div className="subtle-empty"><HistoryIcon />等待采样数据</div> : <Suspense fallback={<LoaderCircle className="spin chart-loader" />}><HistoryChart data={data} range={range} timeZone={timeZone} /></Suspense>}</div></section></div>
 }
 
 function BrandMark() { return <span className="brand-mark"><Cloud size={21} /></span> }

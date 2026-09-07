@@ -278,3 +278,36 @@ test('wizard surfaces the setup_failed envelope and stays on install', async ({ 
   await expect(page.getByText('system is already initialized')).toBeVisible()
   await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
 })
+
+
+test('history chart labels follow config timezone', async ({ page }) => {
+  const hourStart = Math.floor(Date.now() / 3_600_000) * 3_600_000
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, timezone: 'Asia/Shanghai' })
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: {
+    hourly: [{ at: new Date(hourStart).toISOString(), traffic: 1.23456 }],
+    daily: [{ at: new Date(hourStart).toISOString(), traffic: 9.87654 }],
+  } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  const expectedHour = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    hourStart,
+  )
+  const latestSample = page.locator('.chart-area .recharts-line-dot').last()
+  await expect(latestSample).toBeVisible()
+  await latestSample.hover()
+  await expect(page.getByText('1.235')).toBeVisible()
+  await expect(page.locator('.recharts-tooltip-label')).toHaveText(expectedHour)
+
+  await page.getByRole('button', { name: '30 天' }).click()
+  const expectedDay = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Shanghai' }),
+    hourStart,
+  )
+  const sparseBar = page.locator('.recharts-bar-rectangle .recharts-rectangle').first()
+  await expect(sparseBar).toBeVisible()
+  await sparseBar.hover()
+  await expect(page.locator('.recharts-tooltip-label')).toHaveText(expectedDay)
+})
