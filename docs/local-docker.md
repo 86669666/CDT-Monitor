@@ -17,7 +17,7 @@ ghcr.io/86669666/cdt-monitor:local
 1. `node:22-alpine` 构建 `web/`，产物落到 `internal/web/dist`。
 2. `golang:1.24-alpine` 按 `TARGETOS` / `TARGETARCH` 交叉编译 `./cmd/cdt-monitor`（`CGO_ENABLED=0`）。
 3. `alpine:3.21` 只提供 CA 证书。
-4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`。
+4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `no-new-privileges`。
 
 运行镜像里没有 shell、包管理器或阿里云凭据。AccessKey、通知密钥和管理员密码都在首次 Web 向导写入数据卷，不要放进 Compose 或镜像构建参数。
 

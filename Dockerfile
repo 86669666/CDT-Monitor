@@ -47,5 +47,7 @@ COPY --from=builder --chown=65532:65532 /runtime-data /data
 VOLUME ["/data"]
 EXPOSE 8080
 USER 65532:65532
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/cdt-monitor", "healthcheck"]
 ENTRYPOINT ["/cdt-monitor"]
 CMD ["serve"]
