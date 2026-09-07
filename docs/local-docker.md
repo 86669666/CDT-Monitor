@@ -58,7 +58,8 @@ TZ=Asia/Shanghai docker compose up -d
 - 已验证：`docker compose build --dry-run`。
 - 已验证（`2026-09-07T22:42Z` / 2026-09-08 06:42 Asia/Taipei）：`docker compose build` 在本机打出 `ghcr.io/86669666/cdt-monitor:local`（`sha256:ef9fbb591a54…`，约 13.2MB，`USER 65532:65532`，fork `IMAGE_SOURCE`，镜像 HEALTHCHECK 存在）。`docker run --rm --network none … version` 输出 `cdt-monitor local (unknown, local, linux/amd64)`。
 - **没有** `docker push` / `docker compose push` / GHCR login。不要把这次本机构建写成已经发布。
-- 未做 `docker compose up`（会留下长期进程）；未做远端 CI。
+- 已验证（`2026-09-07T23:02Z` / 2026-09-08 07:02 Asia/Taipei）：`docker compose up -d --no-build` 后容器 `healthy`，`curl http://127.0.0.1:43210/healthz` 返回 `200 {"status":"ok"}`，进程用户 `65532:65532`，`CapDrop=ALL`，`no-new-privileges`。随后 `docker compose down` 并删除 named volume，避免把本机 `master.key` 留在宿主机。
+- 这只证明本地镜像能提供 `/healthz`，不是安装向导、阿里云账号或 GHCR 发布。未做远端 CI。
 
 ## 和上游安装文档的关系
 
