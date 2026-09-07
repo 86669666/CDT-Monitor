@@ -255,6 +255,56 @@ func TestActionEventCanBeReleasedAfterFailure(t *testing.T) {
 	}
 }
 
+func TestFailedJobRetriesThenReleasesUniqueKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	job, err := st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "refresh:1:retry", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := st.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailJob(ctx, claimed, errors.New("aliyun unavailable")); err != nil {
+		t.Fatal(err)
+	}
+	var unique, status string
+	if err = st.db.QueryRow(`SELECT unique_key,status FROM jobs WHERE id=?`, claimed.ID).Scan(&unique, &status); err != nil {
+		t.Fatal(err)
+	}
+	if unique != "refresh:1:retry" || status != "queued" {
+		t.Fatalf("retrying job unique_key=%q status=%q", unique, status)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE jobs SET available_at=unixepoch()-1 WHERE id=?`, claimed.ID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = st.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailJob(ctx, claimed, errors.New("aliyun unavailable")); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT COALESCE(unique_key,''),status FROM jobs WHERE id=?`, claimed.ID).Scan(&unique, &status); err != nil {
+		t.Fatal(err)
+	}
+	if unique != "" || status != "failed" {
+		t.Fatalf("exhausted job unique_key=%q status=%q", unique, status)
+	}
+	replacement, err := st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "refresh:1:retry", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.ID == job.ID {
+		t.Fatal("released unique_key should allow a new job")
+	}
+}
+
 func TestMonitorJobKeepsMinuteDeduplicationAfterCompletion(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

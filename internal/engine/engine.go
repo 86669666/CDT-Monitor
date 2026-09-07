@@ -293,25 +293,32 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	percentage := usagePercent(traffic, account.MaxTraffic)
 	overThreshold := percentage >= float64(config.TrafficThreshold)
 	thresholdKey := fmt.Sprintf("threshold:%d:active", account.ID)
+	thresholdStopKey := fmt.Sprintf("threshold:%d:stop", account.ID)
 	if !overThreshold {
 		_ = e.store.DeleteActionEvent(ctx, thresholdKey)
+		_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
 	}
 	if overThreshold && due {
-		key := thresholdKey
-		recorded, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "threshold", "detected", fmt.Sprintf("%.2f%%", percentage))
-		if recordErr != nil {
-			return "", recordErr
-		}
-		if recorded {
-			if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && status != domain.StatusStopping {
+		if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && status != domain.StatusStopping {
+			freshStop, recordErr := e.store.RecordActionEvent(ctx, thresholdStopKey, account.ID, "threshold_stop", "attempting", fmt.Sprintf("%.2f%%", percentage))
+			if recordErr != nil {
+				return "", recordErr
+			}
+			if freshStop {
 				if err = e.provider.ControlInstance(ctx, account, secret, "stop", config.ShutdownMode); err != nil {
-					_ = e.store.DeleteActionEvent(ctx, key)
+					_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
 					return "", err
 				}
 				status = domain.StatusStopping
 				_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
 				actions = append(actions, "threshold_stop")
 			}
+		}
+		recorded, recordErr := e.store.RecordActionEvent(ctx, thresholdKey, account.ID, "threshold", "detected", fmt.Sprintf("%.2f%%", percentage))
+		if recordErr != nil {
+			return "", recordErr
+		}
+		if recorded {
 			event := newEvent("threshold", "流量阈值告警", fmt.Sprintf("账号 %s 的流量使用率达到 %.2f%%。", masked(account.AccessKeyID), percentage), account.ID, map[string]string{
 				"当前流量": fmt.Sprintf("%.2f GB", traffic), "设定阈值": fmt.Sprintf("%d%%", config.TrafficThreshold), "实例状态": status,
 			})
