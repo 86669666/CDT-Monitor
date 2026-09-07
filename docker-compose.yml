@@ -12,6 +12,7 @@ services:
         VERSION: local
         COMMIT: unknown
         BUILT_AT: local
+        IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor
     image: ghcr.io/86669666/cdt-monitor:local
     pull_policy: build
     container_name: cdt-monitor

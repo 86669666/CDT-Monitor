@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1.7
+#
+# Node and Go stages pin BUILDPLATFORM so they run natively; the Go
+# compiler cross-compiles with TARGETOS/TARGETARCH. The final scratch
+# stage is unpinned so the image platform matches the target, not the
+# builder host. Do not add --push here; publishing is a workflow concern.
 
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 WORKDIR /src/web
@@ -31,10 +36,11 @@ RUN apk add --no-cache ca-certificates
 
 FROM scratch
 ARG VERSION=dev
+ARG IMAGE_SOURCE=https://github.com/wang4386/CDT-Monitor
 LABEL org.opencontainers.image.title="CDT Monitor" \
       org.opencontainers.image.description="阿里云 CDT 流量监控与实例自动化控制台" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.source="https://github.com/wang4386/CDT-Monitor"
+      org.opencontainers.image.source="${IMAGE_SOURCE}"
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /cdt-monitor /cdt-monitor
 COPY --from=builder --chown=65532:65532 /runtime-data /data
