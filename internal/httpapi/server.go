@@ -716,7 +716,11 @@ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) legacyMonitor(w http.ResponseWriter, r *http.Request) {
-	scopes, err := s.store.ValidateAPIKey(r.Context(), r.URL.Query().Get("key"))
+	token := bearerToken(r)
+	if token == "" {
+		token = strings.TrimSpace(r.URL.Query().Get("key"))
+	}
+	scopes, err := s.store.ValidateAPIKey(r.Context(), token)
 	if err != nil || !contains(scopes, "cron:run") {
 		writeError(w, http.StatusUnauthorized, "invalid_key", "需要具有 cron:run 权限的 API Key")
 		return

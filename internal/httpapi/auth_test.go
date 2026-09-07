@@ -227,3 +227,66 @@ func TestAPIKeyScopesAndTokenAreNotRelisted(t *testing.T) {
 		t.Fatalf("anonymous config status = %d body = %s", unauthorized.Code, unauthorized.Body.String())
 	}
 }
+
+func TestLogoutInvalidatesSession(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	logout := doRequest(t, handler, http.MethodPost, "/api/v1/auth/logout", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if logout.Code != http.StatusOK {
+		t.Fatalf("logout status = %d body = %s", logout.Code, logout.Body.String())
+	}
+	denied := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("logged-out config status = %d body = %s", denied.Code, denied.Body.String())
+	}
+}
+
+func TestLoginLockoutAfterRepeatedFailures(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 5; i++ {
+		response := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"wrong-password-xx"}`, nil, nil)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d body = %s", i+1, response.Code, response.Body.String())
+		}
+		if cookieNamed(response.Result().Cookies(), "cdt_session") != nil {
+			t.Fatal("failed login must not set a session cookie")
+		}
+	}
+	locked := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"`+testAdminPassword+`"}`, nil, nil)
+	if locked.Code != http.StatusTooManyRequests || !strings.Contains(locked.Body.String(), "login_locked") {
+		t.Fatalf("lockout status = %d body = %s", locked.Code, locked.Body.String())
+	}
+}
+
+func TestLegacyMonitorRequiresCronScope(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ctx := t.Context()
+	_, cronToken, err := st.CreateAPIKey(ctx, "cron", []string{"cron:run"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, widgetToken, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headerOK := doRequest(t, handler, http.MethodGet, "/monitor.php", "", nil, map[string]string{"X-API-Key": cronToken})
+	if headerOK.Code != http.StatusAccepted {
+		t.Fatalf("header cron status = %d body = %s", headerOK.Code, headerOK.Body.String())
+	}
+	queryOK := doRequest(t, handler, http.MethodGet, "/monitor.php?key="+cronToken, "", nil, nil)
+	if queryOK.Code != http.StatusAccepted {
+		t.Fatalf("query cron status = %d body = %s", queryOK.Code, queryOK.Body.String())
+	}
+	forbidden := doRequest(t, handler, http.MethodGet, "/monitor.php", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusUnauthorized {
+		t.Fatalf("widget cron status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+	missing := doRequest(t, handler, http.MethodGet, "/monitor.php", "", nil, nil)
+	if missing.Code != http.StatusUnauthorized {
+		t.Fatalf("missing cron status = %d body = %s", missing.Code, missing.Body.String())
+	}
+}
