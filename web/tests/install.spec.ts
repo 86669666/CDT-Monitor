@@ -367,3 +367,43 @@ test('settings dates follow config timezone', async ({ page }) => {
   await expect(page.getByText('办公室电脑')).toBeVisible()
   await expect(page.locator('.passkey-row')).toContainText(expected)
 })
+
+
+test('about built_at uses config timezone when it is a timestamp', async ({ page }) => {
+  const at = '2026-09-07T16:00:00.000Z'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, timezone: 'Asia/Shanghai' })
+  await page.route('**/api/v1/system/info**', (route) => route.fulfill({ json: {
+    version: 'v2.0.1',
+    commit: 'abc1234',
+    built_at: at,
+    repository: 'https://github.com/wang4386/CDT-Monitor',
+    release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+  } }))
+
+  await page.goto('/')
+  const expected = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    at,
+  )
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await expect(page.locator('.about-version small')).toHaveText(`abc1234 · ${expected}`)
+})
+
+test('about built_at keeps opaque build stamps', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', (route) => route.fulfill({ json: {
+    version: 'v2.0.1',
+    commit: 'abc1234',
+    built_at: 'github-run-12345',
+    repository: 'https://github.com/wang4386/CDT-Monitor',
+    release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+  } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await expect(page.locator('.about-version small')).toHaveText('abc1234 · github-run-12345')
+})

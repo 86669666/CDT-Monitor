@@ -422,7 +422,7 @@ function SettingsPanel({ initial, onClose, onSaved, notify }: { initial: Config;
           {tab === 'notify' && <NotificationSettings config={config} onChange={setConfig} notify={notify} />}
           {tab === 'keys' && <APIKeySettings notify={notify} timeZone={config.timezone} />}
           {tab === 'logs' && <LogSettings notify={notify} timeZone={config.timezone} />}
-          {tab === 'about' && <AboutSettings notify={notify} />}
+          {tab === 'about' && <AboutSettings notify={notify} timeZone={config.timezone} />}
         </div>
         {(tab === 'general' || tab === 'accounts' || tab === 'notify') && <footer className="settings-footer"><button className="button button--primary" onClick={() => void save()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Save />}保存更改</button></footer>}
       </section>
@@ -635,7 +635,7 @@ function AdminSettingsPanel({ onClose, notify, timeZone }: { onClose: () => void
   </section></div>
 }
 
-function AboutSettings({ notify }: { notify: (message: string, tone?: Toast['tone']) => void }) {
+function AboutSettings({ notify, timeZone }: { notify: (message: string, tone?: Toast['tone']) => void; timeZone: string }) {
   const [info, setInfo] = useState<SystemInfo | null>(null)
   const [checking, setChecking] = useState(false)
   useEffect(() => { void api<SystemInfo>('/api/v1/system/info').then(setInfo).catch((cause) => notify(cause instanceof Error ? cause.message : '版本信息加载失败', 'error')) }, [notify])
@@ -673,7 +673,7 @@ function AboutSettings({ notify }: { notify: (message: string, tone?: Toast['ton
       setChecking(false)
     }
   }
-  return <div className="settings-section about-section"><SectionTitle icon={<Info />} title="关于 CDT Monitor" subtitle="PROJECT INFORMATION" /><div className="about-version"><div><span>当前版本</span><b>{info?.version || '加载中...'}</b><small>{info?.commit && info.commit !== 'unknown' ? `${info.commit} · ${info.built_at}` : '构建信息未知'}</small></div><button className="button button--secondary button--small" onClick={() => void checkVersion()} disabled={checking}>{checking ? <LoaderCircle className="spin" /> : <RefreshCw />}检查更新</button></div>{info?.latest_version && <p className="inline-hint">GitHub 最新版本：{info.latest_version}{info.latest_version === info.version ? '，当前已是最新版本' : '，请查看发布页获取更新'}</p>}<div className="about-links"><a href="https://github.com/wang4386/CDT-Monitor" target="_blank" rel="noreferrer"><SiteFavicon domain="github.com" label="GitHub" /><span><b>GitHub 仓库</b><small>源代码、Issue 与 Release</small></span><ExternalLink /></a><a href="https://qninq.cn" target="_blank" rel="noreferrer"><SiteFavicon domain="qninq.cn" label="qninq.cn" /><span><b>作者博客</b><small>qninq.cn</small></span><ExternalLink /></a><a href="https://www.nodeseek.com/" target="_blank" rel="noreferrer"><SiteFavicon domain="nodeseek.com" label="NodeSeek" /><span><b>NodeSeek</b><small>社区交流</small></span><ExternalLink /></a><a href="https://linux.do/" target="_blank" rel="noreferrer"><SiteFavicon domain="linux.do" label="linux.do" /><span><b>Linux.do</b><small>技术社区交流</small></span><ExternalLink /></a></div></div>
+  return <div className="settings-section about-section"><SectionTitle icon={<Info />} title="关于 CDT Monitor" subtitle="PROJECT INFORMATION" /><div className="about-version"><div><span>当前版本</span><b>{info?.version || '加载中...'}</b><small>{info?.commit && info.commit !== 'unknown' ? `${info.commit} · ${formatBuiltAt(info.built_at, timeZone)}` : '构建信息未知'}</small></div><button className="button button--secondary button--small" onClick={() => void checkVersion()} disabled={checking}>{checking ? <LoaderCircle className="spin" /> : <RefreshCw />}检查更新</button></div>{info?.latest_version && <p className="inline-hint">GitHub 最新版本：{info.latest_version}{info.latest_version === info.version ? '，当前已是最新版本' : '，请查看发布页获取更新'}</p>}<div className="about-links"><a href="https://github.com/wang4386/CDT-Monitor" target="_blank" rel="noreferrer"><SiteFavicon domain="github.com" label="GitHub" /><span><b>GitHub 仓库</b><small>源代码、Issue 与 Release</small></span><ExternalLink /></a><a href="https://qninq.cn" target="_blank" rel="noreferrer"><SiteFavicon domain="qninq.cn" label="qninq.cn" /><span><b>作者博客</b><small>qninq.cn</small></span><ExternalLink /></a><a href="https://www.nodeseek.com/" target="_blank" rel="noreferrer"><SiteFavicon domain="nodeseek.com" label="NodeSeek" /><span><b>NodeSeek</b><small>社区交流</small></span><ExternalLink /></a><a href="https://linux.do/" target="_blank" rel="noreferrer"><SiteFavicon domain="linux.do" label="linux.do" /><span><b>Linux.do</b><small>技术社区交流</small></span><ExternalLink /></a></div></div>
 }
 
 function SiteFavicon({ domain, label }: { domain: string; label: string }) {
@@ -837,6 +837,7 @@ function statusClass(status: string) { if (status === 'Running') return 'positiv
 function statusLabel(status: string) { return ({ Running: '运行中', Stopped: '已停止', Starting: '启动中', Stopping: '停止中', Pending: '等待中', Unknown: '未知' } as Record<string, string>)[status] || status }
 function formatTime(value: string, timeZone?: string) { return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: resolveTimeZone(timeZone) }) }
 function formatDate(value: string, timeZone?: string) { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: resolveTimeZone(timeZone) }) }
+function formatBuiltAt(value: string, timeZone?: string) { if (!value || value === 'unknown') return value || 'unknown'; if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value; const parsed = Date.parse(value); return Number.isNaN(parsed) ? value : formatDate(value, timeZone) }
 function passkeyAvailable() { return location.protocol === 'https:' && window.isSecureContext && 'PublicKeyCredential' in window && 'credentials' in navigator }
 function decodeBase64(value: unknown) { if (typeof value !== 'string') return value; const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)); return Uint8Array.from(binary, (character) => character.charCodeAt(0)).buffer }
 function decodeRequestOptions(options: Record<string, unknown>): PublicKeyCredentialRequestOptions {
