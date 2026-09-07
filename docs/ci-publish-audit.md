@@ -48,4 +48,13 @@
 
 ## 远端质量门（尚未证明）
 
-截至 `2026-09-07T20:50Z`，`gh api repos/86669666/CDT-Monitor/actions/runs` 返回 `total_count: 0`。仓库 Actions 权限是 enabled，但默认分支仍是上游 workflow，本 fork 还没有观察到任何 run。因此 `work/ops` 上的 CI YAML 变更不能写成已经在 candidate SHA 上绿色。要得到远端 verify，需要打开指向 `main` 的 PR（`pull_request` 已在上游 `ci.yml` 里）或把 workflow 合入默认分支。不要为了跑 Actions 去发布镜像或打生产 tag。
+截至 `2026-09-07T20:50Z`，`gh api repos/86669666/CDT-Monitor/actions/runs` 返回 `total_count: 0`。仓库 Actions 权限 API 为 enabled，但从未观察到 run。
+
+续推证据（`2026-09-07T21:05Z` / 2026-09-08 05:05 Asia/Taipei）：
+
+- 已开 draft PR：https://github.com/86669666/CDT-Monitor/pull/1 （`work/ops` → `main`，head `8d4731e`）
+- `statusCheckRollup` 仍为空；`actions/runs` 仍是 0
+- `gh workflow list` 为空；`gh workflow run ci.yml --ref work/ops` 返回 404（workflow 实体尚未登记）
+- 默认分支 `main` 仍是上游未加发布开关的 `auto-release.yml`。为了“注册 workflow”去合入 `main` 可能触发自动打 tag / GHCR，**不要这样做**
+
+因此远端 CI 记为外部 blocker，不是 YAML 语法问题。candidate SHA 不能写成绿色。下一步只能由能在 GitHub UI 里确认 fork Actions 已真正开始跑的人处理，或由 integration owner 用带 `[skip release]` 的受控合入。不要设置发布变量，不要打生产 tag。
