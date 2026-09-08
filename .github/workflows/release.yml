@@ -1,8 +1,8 @@
 name: Release Binaries
 
+# This fork does not auto-run on v-tags. Keep workflow_dispatch and the
+# Automatic Release workflow_call path. Jobs still require ENABLE_PRODUCTION_PUBLISH.
 on:
-  push:
-    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       tag:
