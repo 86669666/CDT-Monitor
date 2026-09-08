@@ -1331,3 +1331,24 @@ test('Stopping and Unknown instance statuses hide power controls', async ({ page
   await expect(page.getByRole('button', { name: '关机' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '刷新实例' })).toHaveCount(2)
 })
+
+
+test('admin password update rejects mismatched confirmation without a network call', async ({ page }) => {
+  let passwordCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    passwordCalls += 1
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Different-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByText('两次新密码不一致')).toBeVisible()
+  expect(passwordCalls).toBe(0)
+})
