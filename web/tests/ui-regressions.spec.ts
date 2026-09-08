@@ -12,7 +12,7 @@ const config = {
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
     telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '' },
+    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '', secret_configured: false },
   },
   accounts: [{
     id: 1,
@@ -228,7 +228,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
   const longToken = 'cdt_' + 'A1b2C3d4'.repeat(12)
   await page.route('**/api/v1/api-keys', (route) => {
     if (route.request().method() === 'POST') {
-      return route.fulfill({ status: 201, json: { token: longToken } })
+      return route.fulfill({ status: 201, json: { key: { id: 3, name: '桌面小组件', scopes: ['widget:read'], created_at: new Date().toISOString() }, token: longToken } })
     }
     return route.fulfill({ json: {
       keys: [
