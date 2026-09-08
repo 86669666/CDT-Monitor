@@ -38,7 +38,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 
 变更后：
 
-- GHCR 名称仍随 `repository_owner`；login / push 步骤仍要 `ENABLE_PRODUCTION_PUBLISH=true`，且本 fork 不申请 `packages: write`，误开变量也推不了 GHCR
+- GHCR 名称仍随 `repository_owner`；login 步骤仍要 `ENABLE_PRODUCTION_PUBLISH=true`。本 fork 的最终 build-push 固定 `push: false`，也不申请 `packages: write`，误开变量也推不了 GHCR
 - `qninq/cdt-monitor` 仅当 `ENABLE_DOCKERHUB_PUBLISH=true` 时写入 metadata
 - 本 fork 两个变量都保持未设置
 
@@ -51,7 +51,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot 或 `android-widget.yml` 变更跳过 verify。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true`。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
 | `Release Binaries` | tag / 手动 / 被自动发布调用 | 同上变量，否则整条 job 跳过。前端与二进制 artifact 保留 7 天；只有 `publish` job 拿 `contents: write` |
-| `Container Images` | `dev`/tag 构建后 `push: true` | 未开启发布时只做 linux/amd64 load 校验，跳过 QEMU/arm64；push 仍要变量。workflow token 只有 `contents: read`，没有 `packages: write` |
+| `Container Images` | `dev`/tag 构建后 `push: true` | 未开启发布时只做 linux/amd64 load 校验，跳过 QEMU/arm64。即使误开变量，本 fork 的 build-push 也是 `push: false`，且没有 `packages: write` |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
 
 不要把一次绿色 CI 或一次本地 Docker 构建写成已经发布 GHCR / Docker Hub。

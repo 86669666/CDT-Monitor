@@ -110,13 +110,16 @@ jobs:
         if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
         run: docker run --rm cdt-monitor:verify-arm64 version | grep -q 'linux/arm64)'
 
-      - name: Build and push linux/amd64 and linux/arm64
+      # This fork never publishes. push stays false even if ENABLE_PRODUCTION_PUBLISH
+      # is set; packages:write is also omitted. Do not flip this without an explicit
+      # publish authorization.
+      - name: Build linux/amd64 and linux/arm64 without pushing
         if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
