@@ -3654,3 +3654,33 @@ test('wizard disables finish while setup is in flight', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(setupCalls).toBe(1)
 })
+
+test('settings notify test disables submit while the job is in flight', async ({ page }) => {
+  let testCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email-busy', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    const job = jobFixture('notify-email-busy', 'completed')
+    job.type = 'test_notification'
+    return route.fulfill({ json: job })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.getByRole('button', { name: '发送测试' })).toBeDisabled()
+  releaseJob()
+  await expect(page.getByText('测试通知已送达')).toBeVisible()
+  expect(testCalls).toBe(1)
+})
