@@ -29,6 +29,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
       - name: Set up Java
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
