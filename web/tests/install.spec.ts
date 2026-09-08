@@ -3364,3 +3364,32 @@ test('settings webhook omits empty secret from the live notify contract', async 
   })
   expect(savedWebhook).not.toHaveProperty('secret')
 })
+
+test('settings webhook omits empty provider from the live notify contract', async ({ page }) => {
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByText('启用 Webhook', { exact: true }).click()
+  await page.getByLabel('Webhook URL').fill('https://example.invalid/hook')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    url: 'https://example.invalid/hook',
+  })
+  expect(savedWebhook).not.toHaveProperty('provider')
+})
