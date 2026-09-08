@@ -1393,3 +1393,19 @@ test('settings email test posts the live notification job contract', async ({ pa
   await expect(page.getByText('测试通知已送达')).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings logs surface the logs_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'logs_failed', message: '日志操作失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '日志操作失败' }).first()).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
