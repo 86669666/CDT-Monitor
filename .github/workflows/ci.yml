@@ -11,6 +11,8 @@ on:
       - 'android-widget/**'
       - 'README.MD'
       - 'LICENSE'
+      - 'docker-compose.yml'
+      - '.dockerignore'
   push:
     branches: [dev, main, 'work/**']
     paths-ignore:
@@ -18,6 +20,8 @@ on:
       - 'android-widget/**'
       - 'README.MD'
       - 'LICENSE'
+      - 'docker-compose.yml'
+      - '.dockerignore'
   workflow_dispatch:
 
 concurrency:
