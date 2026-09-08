@@ -3523,3 +3523,29 @@ test('refresh-all reports completion for every queued instance', async ({ page }
   await expect(page.getByText('已强制刷新 2 个实例')).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('refresh-all ignores a second click while jobs are in flight', async ({ page }) => {
+  let refreshCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-busy', 'queued')] } })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    return route.fulfill({ json: jobFixture('refresh-busy', 'completed') })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByRole('button', { name: '正在强制刷新全部实例' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeDisabled()
+  await page.getByRole('button', { name: '正在强制刷新全部实例' }).click({ force: true })
+  releaseJob()
+  await expect(page.getByText('已强制刷新 1 个实例')).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
