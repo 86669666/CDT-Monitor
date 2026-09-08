@@ -2,7 +2,8 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
@@ -175,7 +176,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
-	csrf := newCSRFToken()
+	csrf := csrfToken(token)
 	setAuthCookies(w, r, token, csrf)
 	writeJSON(w, http.StatusCreated, map[string]any{"success": true, "csrf_token": csrf})
 }
@@ -215,7 +216,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
-	csrf := newCSRFToken()
+	csrf := csrfToken(token)
 	setAuthCookies(w, r, token, csrf)
 	_ = s.store.AddLog(r.Context(), "audit", "管理员登录成功 [IP: "+ip+"]")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
@@ -401,7 +402,7 @@ func (s *Server) completePasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
-	csrf := newCSRFToken()
+	csrf := csrfToken(token)
 	setAuthCookies(w, r, token, csrf)
 	_ = s.store.AddLog(r.Context(), "audit", "管理员使用 Passkey 登录成功 [IP: "+clientIP(r)+"]")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
@@ -817,6 +818,10 @@ func clearAuthCookies(w http.ResponseWriter, r *http.Request) {
 }
 
 func validCSRF(r *http.Request) bool {
+	session, err := r.Cookie("cdt_session")
+	if err != nil || session.Value == "" {
+		return false
+	}
 	cookie, err := r.Cookie("cdt_csrf")
 	if err != nil || cookie.Value == "" {
 		return false
@@ -825,7 +830,10 @@ func validCSRF(r *http.Request) bool {
 	if header == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) == 1
+	expected := csrfToken(session.Value)
+	cookieOK := subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(expected)) == 1
+	headerOK := subtle.ConstantTimeCompare([]byte(header), []byte(expected)) == 1
+	return cookieOK && headerOK
 }
 
 func requestSecure(r *http.Request) bool {
@@ -835,10 +843,10 @@ func requestSecure(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && trustedProxy(remoteIP(r))
 }
 
-func newCSRFToken() string {
-	raw := make([]byte, 24)
-	_, _ = rand.Read(raw)
-	return base64.RawURLEncoding.EncodeToString(raw)
+func csrfToken(session string) string {
+	mac := hmac.New(sha256.New, []byte(session))
+	mac.Write([]byte("cdt-csrf-v1"))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:24])
 }
 
 func (s *Server) staticHandler() http.Handler {

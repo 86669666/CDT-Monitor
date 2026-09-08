@@ -130,6 +130,9 @@ func loginCookies(t *testing.T, handler http.Handler) (session, csrf *http.Cooki
 	if payload.CSRFToken != csrf.Value {
 		t.Fatalf("csrf_token %q does not match cookie %q", payload.CSRFToken, csrf.Value)
 	}
+	if csrf.Value != csrfToken(session.Value) {
+		t.Fatalf("csrf cookie %q is not bound to session", csrf.Value)
+	}
 	return session, csrf
 }
 
@@ -184,6 +187,33 @@ func TestAdminMutationRequiresMatchingCSRF(t *testing.T) {
 	ok := doRequest(t, handler, http.MethodDelete, "/api/v1/logs", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if ok.Code != http.StatusOK {
 		t.Fatalf("valid CSRF status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}
+
+func TestCSRFTokenIsBoundToSession(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, firstCSRF := loginCookies(t, handler)
+	secondSession, secondCSRF := loginCookies(t, handler)
+
+	if firstCSRF.Value == secondCSRF.Value {
+		t.Fatal("exclusive login must issue a new CSRF token")
+	}
+
+	reused := doRequest(t, handler, http.MethodDelete, "/api/v1/logs", "", []*http.Cookie{secondSession, firstCSRF}, map[string]string{"X-CDT-CSRF": firstCSRF.Value})
+	if reused.Code != http.StatusForbidden || !strings.Contains(reused.Body.String(), "csrf_failed") {
+		t.Fatalf("previous CSRF with new session status = %d body = %s", reused.Code, reused.Body.String())
+	}
+
+	tossed := &http.Cookie{Name: "cdt_csrf", Value: "tossed-csrf-token"}
+	cookieToss := doRequest(t, handler, http.MethodDelete, "/api/v1/logs", "", []*http.Cookie{secondSession, tossed}, map[string]string{"X-CDT-CSRF": tossed.Value})
+	if cookieToss.Code != http.StatusForbidden || !strings.Contains(cookieToss.Body.String(), "csrf_failed") {
+		t.Fatalf("tossed CSRF status = %d body = %s", cookieToss.Code, cookieToss.Body.String())
+	}
+
+	ok := doRequest(t, handler, http.MethodDelete, "/api/v1/logs", "", []*http.Cookie{secondSession, secondCSRF}, map[string]string{"X-CDT-CSRF": secondCSRF.Value})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("session-bound CSRF status = %d body = %s", ok.Code, ok.Body.String())
 	}
 }
 
