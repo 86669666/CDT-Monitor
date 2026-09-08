@@ -1662,3 +1662,25 @@ test('settings save posts the live config contract', async ({ page }) => {
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(saveCalls).toBe(1)
 })
+
+test('settings save surfaces the config_failed envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: '配置保存失败' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '配置保存失败' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
