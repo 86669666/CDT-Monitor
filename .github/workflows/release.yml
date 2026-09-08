@@ -59,13 +59,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # This fork does not ship a full multi-platform GitHub Release.
+          # A mistaken ENABLE_PRODUCTION_PUBLISH dispatch must not burn
+          # seven 20-minute builders. Restore the matrix only with publish
+          # authorization.
           - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: linux, goarch: arm, goarm: '7' }
-          - { goos: windows, goarch: amd64 }
-          - { goos: windows, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
