@@ -48,7 +48,7 @@ cd android-widget
 
 ## GitHub Actions
 
-`.github/workflows/android-widget.yml` 仅支持手动触发，同一 ref 上新的 run 会取消未完成的旧 run。它会在 Ubuntu runner 上安装 SDK 35，构建可直接安装的 debug APK、release APK、四种 ABI 分包以及 AAB，并将它们作为 workflow artifact 上传。构建不依赖 API Key，也不会把任何站点凭据写入仓库。
+`.github/workflows/android-widget.yml` 仅支持手动触发，同一 ref 上新的 run 会取消未完成的旧 run。它会在 Ubuntu runner 上安装 SDK 35，构建可直接安装的 debug APK、release APK、四种 ABI 分包以及 AAB，并将它们作为 workflow artifact 上传。构建不依赖 API Key，也不会把任何站点凭据写入仓库。Dependabot 每周只扫 `android-widget/` 的 Gradle 生态，不会打开生产发布变量。
 
 未配置签名密钥时，debug APK 使用 Android 调试签名，可以直接安装；release APK/AAB 是未签名发行产物。正式分发和后续覆盖升级需要在仓库 Actions Secrets 中配置：
 
