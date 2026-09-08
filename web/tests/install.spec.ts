@@ -539,3 +539,28 @@ test('setup posts keep_alive enabled', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(keepAlive).toBe(true)
 })
+
+
+test('setup posts enable_billing enabled', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let enableBilling: boolean | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { enable_billing?: boolean }
+    enableBilling = body.enable_billing
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+  await page.getByText('账单与余额显示', { exact: true }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(enableBilling).toBe(true)
+})
