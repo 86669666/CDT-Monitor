@@ -3155,3 +3155,24 @@ test('settings API keys show last_used_at from the live key contract', async ({ 
   await page.getByRole('button', { name: 'API Key' }).click()
   await expect(page.locator('.key-row time')).toHaveText(`最近使用 ${expected}`)
 })
+
+test('admin passkeys show last_used_at from the live passkey contract', async ({ page }) => {
+  const at = '2026-09-07T16:00:00.000Z'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, timezone: 'Asia/Shanghai' })
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [{
+    id: 6,
+    name: '办公室电脑',
+    created_at: at,
+    last_used_at: at,
+  }] } }))
+
+  await page.goto('/')
+  const expected = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    at,
+  )
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  await expect(page.locator('.passkey-row')).toContainText(`最近使用 ${expected}`)
+})
