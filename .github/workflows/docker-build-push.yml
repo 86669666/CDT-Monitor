@@ -35,8 +35,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      # This fork never publishes multi-arch images. QEMU/arm64 stay off even
+      # if ENABLE_PRODUCTION_PUBLISH is set. linux/amd64 verify still runs.
       - name: Set up QEMU
-        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
+        if: false
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
@@ -93,7 +95,7 @@ jobs:
         run: docker run --rm cdt-monitor:verify-amd64 version | grep -q 'linux/amd64)'
 
       - name: Verify linux/arm64 image
-        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
+        if: false
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -107,14 +109,14 @@ jobs:
           cache-from: type=gha
 
       - name: Check linux/arm64 binary architecture
-        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
+        if: false
         run: docker run --rm cdt-monitor:verify-arm64 version | grep -q 'linux/arm64)'
 
       # This fork never publishes. push stays false even if ENABLE_PRODUCTION_PUBLISH
       # is set; packages:write is also omitted. Do not flip this without an explicit
       # publish authorization.
       - name: Build linux/amd64 and linux/arm64 without pushing
-        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
+        if: false
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
