@@ -2617,3 +2617,28 @@ test('settings save posts notify_only threshold action', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect(thresholdAction).toBe('notify_only')
 })
+
+test('settings save posts StopCharging shutdown mode', async ({ page }) => {
+  let saveCalls = 0
+  let shutdownMode = ''
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+      expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+      shutdownMode = String(body.shutdown_mode || '')
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '节省停机' }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(shutdownMode).toBe('StopCharging')
+})
