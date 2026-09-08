@@ -831,3 +831,29 @@ func TestMissingJobIsNotFound(t *testing.T) {
 		t.Fatalf("missing job status = %d body = %s", missing.Code, missing.Body.String())
 	}
 }
+
+func TestLoginRejectsInvalidJSON(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	malformed := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":`, nil, nil)
+	if malformed.Code != http.StatusBadRequest {
+		t.Fatalf("malformed login status = %d body = %s", malformed.Code, malformed.Body.String())
+	}
+	unknown := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"x","extra":true}`, nil, nil)
+	if unknown.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field login status = %d body = %s", unknown.Code, unknown.Body.String())
+	}
+}
+
+func TestHealthzAndInitStatusArePublic(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	health := doRequest(t, handler, http.MethodGet, "/healthz", "", nil, nil)
+	if health.Code != http.StatusOK || !strings.Contains(health.Body.String(), `"ok"`) {
+		t.Fatalf("healthz status = %d body = %s", health.Code, health.Body.String())
+	}
+	init := doRequest(t, handler, http.MethodGet, "/api/v1/system/init-status", "", nil, nil)
+	if init.Code != http.StatusOK || !strings.Contains(init.Body.String(), `"initialized":true`) {
+		t.Fatalf("init-status status = %d body = %s", init.Code, init.Body.String())
+	}
+}
