@@ -1094,3 +1094,28 @@ func TestSaveConfigRejectsInvalidThresholdAction(t *testing.T) {
 		t.Fatalf("invalid threshold action status = %d body = %s", bad.Code, bad.Body.String())
 	}
 }
+
+func TestHeartbeatLogsRequireAdmin(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	if err := st.AddLog(t.Context(), "heartbeat", "tick"); err != nil {
+		t.Fatal(err)
+	}
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=heartbeat", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget heartbeat logs status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+	session, csrf := loginCookies(t, handler)
+	ok := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=heartbeat", "", []*http.Cookie{session, csrf}, nil)
+	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), "tick") {
+		t.Fatalf("admin heartbeat logs status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	badID := doRequest(t, handler, http.MethodDelete, "/api/v1/admin/passkeys/0", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if badID.Code != http.StatusBadRequest || !strings.Contains(badID.Body.String(), "invalid_id") {
+		t.Fatalf("delete passkey 0 status = %d body = %s", badID.Code, badID.Body.String())
+	}
+}

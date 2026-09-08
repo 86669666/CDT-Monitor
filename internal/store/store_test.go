@@ -379,6 +379,31 @@ func TestUpdateAdminPasswordKeepsCurrentSessionOnly(t *testing.T) {
 	}
 }
 
+func TestPruneDeletesOldCompletedJobs(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,status,available_at,created_at,updated_at) VALUES('old','refresh_account','completed',unixepoch()-700000,unixepoch()-700000,unixepoch()-700000),('fresh','refresh_account','completed',unixepoch(),unixepoch(),unixepoch()),('queued','refresh_account','queued',unixepoch()-700000,unixepoch()-700000,unixepoch()-700000)`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var oldCount, freshCount, queuedCount int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE id='old'`).Scan(&oldCount); err != nil || oldCount != 0 {
+		t.Fatalf("old job count = %d err=%v", oldCount, err)
+	}
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE id='fresh'`).Scan(&freshCount); err != nil || freshCount != 1 {
+		t.Fatalf("fresh job count = %d err=%v", freshCount, err)
+	}
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE id='queued'`).Scan(&queuedCount); err != nil || queuedCount != 1 {
+		t.Fatalf("queued job count = %d err=%v", queuedCount, err)
+	}
+}
+
 func TestPruneDeletesOldHeartbeatLogs(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
