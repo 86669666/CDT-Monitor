@@ -2801,3 +2801,32 @@ test('settings save posts custom traffic_threshold', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect(threshold).toBe(80)
 })
+
+test('settings save posts international site_type', async ({ page }) => {
+  let saveCalls = 0
+  let siteType = ''
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      const account = body.accounts?.[0]
+      if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+      siteType = String(account?.site_type || '')
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('combobox', { name: '站点类型' }).click()
+  await page.getByRole('option', { name: /国际站/ }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(siteType).toBe('international')
+})
