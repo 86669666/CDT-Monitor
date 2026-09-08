@@ -20,6 +20,8 @@ permissions:
   contents: read
 
 # Binary GitHub Releases stay opt-in. Leave ENABLE_PRODUCTION_PUBLISH unset on this fork.
+# Even if that var is set, the GitHub Release stays draft so a mistaken
+# dispatch cannot publish binaries. Do not set draft: false without authorization.
 jobs:
   frontend:
     if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
@@ -130,4 +132,5 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
+          draft: true
           files: release/*
