@@ -157,6 +157,19 @@ func TestCallDoesNotRetryClientErrors(t *testing.T) {
 	}
 }
 
+func TestGetInstanceStatusRequiresInstanceID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[]}}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if err == nil || hits != 0 || status != domain.StatusUnknown {
+		t.Fatalf("empty instance_id status=%q err=%v hits=%d", status, err, hits)
+	}
+}
+
 func TestGetInstanceBillRequiresInstanceID(t *testing.T) {
 	var hits int
 	client := NewClient()

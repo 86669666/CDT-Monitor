@@ -95,10 +95,10 @@ func trafficClass(region string) string {
 }
 
 func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
-	params := map[string]string{"RegionId": account.RegionID}
-	if account.InstanceID != "" {
-		params["InstanceId"] = account.InstanceID
+	if account.InstanceID == "" {
+		return domain.StatusUnknown, errors.New("instance_id is required")
 	}
+	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
 	result, err := c.call(ctx, account.AccessKeyID, secret, account.RegionID, "ecs."+account.RegionID+".aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", params)
 	if err != nil {
 		return domain.StatusUnknown, err
