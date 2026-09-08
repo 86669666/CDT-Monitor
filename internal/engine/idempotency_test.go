@@ -111,6 +111,25 @@ func TestScheduledStartIsIdempotentAcrossCycles(t *testing.T) {
 	}
 }
 
+func TestThresholdStopSkippedWhilePending(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.UpdateRuntime(ctx, account.ID, 1.25, "Pending", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	provider.traffic = 200
+	provider.status = "Pending"
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("pending threshold stop must not call Aliyun, controls = %#v", got)
+	}
+}
+
 func TestThresholdStopIsIdempotentUntilCleared(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()

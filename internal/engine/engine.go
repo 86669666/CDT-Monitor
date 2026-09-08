@@ -333,7 +333,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
 	}
 	if overThreshold && due && trafficErr == nil {
-		if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && status != domain.StatusStopping {
+		if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && !inFlight(status) {
 			freshStop, recordErr := e.store.RecordActionEvent(ctx, thresholdStopKey, account.ID, "threshold_stop", "attempting", fmt.Sprintf("%.2f%%", percentage))
 			if recordErr != nil {
 				return "", recordErr
