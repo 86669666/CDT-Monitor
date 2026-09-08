@@ -37,7 +37,7 @@ services:
     environment:
       CDT_DATA_DIR: /data
       CDT_LISTEN: :8080
-      CDT_WORKERS: 4
+      CDT_WORKERS: 2
       TZ: Asia/Taipei
     read_only: true
     tmpfs:
