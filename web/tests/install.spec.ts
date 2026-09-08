@@ -1813,3 +1813,26 @@ test('admin passkey delete posts the live success contract', async ({ page }) =>
   await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
   expect(deleteCalls).toBe(1)
 })
+
+test('admin passkey delete surfaces the passkey_failed envelope', async ({ page }) => {
+  const existing = { id: 8, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'passkey_failed', message: 'Passkey 删除失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'Passkey 删除失败' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
