@@ -492,6 +492,71 @@ func TestPruneDeletesExpiredSessionsOnly(t *testing.T) {
 	}
 }
 
+func TestPruneDeletesOldTrafficAndBillingCache(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `
+INSERT INTO traffic_hourly(account_id,traffic,recorded_at) VALUES(1,1.5,unixepoch()-172801),(1,2.5,unixepoch());
+INSERT INTO traffic_daily(account_id,traffic,recorded_at) VALUES(1,10,unixepoch()-5184001),(1,20,unixepoch());
+INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(1,'balance','','{}',unixepoch()-7776001),(1,'bill','2026-09','{}',unixepoch());
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var hourly, daily, billing int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM traffic_hourly`).Scan(&hourly); err != nil || hourly != 1 {
+		t.Fatalf("hourly count = %d err=%v", hourly, err)
+	}
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM traffic_daily`).Scan(&daily); err != nil || daily != 1 {
+		t.Fatalf("daily count = %d err=%v", daily, err)
+	}
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM billing_cache`).Scan(&billing); err != nil || billing != 1 {
+		t.Fatalf("billing count = %d err=%v", billing, err)
+	}
+	var hourlyTraffic, dailyTraffic float64
+	if err = st.db.QueryRow(`SELECT traffic FROM traffic_hourly`).Scan(&hourlyTraffic); err != nil || hourlyTraffic != 2.5 {
+		t.Fatalf("kept hourly traffic = %v err=%v", hourlyTraffic, err)
+	}
+	if err = st.db.QueryRow(`SELECT traffic FROM traffic_daily`).Scan(&dailyTraffic); err != nil || dailyTraffic != 20 {
+		t.Fatalf("kept daily traffic = %v err=%v", dailyTraffic, err)
+	}
+}
+
+func TestPruneDeletesSentAndFailedOutbox(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `
+INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES
+('old-sent','evt-old-sent','telegram','{}','sent',1,5,unixepoch()-2592001,'',unixepoch()-2592001,unixepoch()-2592001),
+('fresh-sent','evt-fresh-sent','telegram','{}','sent',1,5,unixepoch(),'',unixepoch(),unixepoch()),
+('old-failed','evt-old-failed','webhook','{}','failed',5,5,unixepoch()-2592001,'boom',unixepoch()-2592001,unixepoch()-2592001),
+('fresh-failed','evt-fresh-failed','webhook','{}','failed',5,5,unixepoch(),'boom',unixepoch(),unixepoch()),
+('old-queued','evt-old-queued','email','{}','queued',0,5,unixepoch()-2592001,'',unixepoch()-2592001,unixepoch()-2592001)
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var ids string
+	if err = st.db.QueryRow(`SELECT GROUP_CONCAT(id, ',') FROM (SELECT id FROM notification_outbox ORDER BY id)`).Scan(&ids); err != nil {
+		t.Fatal(err)
+	}
+	if ids != "fresh-failed,fresh-sent,old-queued" {
+		t.Fatalf("kept outbox ids = %q", ids)
+	}
+}
+
 func TestSessionStoresHashNotPlaintext(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
