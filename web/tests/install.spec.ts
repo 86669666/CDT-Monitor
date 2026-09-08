@@ -2281,3 +2281,27 @@ test('settings telegram custom proxy posts the live notify contract', async ({ p
     proxy_password_configured: false,
   })
 })
+
+test('settings bark webhook template requires a key', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: 'Bark' }).click()
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请填写 Key' }).first()).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Bark 模板配置' })).toBeVisible()
+  expect(saveCalls).toBe(0)
+})
