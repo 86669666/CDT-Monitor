@@ -4013,3 +4013,26 @@ test('wizard back returns from instance setup to automation policy', async ({ pa
   await page.getByRole('button', { name: '返回' }).click()
   await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
 })
+
+test('setup drops blank access_key_id accounts from the payload', async ({ page }) => {
+  let accounts: unknown
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    accounts = body.accounts
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('   ')
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(accounts).toEqual([])
+})
