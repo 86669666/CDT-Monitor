@@ -29,7 +29,7 @@ cd android-widget
 
 ### 本机工具链（ops writer host）
 
-检查时间：2026-09-08 23:27 Asia/Taipei（`2026-09-08T15:27Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。
+检查时间：2026-09-09 00:40 Asia/Taipei（`2026-09-08T16:40Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。
 
 | 依赖 | 本机状态 |
 | --- | --- |
@@ -57,4 +57,4 @@ cd android-widget
 - `ANDROID_KEY_ALIAS`：签名 Key 的 alias。
 - `ANDROID_KEY_PASSWORD`：签名 Key 密码。
 
-配置后，Actions 会使用同一份 keystore 签署 release APK 和 AAB。解码后的 JKS 只写在 runner 的 `$RUNNER_TEMP`，job 结束前（含失败）会 `shred`/`rm`，不会随 artifact 上传。不要把 keystore 或密码提交到仓库。
+配置后，Actions 会使用同一份 keystore 签署 release APK 和 AAB。解码后的 JKS 只写在 runner 的 `$RUNNER_TEMP`（`umask 077` / `chmod 600`），job 结束前（含失败）会 `shred`/`rm`，不会随 artifact 上传。不要把 keystore 或密码提交到仓库。
