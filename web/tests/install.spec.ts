@@ -4203,3 +4203,15 @@ test('settings webhook template scrim close does not save', async ({ page }) => 
   await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
   expect(saveCalls).toBe(0)
 })
+
+test('settings panel scrim close returns to the dashboard', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+  await page.locator('.modal-layer .modal-scrim').click({ position: { x: 8, y: 8 } })
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
