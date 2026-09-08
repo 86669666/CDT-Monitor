@@ -10,17 +10,20 @@ import (
 
 // fakeProvider is an offline Aliyun stand-in so engine tests never touch a real account.
 type fakeProvider struct {
-	mu         sync.Mutex
-	traffic    float64
-	status     string
-	balance    aliyun.BillingBalance
-	bill       aliyun.BillingBill
-	controlErr error
-	trafficErr error
-	statusErr  error
-	balanceErr error
-	billErr    error
-	controls   []string
+	mu           sync.Mutex
+	traffic      float64
+	status       string
+	balance      aliyun.BillingBalance
+	bill         aliyun.BillingBill
+	controlErr   error
+	trafficErr   error
+	statusErr    error
+	balanceErr   error
+	billErr      error
+	trafficPanic string
+	statusPanic  string
+	controlPanic string
+	controls     []string
 }
 
 func newFakeProvider() *fakeProvider {
@@ -35,18 +38,27 @@ func newFakeProvider() *fakeProvider {
 func (p *fakeProvider) GetTraffic(context.Context, domain.Account, string) (float64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.trafficPanic != "" {
+		panic(p.trafficPanic)
+	}
 	return p.traffic, p.trafficErr
 }
 
 func (p *fakeProvider) GetInstanceStatus(context.Context, domain.Account, string) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.statusPanic != "" {
+		panic(p.statusPanic)
+	}
 	return p.status, p.statusErr
 }
 
 func (p *fakeProvider) ControlInstance(_ context.Context, _ domain.Account, _ string, action, _ string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.controlPanic != "" {
+		panic(p.controlPanic)
+	}
 	p.controls = append(p.controls, action)
 	return p.controlErr
 }

@@ -184,3 +184,35 @@ func TestProcessJobsFailedWebhookTestNotifyRequeues(t *testing.T) {
 		t.Fatalf("notify test must not call Aliyun, controls=%#v", got)
 	}
 }
+
+func TestProcessJobsRecoversFromControlPanic(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.controlPanic = "ecs-secret-should-not-leak"
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobControlInstance, account.ID, ParseControlPayload("start", "手动"), JobUniqueKey(JobControlInstance, account.ID, "start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresh, err := eng.Enqueue(ctx, JobRefreshAccount, account.ID, `{}`, JobUniqueKey(JobRefreshAccount, account.ID, "panic-followup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || jobErr != errJobPanic.Error() {
+		t.Fatalf("panicked control status=%q error=%q", status, jobErr)
+	}
+	if strings.Contains(jobErr, "ecs-secret-should-not-leak") {
+		t.Fatalf("job error leaked panic: %q", jobErr)
+	}
+	var refreshStatus string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, refresh.ID).Scan(&refreshStatus); err != nil || refreshStatus != "completed" {
+		t.Fatalf("follow-up refresh status=%q err=%v", refreshStatus, err)
+	}
+}

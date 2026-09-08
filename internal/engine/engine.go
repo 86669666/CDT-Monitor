@@ -40,7 +40,11 @@ type Engine struct {
 	accountLocks sync.Map
 }
 
-var ErrMonitorBusy = errors.New("monitor scheduler lease is held by another process")
+var (
+	ErrMonitorBusy   = errors.New("monitor scheduler lease is held by another process")
+	errJobPanic      = errors.New("job panicked")
+	errProviderPanic = errors.New("aliyun provider panicked")
+)
 
 func New(st *store.Store, provider aliyun.Provider, notifier *notify.Service, logger *slog.Logger, workers int) *Engine {
 	if workers < 1 {
@@ -154,7 +158,7 @@ func (e *Engine) processJobs(ctx context.Context, index int) {
 			e.logger.Error("claim job", "worker", index, "error", err)
 			return
 		}
-		result, runErr := e.runJob(ctx, job)
+		result, runErr := e.runJobGuarded(ctx, job)
 		if runErr != nil {
 			e.logger.Warn("job failed", "job_id", job.ID, "type", job.Type, "error", runErr)
 			_ = e.store.FailJob(ctx, job, runErr)
@@ -162,6 +166,17 @@ func (e *Engine) processJobs(ctx context.Context, index int) {
 		}
 		_ = e.store.CompleteJob(ctx, job.ID, result)
 	}
+}
+
+func (e *Engine) runJobGuarded(ctx context.Context, job domain.Job) (result string, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			e.logger.Error("job panic", "job_id", job.ID, "type", job.Type, "panic", recovered)
+			result = ""
+			err = errJobPanic
+		}
+	}()
+	return e.runJob(ctx, job)
 }
 
 func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
@@ -260,10 +275,22 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		wait.Add(2)
 		go func() {
 			defer wait.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					e.logger.Error("traffic fetch panic", "account_id", accountID, "panic", recovered)
+					trafficErr = errProviderPanic
+				}
+			}()
 			traffic, trafficErr = e.provider.GetTraffic(ctx, account, secret)
 		}()
 		go func() {
 			defer wait.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					e.logger.Error("status fetch panic", "account_id", accountID, "panic", recovered)
+					statusErr = errProviderPanic
+				}
+			}()
 			status, statusErr = e.provider.GetInstanceStatus(ctx, account, secret)
 		}()
 		wait.Wait()
@@ -500,18 +527,27 @@ func (e *Engine) flushOutbox(ctx context.Context) {
 			e.logger.Error("claim notification", "error", err)
 			return
 		}
-		var event domain.NotificationEvent
-		if err = json.Unmarshal([]byte(item.Payload), &event); err == nil {
-			var config domain.Config
-			config, err = e.store.GetConfig(ctx)
-			if err == nil {
-				sendCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-				err = e.notify.Send(sendCtx, item.Channel, event, config)
-				cancel()
+		sendErr := func() (sendErr error) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					e.logger.Error("notification panic", "id", item.ID, "channel", item.Channel, "panic", recovered)
+					sendErr = errJobPanic
+				}
+			}()
+			var event domain.NotificationEvent
+			if sendErr = json.Unmarshal([]byte(item.Payload), &event); sendErr != nil {
+				return sendErr
 			}
-		}
-		if err != nil {
-			_ = e.store.FailOutbox(ctx, item, err)
+			config, cfgErr := e.store.GetConfig(ctx)
+			if cfgErr != nil {
+				return cfgErr
+			}
+			sendCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			return e.notify.Send(sendCtx, item.Channel, event, config)
+		}()
+		if sendErr != nil {
+			_ = e.store.FailOutbox(ctx, item, sendErr)
 			continue
 		}
 		_ = e.store.CompleteOutbox(ctx, item.ID)
