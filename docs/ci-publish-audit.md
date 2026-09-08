@@ -111,3 +111,12 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 - 查询必须带 `--repo 86669666/CDT-Monitor`。无 `--repo` 的 `gh` 会落到 `wang4386/CDT-Monitor`，那些 run 不是本 fork 的证据
 - 默认分支 `origin/main` 仍是上游未加发布开关、且 `permissions: contents: write` + `packages: write` 的 `auto-release.yml`（`on.push.branches: [main]`）。为了“注册 workflow”去合入 `main` 可能触发自动打 tag / GHCR，**不要这样做**
 - 本分支后续的 draft / `make_latest: false` / Dependabot `work/ops` / 本地 `cdt-monitor:local` 标签都不等于远端 CI 已绿，也不等于已经发布
+
+续推证据（`2026-09-08T17:46Z` / 2026-09-09 01:46 Asia/Taipei），对象 `86669666/CDT-Monitor`，基线仍是 `6667f35`，当时 HEAD `f2d065f`：
+
+- `gh api repos/86669666/CDT-Monitor/actions/runs` 仍是 `total_count: 0`；`actions/workflows` 仍是 `total_count: 0`
+- `gh workflow run ci.yml --repo 86669666/CDT-Monitor --ref work/ops` 仍是 404
+- Actions 权限 API：`enabled=true`，`allowed_actions=all`，`sha_pinning_required=false`，`default_workflow_permissions=read`；variables `total_count: 0`；`gh secret list --repo 86669666/CDT-Monitor` 为空
+- draft PR https://github.com/86669666/CDT-Monitor/pull/1 仍为 draft，当时 head `f2d065f`，`statusCheckRollup` 为空
+- `origin/main` 仍是上游未加发布开关、且 `packages: write` 的 `auto-release.yml`。**不要**为了登记 workflow 合入 `main`
+- 本分支后来的 linux/amd64-only Release、container `--network none` verify、widget `sdkDownload=false` / `networkTimeout=120000` 都不等于远端 CI 已绿，也不等于已经发布
