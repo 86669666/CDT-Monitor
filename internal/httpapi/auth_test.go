@@ -857,3 +857,33 @@ func TestHealthzAndInitStatusArePublic(t *testing.T) {
 		t.Fatalf("init-status status = %d body = %s", init.Code, init.Body.String())
 	}
 }
+
+func TestSystemInfoRequiresAdminAndHistoryRejectsBadIDs(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anon := doRequest(t, handler, http.MethodGet, "/api/v1/system/info", "", nil, nil)
+	if anon.Code != http.StatusUnauthorized {
+		t.Fatalf("anon system info status = %d body = %s", anon.Code, anon.Body.String())
+	}
+	widget := doRequest(t, handler, http.MethodGet, "/api/v1/system/info", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if widget.Code != http.StatusForbidden {
+		t.Fatalf("widget system info status = %d body = %s", widget.Code, widget.Body.String())
+	}
+	session, csrf := loginCookies(t, handler)
+	info := doRequest(t, handler, http.MethodGet, "/api/v1/system/info", "", []*http.Cookie{session, csrf}, nil)
+	if info.Code != http.StatusOK || !strings.Contains(info.Body.String(), `"version"`) {
+		t.Fatalf("admin system info status = %d body = %s", info.Code, info.Body.String())
+	}
+	bad := doRequest(t, handler, http.MethodGet, "/api/v1/accounts/0/history", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "invalid_id") {
+		t.Fatalf("id 0 history status = %d body = %s", bad.Code, bad.Body.String())
+	}
+	malformed := doRequest(t, handler, http.MethodGet, "/api/v1/accounts/abc/history", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if malformed.Code != http.StatusBadRequest || !strings.Contains(malformed.Body.String(), "invalid_id") {
+		t.Fatalf("abc history status = %d body = %s", malformed.Code, malformed.Body.String())
+	}
+}

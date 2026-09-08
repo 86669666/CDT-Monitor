@@ -110,3 +110,25 @@ func setupAccount(t *testing.T, mutate func(*domain.Config)) (*store.Store, doma
 	}
 	return st, accounts[0]
 }
+
+func TestRunOnceRecordsLastMonitorRun(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	before, err := st.LastMonitorRun(ctx)
+	if err != nil || !before.IsZero() {
+		t.Fatalf("last run before = %v err=%v", before, err)
+	}
+	if err = eng.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := st.LastMonitorRun(ctx)
+	if err != nil || after.IsZero() {
+		t.Fatalf("last run after = %v err=%v", after, err)
+	}
+	count, err := st.CountQueuedJobs(ctx)
+	if err != nil || count != 1 {
+		t.Fatalf("queued jobs = %d err=%v account=%d", count, err, account.ID)
+	}
+}
