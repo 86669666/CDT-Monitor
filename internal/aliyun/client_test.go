@@ -357,3 +357,40 @@ func TestGetTrafficMissingDetailsIsError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestControlInstanceStopChargingMode(t *testing.T) {
+	var action, mode string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		action, mode = values.Get("Action"), values.Get("StoppedMode")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "stop", "StopCharging"); err != nil {
+		t.Fatal(err)
+	}
+	if action != "StopInstance" || mode != "StopCharging" {
+		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
+	}
+}
+
+func TestCallTruncatesNonJSONErrorBodies(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"Error","Pad":"` + strings.Repeat("A", 400) + `"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "...") || len(msg) > 320 {
+		t.Fatalf("expected truncated error, got len=%d %q", len(msg), msg)
+	}
+}
