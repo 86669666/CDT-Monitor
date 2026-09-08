@@ -3823,3 +3823,28 @@ test('settings API key create stays disabled without a scope', async ({ page }) 
   await expect(page.getByRole('button', { name: '创建 Key' })).toBeDisabled()
   expect(createCalls).toBe(0)
 })
+
+test('settings API key copy posts the live token to the clipboard', async ({ page }) => {
+  const token = 'cdt_copy_token_once'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.route('**/api/v1/api-keys', async (route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({ status: 201, json: {
+        key: { id: 11, name: '桌面小组件', scopes: ['widget:read'], created_at: new Date().toISOString() },
+        token,
+      } })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.getByText('仅显示一次')).toBeVisible()
+  await page.getByRole('button', { name: '复制' }).click()
+  await expect(page.getByText('已复制到剪贴板')).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token)
+})
