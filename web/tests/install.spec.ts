@@ -2924,3 +2924,30 @@ test('settings save posts a newly added account with documented fields', async (
     secret_configured: false,
   })
 })
+
+test('settings save posts an empty accounts list after delete', async ({ page }) => {
+  let saveCalls = 0
+  let accounts: unknown
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: unknown }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      accounts = body.accounts
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByText('尚未配置实例')).toBeVisible()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(accounts).toEqual([])
+})
