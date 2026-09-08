@@ -589,3 +589,30 @@ test('setup posts StopCharging shutdown mode', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(shutdownMode).toBe('StopCharging')
 })
+
+
+test('setup posts custom api_interval', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let interval: number | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { api_interval?: number }
+    interval = body.api_interval
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+  await page.getByRole('combobox', { name: '状态刷新频率' }).click()
+  await page.getByRole('option', { name: '自定义' }).click()
+  await page.getByLabel('自定义间隔').fill('45')
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(interval).toBe(45)
+})
