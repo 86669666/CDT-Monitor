@@ -713,3 +713,31 @@ test('setup posts custom max_traffic', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(maxTraffic).toBe(350)
 })
+
+
+test('setup posts custom region_id', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let regionId = ''
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { accounts?: { region_id?: string }[] }
+    regionId = body.accounts?.[0]?.region_id || ''
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    if (body.accounts?.[0]) expectKnownKeys(body.accounts[0], ACCOUNT_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5region')
+  await page.getByRole('combobox', { name: '地域' }).click()
+  await page.getByRole('combobox', { name: '地域' }).fill('zhangjiakou')
+  await page.getByRole('option', { name: /华北 3（张家口）.*cn-zhangjiakou/ }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(regionId).toBe('cn-zhangjiakou')
+})
