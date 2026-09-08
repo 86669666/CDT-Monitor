@@ -3912,3 +3912,28 @@ test('login password visibility toggle reveals the password field', async ({ pag
   await page.getByRole('button', { name: '隐藏密码' }).click()
   await expect(password).toHaveAttribute('type', 'password')
 })
+
+test('settings logs reload heartbeat after action logs_failed', async ({ page }) => {
+  let heartbeatReads = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    const tab = new URL(route.request().url()).searchParams.get('tab')
+    if (tab === 'heartbeat') {
+      heartbeatReads += 1
+      return route.fulfill({ json: { logs: [{ id: 3, type: 'heartbeat', message: '心跳采样', created_at: new Date().toISOString() }] } })
+    }
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'logs_failed', message: '日志操作失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '日志操作失败' }).first()).toBeVisible()
+  await page.getByRole('button', { name: '心跳' }).click()
+  await expect(page.getByText('心跳采样')).toBeVisible()
+  expect(heartbeatReads).toBeGreaterThanOrEqual(1)
+})
