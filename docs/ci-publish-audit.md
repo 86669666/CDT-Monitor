@@ -19,7 +19,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | Job | Token | 何时运行 |
 | --- | --- | --- |
 | `CI` / widget / container | `contents: read` | 校验路径；不 login、不 push |
-| `Automatic Release` `tag` | `contents: write` | 仅发布开启时打 tag |
+| `Automatic Release` `tag` | `contents: write` | 仅发布开启时打 tag；`fetch-depth: 1`（版本来自 dispatch 输入，不再为列 tag 拉全历史） |
 | `Release Binaries` `frontend` / `build` | `contents: read` | 仅发布开启；artifact 保留 7 天 |
 | `Release Binaries` `publish` | `contents: write` | 仅发布开启；只写 **draft** GitHub Release |
 | container caller in `Automatic Release` | `contents: read` | 不申请 `packages: write` |
