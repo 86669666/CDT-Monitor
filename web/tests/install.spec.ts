@@ -3966,3 +3966,11 @@ test('wizard password visibility toggle reveals both password fields', async ({ 
   await expect(password).toHaveAttribute('type', 'password')
   await expect(confirm).toHaveAttribute('type', 'password')
 })
+
+test('wizard back stays disabled on the first setup step', async ({ page }) => {
+  await mockInitStatus(page, false)
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '返回' })).toBeDisabled()
+})
