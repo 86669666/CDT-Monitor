@@ -6,8 +6,8 @@
 
 | Secret | 使用位置 | 仓库内是否出现明文 | 本 fork 策略 |
 | --- | --- | --- | --- |
-| `GITHUB_TOKEN` | GHCR login | 否，Actions 注入 | 未开启发布时不 login |
-| `DOCKER_USERNAME` / `DOCKER_PASSWORD` | Docker Hub login | 否 | 不要在本 fork 配置；未开启时不 login |
+| `GITHUB_TOKEN` | GHCR login | 否，Actions 注入 | 本 fork 的 login 步骤 `if: false`，即使误开发布变量也不把 token 交给 GHCR |
+| `DOCKER_USERNAME` / `DOCKER_PASSWORD` | Docker Hub login | 否 | 不要在本 fork 配置；login 步骤同样 `if: false` |
 | `ANDROID_KEYSTORE_BASE64` 与 key 密码 | `android-widget.yml` | 否 | 可选；未配置时只出 debug / unsigned 产物 |
 | Aliyun AK / SMTP / Telegram | 无 workflow 引用 | 无 | 禁止写入 YAML、Compose 或文档示例 |
 
@@ -38,7 +38,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 
 变更后：
 
-- GHCR 名称仍随 `repository_owner`；login 步骤仍要 `ENABLE_PRODUCTION_PUBLISH=true`。本 fork 的最终 build-push 固定 `push: false`，也不申请 `packages: write`，误开变量也推不了 GHCR
+- GHCR 名称仍随 `repository_owner`。本 fork 的 registry login 固定 `if: false`，最终 build-push 固定 `push: false`，也不申请 `packages: write`，误开变量既不 login 也不推 GHCR
 - `qninq/cdt-monitor` 仅当 `ENABLE_DOCKERHUB_PUBLISH=true` 时写入 metadata
 - 本 fork 两个变量都保持未设置
 
