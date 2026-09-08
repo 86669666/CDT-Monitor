@@ -2370,3 +2370,30 @@ test('settings email test surfaces a failed notification job', async ({ page }) 
   await expect(page.locator('.toast--error').filter({ hasText: 'SMTP host, port, username and recipient are required' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings telegram test surfaces a failed notification job', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/telegram', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-telegram-fail', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-telegram-fail', 'failed')
+    failed.type = 'test_notification'
+    failed.error = 'telegram HTTP 401: unauthorized'
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'telegram HTTP 401: unauthorized' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
