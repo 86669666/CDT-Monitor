@@ -203,11 +203,32 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, redactErr(ctx.Err(), accessKeyID, secret)
 		case <-time.After(time.Duration(1<<attempt)*300*time.Millisecond + time.Duration(attempt*100)*time.Millisecond):
 		}
 	}
-	return nil, last
+	return nil, redactErr(last, accessKeyID, secret)
+}
+
+func redactErr(err error, accessKeyID, secret string) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if secret != "" {
+		msg = strings.ReplaceAll(msg, secret, "[redacted]")
+	}
+	if accessKeyID != "" {
+		masked := accessKeyID + "***"
+		if len(accessKeyID) > 7 {
+			masked = accessKeyID[:7] + "***"
+		}
+		msg = strings.ReplaceAll(msg, accessKeyID, masked)
+	}
+	if msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
 }
 
 func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, bool, error) {
@@ -270,7 +291,11 @@ func compactMessage(result map[string]any, raw []byte) string {
 	if message := stringValue(result["Message"]); message != "" {
 		return message
 	}
-	return string(raw)
+	text := strings.TrimSpace(string(raw))
+	if len(text) > 240 {
+		return text[:240] + "..."
+	}
+	return text
 }
 
 func sign(values map[string]string, secret string) string {

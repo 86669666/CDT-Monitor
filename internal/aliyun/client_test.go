@@ -77,3 +77,28 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 		t.Fatalf("balance=%#v err=%v", balance, err)
 	}
 }
+
+func TestCallErrorsRedactAccessKeyMaterial(t *testing.T) {
+	secret := "super-secret-ak-value"
+	accessKeyID := "LTAIleakkey"
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"InvalidAccessKeyId","Message":"AccessKeyId ` + accessKeyID + ` secret ` + secret + ` rejected"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: accessKeyID, RegionID: "cn-hongkong"}, secret)
+	if err == nil {
+		t.Fatal("expected Aliyun error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, secret) || strings.Contains(msg, accessKeyID) {
+		t.Fatalf("error leaked credentials: %q", msg)
+	}
+	if !strings.Contains(msg, "[redacted]") || !strings.Contains(msg, "LTAIlea***") {
+		t.Fatalf("expected redaction markers in %q", msg)
+	}
+}
