@@ -607,6 +607,82 @@ func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
 	}
 }
 
+func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	empty, err := st.History(ctx, 1)
+	if err != nil || empty.Hourly == nil || empty.Daily == nil || len(empty.Hourly) != 0 || len(empty.Daily) != 0 {
+		t.Fatalf("empty history = %#v err=%v", empty, err)
+	}
+	now := time.Date(2026, 9, 8, 15, 30, 0, 0, time.UTC)
+	if err = st.AddTrafficStats(ctx, 1, 10.5, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(ctx, 1, 12.25, now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(ctx, 1, 20, now.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	history, err := st.History(ctx, 1)
+	if err != nil || len(history.Hourly) != 2 || history.Hourly[0].Traffic != 12.25 || history.Hourly[1].Traffic != 20 {
+		t.Fatalf("hourly history = %#v err=%v", history.Hourly, err)
+	}
+	if len(history.Daily) != 1 || history.Daily[0].Traffic != 20 {
+		t.Fatalf("daily history should keep latest same-day value, got %#v", history.Daily)
+	}
+}
+
+func TestOutboxRetriesThenExhausts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	_, err = st.db.Exec(`INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES('out-1','evt-1','telegram','{}','queued',0,2,unixepoch(),'',unixepoch(),unixepoch())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailOutbox(ctx, item, errors.New("telegram unavailable")); err != nil {
+		t.Fatal(err)
+	}
+	var status, lastError string
+	if err = st.db.QueryRow(`SELECT status,last_error FROM notification_outbox WHERE id='out-1'`).Scan(&status, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || lastError != "telegram unavailable" {
+		t.Fatalf("retry status=%q last_error=%q", status, lastError)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE notification_outbox SET available_at=unixepoch()-1 WHERE id='out-1'`); err != nil {
+		t.Fatal(err)
+	}
+	item, err = st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailOutbox(ctx, item, errors.New("telegram unavailable")); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT status FROM notification_outbox WHERE id='out-1'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" {
+		t.Fatalf("exhausted status = %s", status)
+	}
+	if _, err = st.ClaimOutbox(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("exhausted outbox should not be claimed, err=%v", err)
+	}
+}
+
 func TestInterruptedOutboxRecoversOnOpen(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
