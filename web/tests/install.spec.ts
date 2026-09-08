@@ -4152,3 +4152,17 @@ test('settings webhook variable picker posts the live body contract', async ({ p
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(savedWebhook).toMatchObject({ body: '#MSG#' })
 })
+
+test('wizard step labels follow the setup contract', async ({ page }) => {
+  await mockInitStatus(page, false)
+
+  await page.goto('/')
+  await expect(page.getByText('STEP 1 OF 3')).toBeVisible()
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByText('STEP 2 OF 3')).toBeVisible()
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByText('STEP 3 OF 3')).toBeVisible()
+})
