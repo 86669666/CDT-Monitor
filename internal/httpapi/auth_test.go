@@ -523,3 +523,68 @@ func TestRevokedAPIKeyCannotReadStatus(t *testing.T) {
 		t.Fatalf("revoked key status = %d body = %s", denied.Code, denied.Body.String())
 	}
 }
+
+func TestSetupRateLimitAndRejectsReinit(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 5; i++ {
+		response := doRequest(t, handler, http.MethodPost, "/api/v1/setup", `{"not":"valid"}`, nil, nil)
+		if response.Code == http.StatusTooManyRequests {
+			t.Fatalf("attempt %d was rate limited too early: %s", i+1, response.Body.String())
+		}
+	}
+	limited := doRequest(t, handler, http.MethodPost, "/api/v1/setup", `{"not":"valid"}`, nil, nil)
+	if limited.Code != http.StatusTooManyRequests || !strings.Contains(limited.Body.String(), "rate_limited") {
+		t.Fatalf("setup rate limit status = %d body = %s", limited.Code, limited.Body.String())
+	}
+
+	st2 := initializedAuthStore(t)
+	handler2 := testAPIHandler(t, st2)
+	again := doRequest(t, handler2, http.MethodPost, "/api/v1/setup", `{"admin_password":"Another-Password-99!","traffic_threshold":95,"shutdown_mode":"KeepCharging","threshold_action":"stop_and_notify","api_interval":600,"timezone":"Asia/Shanghai"}`, nil, nil)
+	if again.Code != http.StatusBadRequest || !strings.Contains(again.Body.String(), "setup_failed") {
+		t.Fatalf("re-init status = %d body = %s", again.Code, again.Body.String())
+	}
+}
+
+func TestControlJobPayloadIsNotExposedOverHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ctx := t.Context()
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	id := itoa(accounts[0].ID)
+	_, token, err := st.CreateAPIKey(ctx, "control", []string{"instance:control"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"X-API-Key": token}
+	first := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+id+"/actions/start", `{}`, nil, headers)
+	second := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+id+"/actions/start", `{}`, nil, headers)
+	if first.Code != http.StatusAccepted || second.Code != http.StatusAccepted {
+		t.Fatalf("start status first=%d second=%d", first.Code, second.Code)
+	}
+	var firstJob, secondJob domain.Job
+	if err = json.Unmarshal(first.Body.Bytes(), &firstJob); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(second.Body.Bytes(), &secondJob); err != nil {
+		t.Fatal(err)
+	}
+	if firstJob.ID == "" || firstJob.ID != secondJob.ID {
+		t.Fatalf("same-minute start should reuse job, first=%#v second=%#v", firstJob, secondJob)
+	}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+firstJob.ID, "", nil, headers)
+	if got.Code != http.StatusOK {
+		t.Fatalf("job status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "手动") || strings.Contains(body, `"payload"`) || strings.Contains(body, "source") {
+		t.Fatalf("job JSON leaked control payload: %s", body)
+	}
+}
