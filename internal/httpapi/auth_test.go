@@ -235,6 +235,37 @@ func TestAPIKeyScopesAndTokenAreNotRelisted(t *testing.T) {
 	}
 }
 
+func TestAPIKeyLastUsedIsListedWithoutToken(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	created := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":["widget:read"]}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create API key status = %d body = %s", created.Code, created.Body.String())
+	}
+	var createdPayload struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &createdPayload); err != nil {
+		t.Fatal(err)
+	}
+	unused := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", []*http.Cookie{session, csrf}, nil)
+	if unused.Code != http.StatusOK || strings.Contains(unused.Body.String(), `"last_used_at"`) {
+		t.Fatalf("unused key list status = %d body = %s", unused.Code, unused.Body.String())
+	}
+	status := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": createdPayload.Token})
+	if status.Code != http.StatusOK {
+		t.Fatalf("widget status = %d body = %s", status.Code, status.Body.String())
+	}
+	used := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", []*http.Cookie{session, csrf}, nil)
+	if used.Code != http.StatusOK || !strings.Contains(used.Body.String(), `"last_used_at"`) {
+		t.Fatalf("used key list status = %d body = %s", used.Code, used.Body.String())
+	}
+	if strings.Contains(used.Body.String(), createdPayload.Token) {
+		t.Fatalf("API key list leaked token after use: %s", used.Body.String())
+	}
+}
+
 func TestLogoutInvalidatesSession(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

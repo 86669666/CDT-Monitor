@@ -660,6 +660,37 @@ func TestAPIKeyHashIsStoredNotToken(t *testing.T) {
 	}
 }
 
+func TestAPIKeyLastUsedIsUpdatedOnValidate(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	key, token, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil || len(keys) != 1 || keys[0].LastUsedAt != nil {
+		t.Fatalf("unused key last_used=%#v err=%v", keys, err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	keys, err = st.ListAPIKeys(ctx)
+	if err != nil || len(keys) != 1 || keys[0].LastUsedAt == nil {
+		t.Fatalf("used key last_used=%#v err=%v", keys, err)
+	}
+	var stored int64
+	if err = st.db.QueryRow(`SELECT last_used_at FROM api_keys WHERE id=?`, key.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored < 1 {
+		t.Fatal("last_used_at was not persisted")
+	}
+}
+
 func TestPasskeyCredentialRoundTrip(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
