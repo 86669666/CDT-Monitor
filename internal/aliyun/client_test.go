@@ -442,3 +442,19 @@ func TestCallRetriesThrottlingCodeThenSucceeds(t *testing.T) {
 		t.Fatalf("hits = %d", hits)
 	}
 }
+
+func TestGetInstanceStatusEmptyIsUnknown(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[]}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-missing"}, "secret")
+	if err != nil || status != domain.StatusUnknown {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
