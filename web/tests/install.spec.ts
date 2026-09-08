@@ -2469,3 +2469,42 @@ test('settings wxpusher webhook template requires app token and uid', async ({ p
   await expect(page.getByRole('dialog', { name: 'WxPusher 模板配置' })).toBeVisible()
   expect(saveCalls).toBe(0)
 })
+
+test('settings webhook form posts the live webhook contract', async ({ page }) => {
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByText('启用 Webhook', { exact: true }).click()
+  await page.getByLabel('Webhook URL').fill('https://example.invalid/hook')
+  await page.getByLabel('请求方式').click()
+  await page.getByRole('option', { name: 'POST' }).click()
+  await page.getByLabel('请求类型').click()
+  await page.getByRole('option', { name: 'FORM' }).click()
+  await page.getByLabel('自定义 Headers').fill('{"Authorization":"Bearer test"}')
+  await page.getByLabel('Body 模板').fill('title=#TITLE#&message=#MSG#')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    url: 'https://example.invalid/hook',
+    method: 'POST',
+    request_type: 'FORM',
+    headers: '{"Authorization":"Bearer test"}',
+    body: 'title=#TITLE#&message=#MSG#',
+    secret_configured: false,
+  })
+})
