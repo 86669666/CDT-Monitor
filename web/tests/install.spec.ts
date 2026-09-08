@@ -1260,3 +1260,29 @@ test('Pending instance shows waiting status without power controls', async ({ pa
   await expect(page.getByRole('button', { name: '关机' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '刷新实例' })).toBeVisible()
 })
+
+test('admin password update surfaces the password_update_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    expect(route.request().method()).toBe('PUT')
+    expect(JSON.parse(route.request().postData() || '{}')).toEqual({
+      current_password: TEST_PASSWORD,
+      new_password: 'Rotated-Password-42!',
+    })
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'password_update_failed', message: '管理员密码更新失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByText('管理员密码更新失败')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+})
