@@ -1041,3 +1041,26 @@ test('Running instance posts stop when keep_alive is off', async ({ page }) => {
   await expect(page.getByText('已发送关机指令')).toBeVisible()
   expect(stopCalls).toBe(1)
 })
+
+test('login surfaces the status_failed envelope when dashboard load fails', async ({ page }) => {
+  await mockInitStatus(page, true)
+  let authed = false
+  await page.route('**/api/v1/auth/login', async (route) => {
+    authed = true
+    await route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ status: 500, json: { error: { code: 'status_failed', message: '状态加载失败' } } })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('状态加载失败')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
