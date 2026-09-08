@@ -837,12 +837,18 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
 	malformed := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":`, nil, nil)
-	if malformed.Code != http.StatusBadRequest {
+	if malformed.Code != http.StatusBadRequest || !strings.Contains(malformed.Body.String(), "invalid_request") {
 		t.Fatalf("malformed login status = %d body = %s", malformed.Code, malformed.Body.String())
 	}
+	if strings.Contains(malformed.Body.String(), "unexpected EOF") || strings.Contains(malformed.Body.String(), "looking for beginning") {
+		t.Fatalf("login JSON error leaked parser details: %s", malformed.Body.String())
+	}
 	unknown := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"x","extra":true}`, nil, nil)
-	if unknown.Code != http.StatusBadRequest {
+	if unknown.Code != http.StatusBadRequest || !strings.Contains(unknown.Body.String(), "invalid_request") {
 		t.Fatalf("unknown field login status = %d body = %s", unknown.Code, unknown.Body.String())
+	}
+	if strings.Contains(unknown.Body.String(), "unknown field") {
+		t.Fatalf("login JSON error leaked parser details: %s", unknown.Body.String())
 	}
 }
 
@@ -1203,5 +1209,31 @@ func TestDeletePasskeyRequiresCSRF(t *testing.T) {
 	empty := doRequest(t, handler, http.MethodGet, "/api/v1/admin/passkeys", "", []*http.Cookie{session, csrf}, nil)
 	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"passkeys":[]`) {
 		t.Fatalf("after delete status = %d body = %s", empty.Code, empty.Body.String())
+	}
+}
+
+func TestMutationsRejectInvalidJSON(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	cases := []struct {
+		method, path, body string
+	}{
+		{http.MethodPost, "/api/v1/setup", `{"admin_password":`},
+		{http.MethodPut, "/api/v1/config", `{"traffic_threshold":`},
+		{http.MethodPut, "/api/v1/admin/password", `{"current_password":`},
+		{http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":["widget:read"],"extra":true}`},
+		{http.MethodPost, "/api/v1/admin/passkeys/register/begin", `{"name":`},
+	}
+	for _, tc := range cases {
+		got := doRequest(t, handler, tc.method, tc.path, tc.body, cookies, headers)
+		if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "invalid_request") {
+			t.Fatalf("%s %s status = %d body = %s", tc.method, tc.path, got.Code, got.Body.String())
+		}
+		if strings.Contains(got.Body.String(), "unexpected EOF") || strings.Contains(got.Body.String(), "unknown field") {
+			t.Fatalf("%s %s leaked parser details: %s", tc.method, tc.path, got.Body.String())
+		}
 	}
 }

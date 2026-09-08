@@ -161,7 +161,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	var config domain.Config
 	if err := decodeJSON(r, &config); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	applyConfigDefaults(&config)
@@ -199,7 +199,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err = decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	valid, err := s.store.VerifyAdminPassword(r.Context(), request.Password)
@@ -227,7 +227,7 @@ func (s *Server) updateAdminPassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword     string `json:"new_password"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	valid, err := s.store.VerifyAdminPassword(r.Context(), request.CurrentPassword)
@@ -282,7 +282,7 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		Name string `json:"name"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	credentials, err := s.store.LoadPasskeyCredentials(r.Context())
@@ -560,7 +560,7 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {
 	var config domain.Config
 	if err := decodeJSON(r, &config); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	applyConfigDefaults(&config)
@@ -685,7 +685,7 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt *time.Time `json:"expires_at"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	for _, scope := range request.Scopes {
