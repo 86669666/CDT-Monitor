@@ -3684,3 +3684,36 @@ test('settings notify test disables submit while the job is in flight', async ({
   await expect(page.getByText('测试通知已送达')).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('about update check disables submit while the info request is in flight', async ({ page }) => {
+  let checkCalls = 0
+  let releaseCheck!: (value?: unknown) => void
+  const checkReady = new Promise((resolve) => { releaseCheck = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', async (route) => {
+    const check = new URL(route.request().url()).searchParams.get('check') === '1'
+    const payload = {
+      version: 'v2.0.1',
+      commit: 'abc1234',
+      built_at: 'github-run-12345',
+      repository: 'https://github.com/wang4386/CDT-Monitor',
+      release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+      ...(check ? { latest_version: 'v2.0.2' } : {}),
+    }
+    if (check) {
+      checkCalls += 1
+      await checkReady
+    }
+    return route.fulfill({ json: payload })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await page.getByRole('button', { name: '检查更新' }).click()
+  await expect(page.getByRole('button', { name: '检查更新' })).toBeDisabled()
+  releaseCheck()
+  await expect(page.getByText('版本检查完成')).toBeVisible()
+  expect(checkCalls).toBe(1)
+})
