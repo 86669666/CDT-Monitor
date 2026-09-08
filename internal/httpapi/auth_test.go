@@ -12,6 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/engine"
 	"github.com/wang4386/CDT-Monitor/internal/notify"
@@ -1167,5 +1168,40 @@ func TestSaveConfigRejectsInvalidTimezone(t *testing.T) {
 	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "config_failed") {
 		t.Fatalf("invalid timezone status = %d body = %s", bad.Code, bad.Body.String())
+	}
+}
+
+func TestDeletePasskeyRequiresCSRF(t *testing.T) {
+	st := initializedAuthStore(t)
+	if err := st.SavePasskey(t.Context(), "laptop", webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")}); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/admin/passkeys", "", []*http.Cookie{session, csrf}, nil)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list passkeys status = %d body = %s", listed.Code, listed.Body.String())
+	}
+	var payload struct {
+		Passkeys []domain.Passkey `json:"passkeys"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Passkeys) != 1 || payload.Passkeys[0].ID < 1 {
+		t.Fatalf("passkeys = %#v", payload.Passkeys)
+	}
+	path := "/api/v1/admin/passkeys/" + itoa(payload.Passkeys[0].ID)
+	missing := doRequest(t, handler, http.MethodDelete, path, "", []*http.Cookie{session, csrf}, nil)
+	if missing.Code != http.StatusForbidden || !strings.Contains(missing.Body.String(), "csrf_failed") {
+		t.Fatalf("missing CSRF status = %d body = %s", missing.Code, missing.Body.String())
+	}
+	ok := doRequest(t, handler, http.MethodDelete, path, "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), `"success":true`) {
+		t.Fatalf("delete passkey status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	empty := doRequest(t, handler, http.MethodGet, "/api/v1/admin/passkeys", "", []*http.Cookie{session, csrf}, nil)
+	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"passkeys":[]`) {
+		t.Fatalf("after delete status = %d body = %s", empty.Code, empty.Body.String())
 	}
 }
