@@ -2983,3 +2983,34 @@ test('settings save posts account remark and secret', async ({ page }) => {
     secret_configured: true,
   })
 })
+
+test('settings save posts account identity fields', async ({ page }) => {
+  let saveCalls = 0
+  let account: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      account = body.accounts?.[0]
+      if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5settings')
+  await page.getByLabel('实例 ID').fill('i-settings')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(account).toMatchObject({
+    access_key_id: 'LTAI5settings',
+    instance_id: 'i-settings',
+  })
+})
