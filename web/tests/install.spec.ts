@@ -1199,3 +1199,22 @@ test('dashboard billing uses the live USD currency field', async ({ page }) => {
   await expect(billing.getByText('¥')).toHaveCount(0)
 })
 
+
+
+test('empty dashboard opens settings from the zero-account state', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, { accounts: [], system_last_run: new Date().toISOString() }, { ...dashboardConfig, accounts: [] })
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [] } }))
+  await page.route('**/api/v1/logs**', (route) => route.fulfill({ json: { logs: [] } }))
+  await page.route('**/api/v1/system/info**', (route) => route.fulfill({ json: {
+    version: 'v2.0.1', commit: 'test', built_at: 'unknown',
+    repository: 'https://github.com/wang4386/CDT-Monitor',
+    release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+  } }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '添加第一个云端实例' })).toBeVisible()
+  await expect(page.locator('.metric--blue')).toContainText('0')
+  await page.getByRole('heading', { name: '添加第一个云端实例' }).click()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+})
