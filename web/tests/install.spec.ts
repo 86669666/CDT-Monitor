@@ -1366,3 +1366,30 @@ test('dashboard shows never-run status from empty last_updated fields', async ({
   await expect(page.locator('.heartbeat')).toContainText('监控任务延迟')
 })
 
+
+
+test('settings email test posts the live notification job contract', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'notify-email'
+    const job = jobFixture(id, 'completed')
+    job.type = 'test_notification'
+    return route.fulfill({ json: job })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.getByText('测试通知已送达')).toBeVisible()
+  expect(testCalls).toBe(1)
+})
