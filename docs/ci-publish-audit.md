@@ -48,7 +48,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 
 | Workflow | 原行为 | 本 fork |
 | --- | --- | --- |
-| `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot 或 `android-widget.yml` 变更跳过 verify。仍不发布 |
+| `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot、`android-widget.yml` 或其它发布 workflow YAML 变更跳过 verify。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true`。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
 | `Release Binaries` | tag / 手动 / 被自动发布调用 | 同上变量，否则整条 job 跳过。前端与二进制 artifact 保留 7 天；只有 `publish` job 拿 `contents: write` |
 | `Container Images` | `dev`/tag 构建后 `push: true` | 未开启发布时只做 linux/amd64 load 校验，跳过 QEMU/arm64。即使误开变量，本 fork 的 build-push 也是 `push: false`，且没有 `packages: write` |
