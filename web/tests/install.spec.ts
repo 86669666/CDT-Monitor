@@ -1159,7 +1159,6 @@ test('login surfaces the invalid_request envelope', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
 
-
 test('admin password update surfaces the invalid_password envelope', async ({ page }) => {
   await mockInitStatus(page, true)
   await mockDashboardReads(page)
@@ -1185,3 +1184,18 @@ test('admin password update surfaces the invalid_password envelope', async ({ pa
   await expect(page.getByText('新密码至少需要 10 个字符')).toBeVisible()
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
 })
+
+test('dashboard billing uses the live USD currency field', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, currency: 'USD' }],
+  }, { ...dashboardConfig, enable_billing: true })
+
+  await page.goto('/')
+  const billing = page.locator('.account-billing')
+  await expect(billing.getByText('$23.46')).toBeVisible()
+  await expect(billing.getByText('$123.45')).toBeVisible()
+  await expect(billing.getByText('¥')).toHaveCount(0)
+})
+
