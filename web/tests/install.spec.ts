@@ -3937,3 +3937,16 @@ test('settings logs reload heartbeat after action logs_failed', async ({ page })
   await expect(page.getByText('心跳采样')).toBeVisible()
   expect(heartbeatReads).toBeGreaterThanOrEqual(1)
 })
+
+test('history chart closes from the dialog contract', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: emptyHistory }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '香港测试节点' })).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
