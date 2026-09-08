@@ -36,7 +36,7 @@ RUN apk add --no-cache ca-certificates
 
 FROM scratch
 ARG VERSION=dev
-ARG IMAGE_SOURCE=https://github.com/wang4386/CDT-Monitor
+ARG IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor
 LABEL org.opencontainers.image.title="CDT Monitor" \
       org.opencontainers.image.description="阿里云 CDT 流量监控与实例自动化控制台" \
       org.opencontainers.image.version="${VERSION}" \

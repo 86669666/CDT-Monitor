@@ -50,6 +50,7 @@ jobs:
             VERSION=${{ inputs.version || github.ref_name }}
             COMMIT=${{ github.sha }}
             BUILT_AT=github-run-${{ github.run_id }}
+            IMAGE_SOURCE=https://github.com/${{ github.repository }}
           cache-from: type=gha
 
       - name: Check linux/amd64 binary architecture
