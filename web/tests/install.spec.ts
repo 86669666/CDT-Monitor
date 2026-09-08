@@ -483,3 +483,34 @@ test('setup posts schedule notification enabled', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(enabled).toBe(true)
 })
+
+
+test('invalid timezone falls back to Asia/Shanghai on charts and dashboard', async ({ page }) => {
+  const hourStart = Math.floor(Date.now() / 3_600_000) * 3_600_000
+  const at = new Date(hourStart).toISOString()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    system_last_run: at,
+    accounts: [{ ...dashboardAccount, last_updated: at }],
+  }, { ...dashboardConfig, timezone: 'Not/AZone' })
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: {
+    hourly: [{ at, traffic: 1.23456 }],
+    daily: [],
+  } }))
+
+  await page.goto('/')
+  const expected = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    hourStart,
+  )
+  await expect(page.locator('.overview-time b')).toHaveText(expected)
+  await expect(page.locator('.account-card__footer')).toContainText(expected)
+
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  const latestSample = page.locator('.chart-area .recharts-line-dot').last()
+  await expect(latestSample).toBeVisible()
+  await latestSample.hover()
+  await expect(page.getByText('1.235')).toBeVisible()
+  await expect(page.locator('.recharts-tooltip-label')).toHaveText(expected)
+})
