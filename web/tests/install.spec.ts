@@ -4036,3 +4036,15 @@ test('setup drops blank access_key_id accounts from the payload', async ({ page 
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(accounts).toEqual([])
 })
+
+test('settings panel closes from the dialog contract', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+  await page.locator('.settings-panel').getByRole('button', { name: '关闭' }).click()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
