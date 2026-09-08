@@ -234,7 +234,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 | `Container Images` | 手动或 Automatic Release `workflow_call` | runner 上校验 linux/amd64；本 fork 不 login、不 push |
 | `Android Widget` | 仅手动触发 | Android 原型 APK/AAB workflow artifact |
 
-本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`；上游 Docker Hub 名 `qninq/cdt-monitor` 还需要 `ENABLE_DOCKERHUB_PUBLISH=true`。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开这些变量。
+本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`。Container Images metadata 只使用 `ghcr.io/${{ github.repository_owner }}/cdt-monitor`，不再写入上游 `qninq/cdt-monitor`。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开发布变量。
 
 上游已发布镜像标签（不是本 fork 的本地标签）：
 

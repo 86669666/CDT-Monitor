@@ -39,7 +39,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 变更后：
 
 - GHCR 名称仍随 `repository_owner`。本 fork 的 registry login 固定 `if: false`，最终 build-push 固定 `push: false`，也不申请 `packages: write`，误开变量既不 login 也不推 GHCR
-- `qninq/cdt-monitor` 仅当 `ENABLE_DOCKERHUB_PUBLISH=true` 时写入 metadata
+- 本 fork 的 metadata **不再写入** `qninq/cdt-monitor`。即使设置 `ENABLE_DOCKERHUB_PUBLISH`，也不会给上游 Docker Hub 命名空间打 tag
 - 本 fork 两个变量都保持未设置
 
 本地开发标签 `ghcr.io/86669666/cdt-monitor:local` 只存在于 [本地 Docker](local-docker.md) 与 `docker-compose.yml`，不会被这个 workflow 推送。
@@ -59,7 +59,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 ## 操作红线
 
 - 不要在 `86669666/CDT-Monitor` 上设置 `ENABLE_PRODUCTION_PUBLISH` 或 `ENABLE_DOCKERHUB_PUBLISH`，除非有单独的发布授权。
-- 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD` 去推 `qninq/cdt-monitor`。
+- 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD`，也不要把 `qninq/cdt-monitor` 加回 metadata。
 - 不要 force-push，不要用本分支做 production deploy。
 - Container / Automatic Release workflows 不再申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，本 fork 的 GITHUB_TOKEN 也推不了 GHCR，除非有人再把该 permission 加回去。
 - 不要给 `Automatic Release` 加回 `main`/`dev`/tag 的 `on.push`，也不要把 `secrets: inherit` 加回它调用的 reusable workflows。
