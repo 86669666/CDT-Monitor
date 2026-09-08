@@ -3549,3 +3549,28 @@ test('refresh-all ignores a second click while jobs are in flight', async ({ pag
   await expect(page.getByText('已强制刷新 1 个实例')).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('instance refresh disables power controls while the job is in flight', async ({ page }) => {
+  let refreshCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-busy', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    return route.fulfill({ json: jobFixture('refresh-busy', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '关机' })).toBeDisabled()
+  releaseJob()
+  await expect(page.getByText('实例状态已刷新')).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
