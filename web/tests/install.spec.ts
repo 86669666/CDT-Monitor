@@ -4079,3 +4079,27 @@ test('history chart switches back to hourly range from daily', async ({ page }) 
   await page.getByRole('button', { name: '24 小时' }).click()
   await expect(page.locator('.chart-area .recharts-line-dot').last()).toBeVisible()
 })
+
+test('settings webhook template cancel does not save', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: 'Bark' }).click()
+  await expect(page.getByRole('dialog', { name: 'Bark 模板配置' })).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).click()
+  await expect(page.getByRole('dialog', { name: 'Bark 模板配置' })).toHaveCount(0)
+  expect(saveCalls).toBe(0)
+})
