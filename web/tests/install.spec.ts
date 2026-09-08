@@ -3083,3 +3083,36 @@ test('settings logs treat a null logs array as empty', async ({ page }) => {
   await expect(page.getByText('暂无日志')).toBeVisible()
   await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
 })
+
+test('settings webhook get json posts the live webhook contract', async ({ page }) => {
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByText('启用 Webhook', { exact: true }).click()
+  await page.getByLabel('Webhook URL').fill('https://example.invalid/hook')
+  await page.getByLabel('Body 模板').fill('{"title":"#TITLE#","message":"#MSG#"}')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    url: 'https://example.invalid/hook',
+    method: 'GET',
+    request_type: 'JSON',
+    body: '{"title":"#TITLE#","message":"#MSG#"}',
+    secret_configured: false,
+  })
+})
