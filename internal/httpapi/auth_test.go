@@ -424,3 +424,49 @@ func TestAPIKeyControlSkipsCSRFAndWidgetCanReadHistory(t *testing.T) {
 func itoa(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
+
+func TestRefreshJobDedupAndWidgetJobRead(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ctx := t.Context()
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	id := itoa(accounts[0].ID)
+	_, controlToken, err := st.CreateAPIKey(ctx, "control", []string{"instance:control"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, widgetToken, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+id+"/refresh", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	second := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+id+"/refresh", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	if first.Code != http.StatusAccepted || second.Code != http.StatusAccepted {
+		t.Fatalf("refresh status first=%d second=%d body=%s %s", first.Code, second.Code, first.Body.String(), second.Body.String())
+	}
+	var firstJob, secondJob domain.Job
+	if err = json.Unmarshal(first.Body.Bytes(), &firstJob); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(second.Body.Bytes(), &secondJob); err != nil {
+		t.Fatal(err)
+	}
+	if firstJob.ID == "" || firstJob.ID != secondJob.ID {
+		t.Fatalf("expected same refresh job, first=%#v second=%#v", firstJob, secondJob)
+	}
+	job := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+firstJob.ID, "", nil, map[string]string{"X-API-Key": widgetToken})
+	if job.Code != http.StatusOK || !strings.Contains(job.Body.String(), firstJob.ID) {
+		t.Fatalf("widget job status = %d body = %s", job.Code, job.Body.String())
+	}
+	controlJob := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+firstJob.ID, "", nil, map[string]string{"X-API-Key": controlToken})
+	if controlJob.Code != http.StatusOK || !strings.Contains(controlJob.Body.String(), firstJob.ID) {
+		t.Fatalf("control key should read its job, status = %d body = %s", controlJob.Code, controlJob.Body.String())
+	}
+	anonymous := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+firstJob.ID, "", nil, nil)
+	if anonymous.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous job status = %d body = %s", anonymous.Code, anonymous.Body.String())
+	}
+}

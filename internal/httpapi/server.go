@@ -99,7 +99,7 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("POST /api/v1/accounts/refresh", s.require("instance:control", http.HandlerFunc(s.refreshAll)))
 	mux.Handle("POST /api/v1/accounts/{id}/refresh", s.require("instance:control", http.HandlerFunc(s.refresh)))
 	mux.Handle("POST /api/v1/accounts/{id}/actions/{action}", s.require("instance:control", http.HandlerFunc(s.control)))
-	mux.Handle("GET /api/v1/jobs/{id}", s.require("widget:read", http.HandlerFunc(s.job)))
+	mux.Handle("GET /api/v1/jobs/{id}", s.requireAny([]string{"widget:read", "instance:control"}, http.HandlerFunc(s.job)))
 	mux.Handle("GET /api/v1/logs", s.require("admin", http.HandlerFunc(s.logs)))
 	mux.Handle("DELETE /api/v1/logs", s.require("admin", http.HandlerFunc(s.clearLogs)))
 	mux.Handle("POST /api/v1/notifications/test/{channel}", s.require("admin", http.HandlerFunc(s.testNotification)))
@@ -737,15 +737,28 @@ func (s *Server) legacyMonitor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) require(scope string, next http.Handler) http.Handler {
+	return s.requireAny([]string{scope}, next)
+}
+
+func (s *Server) requireAny(scopes []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, err := s.authenticate(r)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "请登录或提供有效 API Key")
 			return
 		}
-		if !p.admin && !p.scopes[scope] {
-			writeError(w, http.StatusForbidden, "forbidden", "API Key 权限不足")
-			return
+		if !p.admin {
+			allowed := false
+			for _, scope := range scopes {
+				if p.scopes[scope] {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				writeError(w, http.StatusForbidden, "forbidden", "API Key 权限不足")
+				return
+			}
 		}
 		if p.admin && r.Method != http.MethodGet && r.Method != http.MethodHead && !validCSRF(r) {
 			writeError(w, http.StatusForbidden, "csrf_failed", "CSRF 校验失败")
