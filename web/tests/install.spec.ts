@@ -4166,3 +4166,15 @@ test('wizard step labels follow the setup contract', async ({ page }) => {
   await page.getByRole('button', { name: '继续' }).click()
   await expect(page.getByText('STEP 3 OF 3')).toBeVisible()
 })
+
+test('dashboard mobile menu opens settings', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '菜单' }).click()
+  await expect(page.getByRole('button', { name: '菜单' })).toHaveAttribute('aria-expanded', 'true')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+})
