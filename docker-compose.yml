@@ -16,7 +16,7 @@ services:
     image: ghcr.io/86669666/cdt-monitor:local
     pull_policy: build
     container_name: cdt-monitor
-    restart: unless-stopped
+    restart: on-failure:3
     init: true
     stop_grace_period: 15s
     security_opt:
