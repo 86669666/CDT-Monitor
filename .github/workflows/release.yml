@@ -20,9 +20,9 @@ permissions:
   contents: read
 
 # Binary GitHub Releases stay opt-in. Leave ENABLE_PRODUCTION_PUBLISH unset on this fork.
-# Even if that var is set, the GitHub Release stays draft and is not
-# marked latest. Do not set draft: false or make_latest: true without
-# an explicit publish authorization.
+# Even if that var is set, the GitHub Release stays draft, is not
+# marked latest, and does not auto-write notes from this fork's
+# commits. Do not flip those without an explicit publish authorization.
 jobs:
   frontend:
     if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
@@ -130,7 +130,7 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          generate_release_notes: true
+          generate_release_notes: false
           draft: true
           make_latest: false
           files: release/*
