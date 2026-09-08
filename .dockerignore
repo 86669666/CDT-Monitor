@@ -1,5 +1,12 @@
+# Build context for the multi-stage Dockerfile. Frontend copies web/;
+# the Go builder copies the remaining tree. Keep CI, widget, and local
+# secrets out so those changes do not invalidate compile layers.
 .git
 .gitignore
+.gitattributes
+.github
+.codex
+android-widget
 vendor
 data
 docker-compose.yml
@@ -20,3 +27,7 @@ docs
 web/test-results
 web/playwright-report
 .tmp-*
+.env
+*.jks
+*.keystore
+local.properties
