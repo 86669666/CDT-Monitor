@@ -2059,3 +2059,26 @@ test('settings API key revoke surfaces the api_key_failed envelope', async ({ pa
   await expect(page.locator('.key-row')).toContainText('桌面小组件')
   expect(revokeCalls).toBe(1)
 })
+
+test('log clear posts the live success contract', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      expect(new URL(route.request().url()).searchParams.get('tab')).toBe('action')
+      clearCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: { logs: clearCalls > 0 ? [] : [{ id: 1, type: 'audit', message: '待清空日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('待清空日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.getByText('日志已清空')).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
