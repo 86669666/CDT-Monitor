@@ -458,3 +458,22 @@ func TestGetInstanceStatusEmptyIsUnknown(t *testing.T) {
 		t.Fatalf("status=%q err=%v", status, err)
 	}
 }
+
+func TestGetTrafficSeoulIsInternational(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"ap-northeast-2","Traffic":2147483648}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "ap-northeast-2"}, "secret")
+	if err != nil || traffic != 2 {
+		t.Fatalf("seoul traffic=%v err=%v", traffic, err)
+	}
+}
