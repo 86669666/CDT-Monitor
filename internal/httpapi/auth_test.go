@@ -973,3 +973,47 @@ func TestSaveConfigRejectsUnknownFieldsAndBadThreshold(t *testing.T) {
 		t.Fatalf("widget save config status = %d body = %s", forbidden.Code, forbidden.Body.String())
 	}
 }
+
+func TestUnknownAPIIsJSONNotFound(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	anon := doRequest(t, handler, http.MethodGet, "/api/v1/does-not-exist", "", nil, nil)
+	if anon.Code != http.StatusNotFound || !strings.Contains(anon.Body.String(), "not_found") {
+		t.Fatalf("unknown api status = %d body = %s", anon.Code, anon.Body.String())
+	}
+}
+
+func TestSaveConfigRejectsInvalidShutdownAndInterval(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.ShutdownMode = "ForceStop"
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mode := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if mode.Code != http.StatusBadRequest || !strings.Contains(mode.Body.String(), "config_failed") {
+		t.Fatalf("invalid shutdown status = %d body = %s", mode.Code, mode.Body.String())
+	}
+	config.ShutdownMode = "KeepCharging"
+	config.APIInterval = 29
+	raw, err = json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interval := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if interval.Code != http.StatusBadRequest || !strings.Contains(interval.Body.String(), "config_failed") {
+		t.Fatalf("interval 29 status = %d body = %s", interval.Code, interval.Body.String())
+	}
+}
