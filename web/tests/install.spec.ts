@@ -1287,7 +1287,6 @@ test('admin password update surfaces the password_update_failed envelope', async
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
 })
 
-
 test('admin password update posts the live success contract', async ({ page }) => {
   await mockInitStatus(page, true)
   await mockDashboardReads(page)
@@ -1311,4 +1310,24 @@ test('admin password update posts the live success contract', async ({ page }) =
   await expect(page.getByLabel('当前密码')).toHaveValue('')
   await expect(page.getByLabel('新密码', { exact: true })).toHaveValue('')
   await expect(page.getByLabel('确认新密码')).toHaveValue('')
+})
+
+test('Stopping and Unknown instance statuses hide power controls', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [
+      { ...dashboardAccount, id: 1, remark: '停止中节点', instance_status: 'Stopping' },
+      { ...dashboardAccount, id: 2, remark: '未知节点', instance_status: 'Unknown' },
+    ],
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.status-pill').getByText('停止中', { exact: true })).toBeVisible()
+  await expect(page.locator('.status-pill').getByText('未知', { exact: true })).toBeVisible()
+  await expect(page.locator('.status-pill.warning')).toBeVisible()
+  await expect(page.locator('.status-pill.neutral')).toBeVisible()
+  await expect(page.getByRole('button', { name: '开机' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '关机' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '刷新实例' })).toHaveCount(2)
 })
