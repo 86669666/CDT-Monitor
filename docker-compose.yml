@@ -22,6 +22,7 @@ services:
     stop_signal: SIGTERM
     security_opt:
       - no-new-privileges:true
+    privileged: false
     cap_drop:
       - ALL
     user: "65532:65532"
