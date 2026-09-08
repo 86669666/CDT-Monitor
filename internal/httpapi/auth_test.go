@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -377,4 +378,49 @@ func TestExpiredAPIKeyCannotReadStatus(t *testing.T) {
 	if denied.Code != http.StatusUnauthorized {
 		t.Fatalf("expired key status = %d body = %s", denied.Code, denied.Body.String())
 	}
+}
+
+func TestAPIKeyControlSkipsCSRFAndWidgetCanReadHistory(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ctx := t.Context()
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	id := accounts[0].ID
+	_, controlToken, err := st.CreateAPIKey(ctx, "control", []string{"instance:control"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, widgetToken, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refresh := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+itoa(id)+"/refresh", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	if refresh.Code != http.StatusAccepted {
+		t.Fatalf("control refresh without CSRF status = %d body = %s", refresh.Code, refresh.Body.String())
+	}
+	start := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+itoa(id)+"/actions/start", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	if start.Code != http.StatusAccepted {
+		t.Fatalf("control start without CSRF status = %d body = %s", start.Code, start.Body.String())
+	}
+	config := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", nil, map[string]string{"X-API-Key": controlToken})
+	if config.Code != http.StatusForbidden {
+		t.Fatalf("control key must not read config, status = %d body = %s", config.Code, config.Body.String())
+	}
+
+	history := doRequest(t, handler, http.MethodGet, "/api/v1/accounts/"+itoa(id)+"/history", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if history.Code != http.StatusOK || !strings.Contains(history.Body.String(), `"hourly"`) {
+		t.Fatalf("widget history status = %d body = %s", history.Code, history.Body.String())
+	}
+	forbidden := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+itoa(id)+"/actions/stop", `{}`, nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget stop status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
+
+func itoa(id int64) string {
+	return strconv.FormatInt(id, 10)
 }

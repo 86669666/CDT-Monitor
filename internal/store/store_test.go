@@ -379,6 +379,36 @@ func TestUpdateAdminPasswordKeepsCurrentSessionOnly(t *testing.T) {
 	}
 }
 
+func TestPruneDeletesExpiredSessionsOnly(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	expired, err := st.CreateSession(ctx, "127.0.0.1", "expired", -time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := st.CreateSession(ctx, "127.0.0.1", "live", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if valid, _ := st.ValidateSession(ctx, expired); valid {
+		t.Fatal("expired session should be pruned")
+	}
+	if valid, _ := st.ValidateSession(ctx, live); !valid {
+		t.Fatal("live session must survive prune")
+	}
+	var count int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("session count = %d err=%v", count, err)
+	}
+}
+
 func TestSessionStoresHashNotPlaintext(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
