@@ -1836,3 +1836,34 @@ test('admin passkey delete surfaces the passkey_failed envelope', async ({ page 
   await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
   expect(deleteCalls).toBe(1)
 })
+
+test('settings billing enable starts account refresh', async ({ page }) => {
+  const unloaded = { ...dashboardConfig, enable_billing: false }
+  let saveCalls = 0
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, unloaded)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+      expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+      expect(body.enable_billing).toBe(true)
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: unloaded })
+  })
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('billing-refresh', 'queued', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByText('账单与余额', { exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已保存，账单同步已开始')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(refreshCalls).toBe(1)
+})
