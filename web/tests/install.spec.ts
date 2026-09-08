@@ -857,3 +857,19 @@ test('login failure surfaces the live login_failed envelope', async ({ page }) =
   await expect(page.getByText('登录失败')).toBeVisible()
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
+
+
+test('keep-alive disables stop without posting an action', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, keep_alive: true })
+  await page.route('**/api/v1/accounts/**/actions/stop', (route) => {
+    stopCalls += 1
+    return route.fulfill({ status: 202, json: { id: 'stop-1', status: 'queued' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '保活启用，不能关机' })).toBeDisabled()
+  expect(stopCalls).toBe(0)
+})
