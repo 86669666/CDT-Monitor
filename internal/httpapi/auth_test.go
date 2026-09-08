@@ -617,3 +617,39 @@ func TestPublicEndpointsHideDatabaseErrors(t *testing.T) {
 		t.Fatalf("healthz status = %d body = %s", health.Code, health.Body.String())
 	}
 }
+
+func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	ctx := t.Context()
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	_, widgetToken, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, controlToken, err := st.CreateAPIKey(ctx, "control", []string{"instance:control"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ok := doRequest(t, handler, http.MethodGet, "/api/v1/logs", "", []*http.Cookie{session, csrf}, nil)
+	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), `"logs"`) {
+		t.Fatalf("admin logs status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	widget := doRequest(t, handler, http.MethodGet, "/api/v1/logs", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if widget.Code != http.StatusForbidden {
+		t.Fatalf("widget logs status = %d body = %s", widget.Code, widget.Body.String())
+	}
+	control := doRequest(t, handler, http.MethodGet, "/api/v1/logs", "", nil, map[string]string{"X-API-Key": controlToken})
+	if control.Code != http.StatusForbidden {
+		t.Fatalf("control logs status = %d body = %s", control.Code, control.Body.String())
+	}
+	reboot := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+itoa(accounts[0].ID)+"/actions/reboot", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	if reboot.Code != http.StatusBadRequest || !strings.Contains(reboot.Body.String(), "invalid_action") {
+		t.Fatalf("reboot status = %d body = %s", reboot.Code, reboot.Body.String())
+	}
+}
