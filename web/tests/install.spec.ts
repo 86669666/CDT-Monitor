@@ -4215,3 +4215,16 @@ test('settings panel scrim close returns to the dashboard', async ({ page }) => 
   await expect(page.getByRole('heading', { name: '控制台设置' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+test('history chart scrim close returns to the dashboard', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: emptyHistory }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '香港测试节点' })).toBeVisible()
+  await page.locator('.modal-layer .modal-scrim').click({ position: { x: 8, y: 8 } })
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
