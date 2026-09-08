@@ -2887,3 +2887,40 @@ test('settings save posts custom max_traffic', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect(maxTraffic).toBe(350)
 })
+
+test('settings save posts a newly added account with documented fields', async ({ page }) => {
+  let saveCalls = 0
+  let added: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      expect(body.accounts).toHaveLength(2)
+      added = body.accounts?.[1]
+      if (added) expectKnownKeys(added, ACCOUNT_OBJECT_KEYS)
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('button', { name: '添加实例' }).click()
+  await page.getByLabel('AccessKey ID').nth(1).fill('LTAI5added')
+  await page.getByLabel('实例 ID').nth(1).fill('i-added')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(added).toMatchObject({
+    access_key_id: 'LTAI5added',
+    instance_id: 'i-added',
+    region_id: 'cn-hongkong',
+    site_type: 'china',
+    max_traffic: 200,
+    secret_configured: false,
+  })
+})
