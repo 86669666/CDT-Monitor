@@ -137,7 +137,7 @@ func (c *Client) ControlInstance(ctx context.Context, account domain.Account, se
 }
 
 func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, secret string) (BillingBalance, error) {
-	key := account.AccessKeyID + ":" + account.SiteType
+	key := account.AccessKeyID + ":" + billingSite(account.SiteType)
 	c.balanceMu.Lock()
 	if cached, ok := c.balance[key]; ok && time.Since(cached.createdAt) < 6*time.Hour {
 		c.balanceMu.Unlock()
@@ -184,10 +184,17 @@ func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, se
 type bssConfig struct{ region, host string }
 
 func bssEndpoint(siteType string) bssConfig {
-	if siteType == "international" {
+	if billingSite(siteType) == "international" {
 		return bssConfig{region: "ap-southeast-1", host: "business.ap-southeast-1.aliyuncs.com"}
 	}
 	return bssConfig{region: "cn-hangzhou", host: "business.aliyuncs.com"}
+}
+
+func billingSite(siteType string) string {
+	if siteType == "international" {
+		return "international"
+	}
+	return "china"
 }
 
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {

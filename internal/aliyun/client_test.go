@@ -618,3 +618,41 @@ func TestGetTrafficCacheIsPerTrafficClass(t *testing.T) {
 		t.Fatalf("same-class regions should share the cache, hits=%d", hits)
 	}
 }
+
+func TestGetAccountBalanceCacheIsPerSiteType(t *testing.T) {
+	var hits int
+	var hosts []string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		hosts = append(hosts, request.URL.Host)
+		body := `{"Code":"200","Data":{"AvailableAmount":"50","Currency":"CNY"}}`
+		if request.URL.Host == "business.ap-southeast-1.aliyuncs.com" {
+			body = `{"Code":"200","Data":{"AvailableAmount":"1.5","Currency":"USD"}}`
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	empty, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest"}, "secret")
+	if err != nil || empty.Amount != 50 || empty.Currency != "CNY" {
+		t.Fatalf("empty site=%#v err=%v", empty, err)
+	}
+	china, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || china.Amount != 50 {
+		t.Fatalf("china site=%#v err=%v", china, err)
+	}
+	if hits != 1 {
+		t.Fatalf("empty SiteType should share the China cache, hits=%d", hits)
+	}
+	intl, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "international"}, "secret")
+	if err != nil || intl.Amount != 1.5 || intl.Currency != "USD" {
+		t.Fatalf("international site=%#v err=%v", intl, err)
+	}
+	if hits != 2 {
+		t.Fatalf("international cache must be distinct, hits=%d hosts=%v", hits, hosts)
+	}
+}
