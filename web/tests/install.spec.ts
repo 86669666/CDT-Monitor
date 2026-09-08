@@ -4061,3 +4061,21 @@ test('admin settings close from the dialog contract', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: '管理员设置' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+test('history chart switches back to hourly range from daily', async ({ page }) => {
+  const hourStart = Math.floor(Date.now() / 3_600_000) * 3_600_000
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: {
+    hourly: [{ at: new Date(hourStart).toISOString(), traffic: 1.25 }],
+    daily: [{ at: new Date(hourStart).toISOString(), traffic: 9.5 }],
+  } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.locator('.chart-area .recharts-line-dot').last()).toBeVisible()
+  await page.getByRole('button', { name: '30 天' }).click()
+  await expect(page.locator('.recharts-bar-rectangle .recharts-rectangle').first()).toBeVisible()
+  await page.getByRole('button', { name: '24 小时' }).click()
+  await expect(page.locator('.chart-area .recharts-line-dot').last()).toBeVisible()
+})
