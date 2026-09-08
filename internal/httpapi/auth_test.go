@@ -653,3 +653,44 @@ func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 		t.Fatalf("reboot status = %d body = %s", reboot.Code, reboot.Body.String())
 	}
 }
+
+func TestAuthenticatedEndpointsHideDatabaseErrors(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cookies := []*http.Cookie{session, csrf}
+	for _, path := range []string{"/api/v1/status", "/api/v1/config", "/api/v1/logs"} {
+		response := doRequest(t, handler, http.MethodGet, path, "", cookies, nil)
+		if response.Code != http.StatusInternalServerError && response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status = %d body = %s", path, response.Code, response.Body.String())
+		}
+		body := strings.ToLower(response.Body.String())
+		if strings.Contains(body, "sqlite") || strings.Contains(body, "no such") || strings.Contains(body, "sql:") {
+			t.Fatalf("%s leaked internals: %s", path, response.Body.String())
+		}
+	}
+}
+
+func TestLoginSuccessClearsFailureLockout(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 4; i++ {
+		response := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"wrong-password-xx"}`, nil, nil)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("pre-success attempt %d status = %d", i+1, response.Code)
+		}
+	}
+	ok := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"`+testAdminPassword+`"}`, nil, nil)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("success status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	for i := 0; i < 2; i++ {
+		response := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"wrong-password-xx"}`, nil, nil)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("post-success attempt %d should not be locked, status = %d body = %s", i+1, response.Code, response.Body.String())
+		}
+	}
+}

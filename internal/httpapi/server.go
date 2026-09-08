@@ -172,7 +172,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.AddLog(r.Context(), "audit", "系统初始化完成 [IP: "+clientIP(r)+"]")
 	token, err := s.store.CreateSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
 	csrf := newCSRFToken()
@@ -212,7 +212,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.ClearLoginFailures(r.Context(), ip)
 	token, err := s.store.CreateSession(r.Context(), ip, r.UserAgent(), 24*time.Hour)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
 	csrf := newCSRFToken()
@@ -398,7 +398,7 @@ func (s *Server) completePasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.store.CreateSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
 	csrf := newCSRFToken()
@@ -511,7 +511,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	accounts, lastRun, err := s.engine.Summary(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "status_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
 	etag := fmt.Sprintf(`W/"%d-%d"`, lastRun.Unix(), len(accounts))
@@ -527,7 +527,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 func (s *Server) widgetSummary(w http.ResponseWriter, r *http.Request) {
 	accounts, lastRun, err := s.engine.Summary(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "status_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
 	type compact struct {
@@ -550,7 +550,7 @@ func (s *Server) widgetSummary(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	config, err := s.store.GetConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "config_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "config_failed", "配置加载失败")
 		return
 	}
 	scrubConfig(&config)
@@ -579,7 +579,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	}
 	history, err := s.store.History(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "history_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "history_failed", "历史记录加载失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, history)
@@ -592,7 +592,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := s.engine.Enqueue(r.Context(), engine.JobRefreshAccount, id, `{}`, engine.JobUniqueKey(engine.JobRefreshAccount, id, time.Now().UTC().Format("200601021504")))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -601,7 +601,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 func (s *Server) refreshAll(w http.ResponseWriter, r *http.Request) {
 	jobs, err := s.engine.EnqueueRefreshAll(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"jobs": jobs})
@@ -619,7 +619,7 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := s.engine.Enqueue(r.Context(), engine.JobControlInstance, id, engine.ParseControlPayload(action, "手动"), engine.JobUniqueKey(engine.JobControlInstance, id, action))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -632,7 +632,7 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "job_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "job_failed", "任务查询失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
@@ -641,7 +641,7 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.store.ListLogs(r.Context(), r.URL.Query().Get("tab"), 100)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "logs_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": entries})
@@ -649,7 +649,7 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.ClearLogs(r.Context(), r.URL.Query().Get("tab")); err != nil {
-		writeError(w, http.StatusInternalServerError, "logs_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
@@ -663,7 +663,7 @@ func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := s.engine.Enqueue(r.Context(), engine.JobTestNotify, 0, engine.ParseNotifyPayload(channel), "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -672,7 +672,7 @@ func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	keys, err := s.store.ListAPIKeys(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "api_keys_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "api_keys_failed", "API Key 加载失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
@@ -709,7 +709,7 @@ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.RevokeAPIKey(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "api_key_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "api_key_failed", "API Key 操作失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
@@ -730,7 +730,7 @@ func (s *Server) legacyMonitor(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "monitor_busy", "监控任务正在由其他进程执行")
 			return
 		}
-		writeError(w, http.StatusConflict, "monitor_busy", err.Error())
+		writeError(w, http.StatusConflict, "monitor_busy", "监控任务执行失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
