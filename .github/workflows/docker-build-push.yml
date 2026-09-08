@@ -57,4 +57,4 @@ jobs:
             IMAGE_SOURCE=https://github.com/${{ github.repository }}
 
       - name: Check linux/amd64 binary architecture
-        run: docker run --rm cdt-monitor:verify-amd64 version | grep -q 'linux/amd64)'
+        run: docker run --rm --network none --read-only --user 65532:65532 cdt-monitor:verify-amd64 version | grep -q 'linux/amd64)'
