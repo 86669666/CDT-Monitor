@@ -3598,3 +3598,33 @@ test('settings save disables submit while the config request is in flight', asyn
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(saveCalls).toBe(1)
 })
+
+test('login disables submit while the auth request is in flight', async ({ page }) => {
+  let loginCalls = 0
+  let authed = false
+  let releaseLogin!: (value?: unknown) => void
+  const loginReady = new Promise((resolve) => { releaseLogin = resolve })
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/auth/login', async (route) => {
+    loginCalls += 1
+    await loginReady
+    authed = true
+    return route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardStatus })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByRole('button', { name: '安全登录' })).toBeDisabled()
+  releaseLogin()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(loginCalls).toBe(1)
+})
