@@ -660,3 +660,30 @@ test('setup posts custom traffic_threshold', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(threshold).toBe(80)
 })
+
+
+test('setup posts international site_type', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let siteType = ''
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { accounts?: { site_type?: string }[] }
+    siteType = body.accounts?.[0]?.site_type || ''
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    if (body.accounts?.[0]) expectKnownKeys(body.accounts[0], ACCOUNT_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5intl')
+  await page.getByRole('combobox', { name: '站点类型' }).click()
+  await page.getByRole('option', { name: /国际站/ }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(siteType).toBe('international')
+})
