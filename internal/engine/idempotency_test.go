@@ -10,6 +10,7 @@ import (
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/notify"
+	"github.com/wang4386/CDT-Monitor/internal/store"
 )
 
 func quietLogger() *slog.Logger {
@@ -127,6 +128,51 @@ func TestThresholdStopSkippedWhilePending(t *testing.T) {
 	}
 	if got := provider.controlActions(); len(got) != 0 {
 		t.Fatalf("pending threshold stop must not call Aliyun, controls = %#v", got)
+	}
+}
+
+func TestThresholdStopIsIndependentPerAccount(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAIone", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-one", MaxTraffic: 200, SiteType: "china"},
+			{AccessKeyID: "LTAItwo", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-two", MaxTraffic: 200, SiteType: "china"},
+		},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 2 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	provider := newFakeProvider()
+	provider.traffic = 200
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err = eng.processAccount(ctx, accounts[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = eng.processAccount(ctx, accounts[1].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 2 || got[0] != "stop" || got[1] != "stop" {
+		t.Fatalf("both accounts should stop once, controls = %#v", got)
+	}
+	if _, err = eng.processAccount(ctx, accounts[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = eng.processAccount(ctx, accounts[1].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 2 {
+		t.Fatalf("threshold stop must stay per-account, controls = %#v", got)
 	}
 }
 
