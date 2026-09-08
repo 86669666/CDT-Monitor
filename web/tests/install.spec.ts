@@ -3717,3 +3717,29 @@ test('about update check disables submit while the info request is in flight', a
   await expect(page.getByText('版本检查完成')).toBeVisible()
   expect(checkCalls).toBe(1)
 })
+
+test('admin password update disables submit while the request is in flight', async ({ page }) => {
+  let updateCalls = 0
+  let releaseUpdate!: (value?: unknown) => void
+  const updateReady = new Promise((resolve) => { releaseUpdate = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', async (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    await updateReady
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByRole('button', { name: '保存新密码' })).toBeDisabled()
+  releaseUpdate()
+  await expect(page.getByText('管理员密码已更新')).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
