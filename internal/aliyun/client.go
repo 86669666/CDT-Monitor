@@ -94,9 +94,19 @@ func trafficClass(region string) string {
 	return "international"
 }
 
-func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
+func ecsTargetError(account domain.Account) error {
 	if account.InstanceID == "" {
-		return domain.StatusUnknown, errors.New("instance_id is required")
+		return errors.New("instance_id is required")
+	}
+	if strings.TrimSpace(account.RegionID) == "" {
+		return errors.New("region_id is required")
+	}
+	return nil
+}
+
+func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
+	if err := ecsTargetError(account); err != nil {
+		return domain.StatusUnknown, err
 	}
 	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
 	result, err := c.call(ctx, account.AccessKeyID, secret, account.RegionID, "ecs."+account.RegionID+".aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", params)
@@ -119,8 +129,8 @@ func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, 
 }
 
 func (c *Client) ControlInstance(ctx context.Context, account domain.Account, secret, action, shutdownMode string) error {
-	if account.InstanceID == "" {
-		return errors.New("instance_id is required")
+	if err := ecsTargetError(account); err != nil {
+		return err
 	}
 	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
 	action = strings.ToLower(action)

@@ -178,6 +178,27 @@ func TestCallDoesNotRetryClientErrors(t *testing.T) {
 	}
 }
 
+func TestECSRequiresRegionID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", InstanceID: "i-test"}
+	status, err := client.GetInstanceStatus(context.Background(), account, "secret")
+	if err == nil || hits != 0 || status != domain.StatusUnknown {
+		t.Fatalf("empty region status=%q err=%v hits=%d", status, err, hits)
+	}
+	if err = client.ControlInstance(context.Background(), account, "secret", "start", "KeepCharging"); err == nil || hits != 0 {
+		t.Fatalf("empty region control err=%v hits=%d", err, hits)
+	}
+	account.RegionID = "   "
+	if err = client.ControlInstance(context.Background(), account, "secret", "stop", "KeepCharging"); err == nil || hits != 0 {
+		t.Fatalf("blank region control err=%v hits=%d", err, hits)
+	}
+}
+
 func TestGetInstanceStatusRequiresInstanceID(t *testing.T) {
 	var hits int
 	client := NewClient()
