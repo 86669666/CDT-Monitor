@@ -3,9 +3,12 @@ package engine
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/notify"
 )
 
@@ -74,5 +77,35 @@ func TestProcessJobsUnknownTypeRequeues(t *testing.T) {
 	}
 	if got := provider.controlActions(); len(got) != 0 {
 		t.Fatalf("unknown job must not call Aliyun, controls=%#v", got)
+	}
+}
+
+func TestProcessJobsTestNotificationSendsWebhook(t *testing.T) {
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	st, _ := setupAccount(t, func(config *domain.Config) {
+		config.Notifications.Webhook.Enabled = true
+		config.Notifications.Webhook.URL = server.URL
+		config.Notifications.Webhook.Method = "POST"
+		config.Notifications.Webhook.Type = "JSON"
+	})
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobTestNotify, 0, ParseNotifyPayload("webhook"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	if hits != 1 {
+		t.Fatalf("webhook hits = %d", hits)
+	}
+	var status string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job.ID).Scan(&status); err != nil || status != "completed" {
+		t.Fatalf("job status = %q err=%v", status, err)
 	}
 }
