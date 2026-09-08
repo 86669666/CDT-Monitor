@@ -394,3 +394,22 @@ func TestCallTruncatesNonJSONErrorBodies(t *testing.T) {
 		t.Fatalf("expected truncated error, got len=%d %q", len(msg), msg)
 	}
 }
+
+func TestGetTrafficInternationalExcludesChina(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if err != nil || traffic != 4 {
+		t.Fatalf("traffic=%v err=%v", traffic, err)
+	}
+}
