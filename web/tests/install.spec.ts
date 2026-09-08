@@ -1432,3 +1432,31 @@ test('log clear surfaces the logs_failed envelope', async ({ page }) => {
   await expect(page.locator('.toast--error').filter({ hasText: '日志操作失败' }).first()).toBeVisible()
   await expect(page.getByText('保留日志')).toBeVisible()
 })
+
+test('settings telegram test posts the live notification job contract', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/telegram', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-telegram', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'notify-telegram'
+    const job = jobFixture(id, 'completed')
+    job.type = 'test_notification'
+    return route.fulfill({ json: job })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.getByText('测试通知已送达')).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
