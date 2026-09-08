@@ -231,10 +231,10 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 | `CI` | `dev`/`main`/`work/**` push、PR、手动 | 前端构建、Go race test、vet、Linux build（不发布镜像） |
 | `Automatic Release` | 仅手动，且需 `ENABLE_PRODUCTION_PUBLISH` | 按输入版本打 tag，再调用 Release Binaries / Container Images |
 | `Release Binaries` | 手动或 Automatic Release `workflow_call`，且需 `ENABLE_PRODUCTION_PUBLISH` | Linux/Windows/macOS 二进制、SHA-256 校验和及 GitHub Release |
-| `Container Images` | 手动或 Automatic Release `workflow_call` | runner 上校验 linux/amd64；本 fork 不 login、不 push |
+| `Container Images` | 手动或 Automatic Release `workflow_call` | runner 上 load 校验 linux/amd64 本地标签 `cdt-monitor:verify-amd64`；无 registry login / 镜像名 / push |
 | `Android Widget` | 仅手动触发 | Android 原型 APK/AAB workflow artifact |
 
-本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`。Container Images metadata 只使用 `ghcr.io/${{ github.repository_owner }}/cdt-monitor`，不再写入上游 `qninq/cdt-monitor`。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开发布变量。
+本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`。Container Images 不再 login，也不再给 GHCR / Docker Hub 打 metadata 名。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开发布变量。
 
 上游已发布镜像标签（不是本 fork 的本地标签）：
 

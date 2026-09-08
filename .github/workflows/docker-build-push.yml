@@ -1,8 +1,8 @@
 name: Container Images
 
-# GHCR / Docker Hub publish is opt-in via repository variables.
-# This fork leaves ENABLE_PRODUCTION_PUBLISH unset.
-# Do not auto-run on dev/tag pushes; accidental tags must not start a build.
+# This fork never publishes. Dispatch / auto-release workflow_call only
+# load-verify a linux/amd64 image. No registry login, no GHCR/Hub names,
+# no QEMU/arm64, no push. Do not add those back without publish authorization.
 
 on:
   workflow_dispatch:
@@ -23,11 +23,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  publish:
-    name: Build container images
+  verify:
+    name: Verify linux/amd64 image
     runs-on: ubuntu-latest
-    # linux/amd64 load-verify only; QEMU/arm64 are if: false on this fork.
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,48 +35,8 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      # This fork never publishes multi-arch images. QEMU/arm64 stay off even
-      # if ENABLE_PRODUCTION_PUBLISH is set. linux/amd64 verify still runs.
-      - name: Set up QEMU
-        if: false
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      # This fork does not authenticate to GHCR or Docker Hub. push is false
-      # and packages:write is omitted, so a registry login would only leak
-      # GITHUB_TOKEN / Hub credentials. Do not enable without publish authorization.
-      - name: Login to GHCR
-        if: false
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Login to Docker Hub
-        if: false
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
-        with:
-          images: |
-            ghcr.io/${{ github.repository_owner }}/cdt-monitor
-          tags: |
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' && inputs.version == '' }}
-            type=raw,value=latest,enable=${{ startsWith(inputs.version || github.ref_name, 'v') }}
-            type=raw,value=${{ inputs.version || github.ref_name }},enable=${{ startsWith(inputs.version || github.ref_name, 'v') }}
-            type=semver,pattern={{version}},value=${{ inputs.version || github.ref_name }},enable=${{ startsWith(inputs.version || github.ref_name, 'v') }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version || github.ref_name }},enable=${{ startsWith(inputs.version || github.ref_name, 'v') }}
-          labels: |
-            org.opencontainers.image.title=CDT Monitor
-            org.opencontainers.image.description=Aliyun CDT traffic monitoring and ECS automation console
 
       - name: Verify linux/amd64 image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -85,6 +44,7 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
+          push: false
           tags: cdt-monitor:verify-amd64
           build-args: |
             VERSION=${{ inputs.version || github.ref_name }}
@@ -94,40 +54,3 @@ jobs:
 
       - name: Check linux/amd64 binary architecture
         run: docker run --rm cdt-monitor:verify-amd64 version | grep -q 'linux/amd64)'
-
-      - name: Verify linux/arm64 image
-        if: false
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          platforms: linux/arm64
-          load: true
-          tags: cdt-monitor:verify-arm64
-          build-args: |
-            VERSION=${{ inputs.version || github.ref_name }}
-            COMMIT=${{ github.sha }}
-            BUILT_AT=github-run-${{ github.run_id }}
-          cache-from: type=gha
-
-      - name: Check linux/arm64 binary architecture
-        if: false
-        run: docker run --rm cdt-monitor:verify-arm64 version | grep -q 'linux/arm64)'
-
-      # This fork never publishes. push stays false even if ENABLE_PRODUCTION_PUBLISH
-      # is set; packages:write is also omitted. Do not flip this without an explicit
-      # publish authorization.
-      - name: Build linux/amd64 and linux/arm64 without pushing
-        if: false
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ inputs.version || github.ref_name }}
-            COMMIT=${{ github.sha }}
-            BUILT_AT=github-run-${{ github.run_id }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
