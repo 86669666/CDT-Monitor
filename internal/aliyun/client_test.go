@@ -199,3 +199,32 @@ func TestControlInstanceStopDefaultsToKeepCharging(t *testing.T) {
 		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
 	}
 }
+
+func TestCallRetriesTooManyRequestsThenSucceeds(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if hits == 1 {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Body:       io.NopCloser(strings.NewReader(`{"Code":"Throttling","Message":"slow down"}`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Message":"success","Data":{"AvailableAmount":"8.25"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || balance.Amount != 8.25 {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
