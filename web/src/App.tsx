@@ -213,6 +213,7 @@ function SetupWizard({ onComplete, notify }: { onComplete: () => Promise<void>; 
             <div className="field"><label>阈值动作</label><Segmented value={config.threshold_action} options={[['stop_and_notify', '停机并通知'], ['notify_only', '仅通知']]} onChange={(value) => setConfig({ ...config, threshold_action: value as Config['threshold_action'] })} /></div>
             <div className="field field--wide"><label>停机模式</label><Segmented value={config.shutdown_mode} options={[['KeepCharging', '普通停机'], ['StopCharging', '节省停机']]} onChange={(value) => setConfig({ ...config, shutdown_mode: value as Config['shutdown_mode'] })} /></div>
             <ToggleRow title="抢占式实例保活" icon={<Activity />} checked={config.keep_alive} onChange={(checked) => setConfig({ ...config, keep_alive: checked })} />
+            <ToggleRow title="定时任务通知" icon={<Bell />} checked={config.enable_schedule_notification} onChange={(checked) => setConfig({ ...config, enable_schedule_notification: checked })} />
             <ToggleRow title="账单与余额显示" icon={<CircleDollarSign />} checked={config.enable_billing} onChange={(checked) => setConfig({ ...config, enable_billing: checked })} />
           </div>
         )}

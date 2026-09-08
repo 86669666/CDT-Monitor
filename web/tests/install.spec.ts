@@ -458,3 +458,28 @@ test('setup posts notify_only threshold action', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(thresholdAction).toBe('notify_only')
 })
+
+
+test('setup posts schedule notification enabled', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let enabled: boolean | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { enable_schedule_notification?: boolean }
+    enabled = body.enable_schedule_notification
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+  await page.getByText('定时任务通知', { exact: true }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(enabled).toBe(true)
+})
