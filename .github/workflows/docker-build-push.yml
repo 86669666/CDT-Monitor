@@ -47,13 +47,14 @@ jobs:
           push: false
           provenance: false
           sbom: false
+          # No type=gha cache. This fork never wrote one, and GHA cache
+          # is not a substitute for a registry.
           tags: cdt-monitor:verify-amd64
           build-args: |
             VERSION=${{ inputs.version || github.ref_name }}
             COMMIT=${{ github.sha }}
             BUILT_AT=github-run-${{ github.run_id }}
             IMAGE_SOURCE=https://github.com/${{ github.repository }}
-          cache-from: type=gha
 
       - name: Check linux/amd64 binary architecture
         run: docker run --rm cdt-monitor:verify-amd64 version | grep -q 'linux/amd64)'
