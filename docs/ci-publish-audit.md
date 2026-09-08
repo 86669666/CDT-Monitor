@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | `GITHUB_TOKEN` | 曾用于 GHCR login | 否，Actions 注入 | Container Images 已删除 login 步骤，不再把 token 交给 GHCR |
 | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | 曾用于 Docker Hub login | 否 | 不要在本 fork 配置；Container Images 已删除 login 步骤，YAML 不再引用这两个 secret |
-| `ANDROID_KEYSTORE_BASE64` 与 key 密码 | `android-widget.yml` | 否 | 可选；未配置时只出 debug / unsigned 产物 |
+| `ANDROID_KEYSTORE_BASE64` 与 key 密码 | `android-widget.yml` | 否 | 可选；未配置时只出 debug / unsigned 产物。解码后的 JKS 只在 `$RUNNER_TEMP`，job `always()` 里 shred/rm，不进 artifact |
 | Aliyun AK / SMTP / Telegram | 无 workflow 引用 | 无 | 禁止写入 YAML、Compose 或文档示例 |
 
 引用形式一律是 `${{ secrets.NAME }}` 或 `GITHUB_TOKEN`。不要把 keystore、Docker Hub 密码或云账号写进仓库。

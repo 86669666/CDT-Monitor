@@ -77,3 +77,12 @@ jobs:
             android-widget/app/build/outputs/apk/debug/*.apk
             android-widget/app/build/outputs/apk/release/*.apk
             android-widget/app/build/outputs/bundle/release/*.aab
+
+      - name: Remove decoded keystore
+        if: always()
+        run: |
+          keystore="${ANDROID_KEYSTORE_FILE:-$RUNNER_TEMP/cdt-widget.jks}"
+          if [ -f "$keystore" ]; then
+            shred -u "$keystore" 2>/dev/null || rm -f "$keystore"
+          fi
+          rm -f "$RUNNER_TEMP/cdt-widget.jks"
