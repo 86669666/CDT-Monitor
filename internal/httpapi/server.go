@@ -292,7 +292,7 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 	}
 	creation, session, err := s.webAuthn(r).BeginRegistration(&adminWebAuthnUser{credentials: credentials})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
 	id, err := security.NewToken(24)
@@ -354,7 +354,7 @@ func (s *Server) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	assertion, session, err := s.webAuthn(r).BeginLogin(user)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
 	id, err := security.NewToken(24)
@@ -435,12 +435,15 @@ func requestOrigin(r *http.Request) string {
 	if requestSecure(r) {
 		scheme = "https"
 	}
-	host := r.Header.Get("X-Forwarded-Host")
-	if host == "" {
-		host = r.Host
-	}
-	if strings.Contains(host, ",") {
-		host = strings.TrimSpace(strings.Split(host, ",")[0])
+	host := r.Host
+	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
+		remote, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			remote = r.RemoteAddr
+		}
+		if trustedProxy(remote) {
+			host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		}
 	}
 	return scheme + "://" + host
 }
