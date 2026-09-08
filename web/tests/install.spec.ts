@@ -2305,3 +2305,42 @@ test('settings bark webhook template requires a key', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Bark 模板配置' })).toBeVisible()
   expect(saveCalls).toBe(0)
 })
+
+test('settings email smtp posts the live notify contract', async ({ page }) => {
+  let savedEmail: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { email?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedEmail = payload.notifications?.email
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByText('启用 Email', { exact: true }).click()
+  await page.getByLabel('接收邮箱').fill('ops@example.invalid')
+  await page.getByLabel('SMTP Host').fill('smtp.example.invalid')
+  await page.getByLabel('端口').fill('587')
+  await page.getByLabel('安全模式').click()
+  await page.getByRole('option', { name: 'STARTTLS' }).click()
+  await page.getByLabel('用户名').fill('ops')
+  await page.getByLabel('密码', { exact: true }).fill('mail-pass')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedEmail).toMatchObject({
+    enabled: true,
+    to: 'ops@example.invalid',
+    host: 'smtp.example.invalid',
+    port: 587,
+    username: 'ops',
+    password: 'mail-pass',
+    security: 'tls',
+    password_configured: false,
+  })
+})
