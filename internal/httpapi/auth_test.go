@@ -9,10 +9,12 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/engine"
 	"github.com/wang4386/CDT-Monitor/internal/notify"
+	"github.com/wang4386/CDT-Monitor/internal/security"
 	"github.com/wang4386/CDT-Monitor/internal/store"
 )
 
@@ -336,5 +338,43 @@ func TestLoginLockoutTrustsForwardedForFromLoopback(t *testing.T) {
 	ok := loginAttempt(t, handler, testAdminPassword, "127.0.0.1:8080", "198.51.100.21")
 	if ok.Code != http.StatusOK {
 		t.Fatalf("loopback proxy should isolate client IPs, status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}
+
+func TestCreateAPIKeyRejectsPastExpiryHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	past := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
+	created := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"old","scopes":["widget:read"],"expires_at":"`+past+`"}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if created.Code != http.StatusBadRequest || !strings.Contains(created.Body.String(), "api_key_failed") {
+		t.Fatalf("past expiry status = %d body = %s", created.Code, created.Body.String())
+	}
+}
+
+func TestLegacyMonitorAcceptsBearerToken(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, token, err := st.CreateAPIKey(t.Context(), "cron", []string{"cron:run"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok := doRequest(t, handler, http.MethodGet, "/monitor.php", "", nil, map[string]string{"Authorization": "Bearer " + token})
+	if ok.Code != http.StatusAccepted {
+		t.Fatalf("bearer cron status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}
+
+func TestExpiredAPIKeyCannotReadStatus(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	token := "cdt_expired_http_token"
+	_, err := st.DB().Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at,expires_at) VALUES('expired',?,'["widget:read"]',unixepoch(),unixepoch()-30)`, security.TokenHash(token))
+	if err != nil {
+		t.Fatal(err)
+	}
+	denied := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": token})
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("expired key status = %d body = %s", denied.Code, denied.Body.String())
 	}
 }

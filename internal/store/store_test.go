@@ -425,6 +425,26 @@ func TestExpiredAPIKeyIsRejected(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	past := time.Now().Add(-time.Minute)
+	if _, _, err = st.CreateAPIKey(context.Background(), "old", []string{"widget:read"}, &past); err == nil {
+		t.Fatal("expected past expiry to be rejected")
+	}
+	future := time.Now().Add(time.Hour)
+	_, token, err := st.CreateAPIKey(context.Background(), "fresh", []string{"widget:read"}, &future)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(context.Background(), token); err != nil {
+		t.Fatalf("future expiry must validate: %v", err)
+	}
+}
+
 func TestAPIKeyHashIsStoredNotToken(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

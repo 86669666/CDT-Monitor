@@ -79,6 +79,9 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
 	}
+	if expiresAt != nil && !expiresAt.UTC().After(time.Now().UTC()) {
+		return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
+	}
 	secret, err := security.NewToken(32)
 	if err != nil {
 		return domain.APIKey{}, "", err
