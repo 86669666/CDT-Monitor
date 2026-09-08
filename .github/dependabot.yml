@@ -5,13 +5,25 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    groups:
+      docker-base-images:
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: /android-widget
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    groups:
+      android-widget-gradle:
+        patterns:
+          - "*"
