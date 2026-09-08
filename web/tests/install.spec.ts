@@ -1109,3 +1109,21 @@ test('single instance refresh completes from the live job contract', async ({ pa
   expect(refreshCalls).toBe(1)
 })
 
+
+
+test('logout posts the live auth contract and returns to login', async ({ page }) => {
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+})
