@@ -3478,3 +3478,28 @@ test('refresh-all surfaces all-failed instance refresh', async ({ page }) => {
   await expect(page.locator('.toast--error').filter({ hasText: '全部实例刷新失败，请查看运行日志' }).first()).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('refresh-all surfaces partial instance refresh failure', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-ok', 'queued'), jobFixture('refresh-bad', 'queued')] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'refresh-ok'
+    if (id === 'refresh-bad') {
+      const failed = jobFixture(id, 'failed')
+      failed.error = '任务执行失败'
+      return route.fulfill({ json: failed })
+    }
+    return route.fulfill({ json: jobFixture(id, 'completed') })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '已刷新 1/2 个实例，其余实例刷新失败' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
