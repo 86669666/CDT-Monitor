@@ -268,6 +268,9 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %v", masked(account.AccessKeyID), trafficErr))
 		}
 		if statusErr != nil || status == "" {
+			if statusErr == nil {
+				statusErr = errors.New("empty instance status")
+			}
 			status = account.InstanceStatus
 			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %v", masked(account.AccessKeyID), statusErr))
 		}
