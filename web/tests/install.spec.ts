@@ -3783,3 +3783,23 @@ test('settings API keys show loading while the list request is in flight', async
   await expect(page.getByRole('button', { name: '创建 Key' })).toBeVisible()
   await expect(page.locator('.key-row')).toHaveCount(0)
 })
+
+test('settings API key create stays disabled without a name', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({ status: 201, json: { key: { id: 1, name: 'x', scopes: ['widget:read'], created_at: new Date().toISOString() }, token: 'cdt_token' } })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByLabel('名称').fill('')
+  await expect(page.getByRole('button', { name: '创建 Key' })).toBeDisabled()
+  expect(createCalls).toBe(0)
+})
