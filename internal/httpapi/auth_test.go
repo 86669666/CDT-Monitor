@@ -352,6 +352,30 @@ func TestCreateAPIKeyRejectsPastExpiryHTTP(t *testing.T) {
 	if created.Code != http.StatusBadRequest || !strings.Contains(created.Body.String(), "api_key_failed") {
 		t.Fatalf("past expiry status = %d body = %s", created.Code, created.Body.String())
 	}
+	if strings.Contains(created.Body.String(), "expiry must be in the future") {
+		t.Fatalf("past expiry leaked store error: %s", created.Body.String())
+	}
+}
+
+func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	for _, body := range []string{`{"name":"","scopes":["widget:read"]}`, `{"name":"   ","scopes":["widget:read"]}`, `{"name":"widget","scopes":[]}`} {
+		got := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", body, cookies, headers)
+		if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "api_key_failed") {
+			t.Fatalf("body %s status = %d response = %s", body, got.Code, got.Body.String())
+		}
+		if strings.Contains(got.Body.String(), "name and at least one scope") {
+			t.Fatalf("empty key leaked store error: %s", got.Body.String())
+		}
+	}
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", cookies, nil)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"keys":[]`) {
+		t.Fatalf("empty key list status = %d body = %s", listed.Code, listed.Body.String())
+	}
 }
 
 func TestLegacyMonitorAcceptsBearerToken(t *testing.T) {

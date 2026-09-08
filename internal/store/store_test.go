@@ -603,6 +603,24 @@ func TestExpiredAPIKeyIsRejected(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, _, err = st.CreateAPIKey(ctx, "  ", []string{"widget:read"}, nil); err == nil {
+		t.Fatal("expected blank name to be rejected")
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "widget", nil, nil); err == nil {
+		t.Fatal("expected empty scopes to be rejected")
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "widget", []string{}, nil); err == nil {
+		t.Fatal("expected empty scope list to be rejected")
+	}
+}
+
 func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
