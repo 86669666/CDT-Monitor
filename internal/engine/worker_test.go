@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wang4386/CDT-Monitor/internal/notify"
@@ -50,5 +51,28 @@ func TestProcessJobsRequeuesFailedControl(t *testing.T) {
 	}
 	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
 		t.Fatalf("controls = %#v", got)
+	}
+}
+
+func TestProcessJobsUnknownTypeRequeues(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := st.EnqueueJob(ctx, "not_a_job", 0, `{}`, "unknown:1", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || !strings.Contains(jobErr, "unknown job type") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("unknown job must not call Aliyun, controls=%#v", got)
 	}
 }
