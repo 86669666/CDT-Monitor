@@ -36,6 +36,7 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           persist-credentials: false
+          fetch-depth: 1
 
       - name: Set up QEMU
         if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
