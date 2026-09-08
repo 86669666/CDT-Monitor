@@ -621,6 +621,24 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsUnknownScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, _, err = st.CreateAPIKey(ctx, "admin", []string{"admin"}, nil); err == nil {
+		t.Fatal("expected admin scope to be rejected")
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "mixed", []string{"widget:read", "admin"}, nil); err == nil {
+		t.Fatal("expected mixed unknown scope to be rejected")
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

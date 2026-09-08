@@ -75,9 +75,21 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+func validAPIKeyScopes(scopes []string) bool {
+	for _, scope := range scopes {
+		if scope != "widget:read" && scope != "instance:control" && scope != "cron:run" {
+			return false
+		}
+	}
+	return len(scopes) > 0
+}
+
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
 	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
+	}
+	if !validAPIKeyScopes(scopes) {
+		return domain.APIKey{}, "", errors.New("invalid API key scope")
 	}
 	if expiresAt != nil && !expiresAt.UTC().After(time.Now().UTC()) {
 		return domain.APIKey{}, "", errors.New("api key expiry must be in the future")

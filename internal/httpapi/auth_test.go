@@ -437,6 +437,26 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsUnknownScopesHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	admin := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"root","scopes":["admin"]}`, cookies, headers)
+	if admin.Code != http.StatusBadRequest || !strings.Contains(admin.Body.String(), "invalid_scope") {
+		t.Fatalf("admin scope status = %d body = %s", admin.Code, admin.Body.String())
+	}
+	mixed := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"mixed","scopes":["widget:read","admin"]}`, cookies, headers)
+	if mixed.Code != http.StatusBadRequest || !strings.Contains(mixed.Body.String(), "invalid_scope") {
+		t.Fatalf("mixed scope status = %d body = %s", mixed.Code, mixed.Body.String())
+	}
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", cookies, nil)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"keys":[]`) {
+		t.Fatalf("unknown scope list status = %d body = %s", listed.Code, listed.Body.String())
+	}
+}
+
 func TestLegacyMonitorAcceptsBearerToken(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
