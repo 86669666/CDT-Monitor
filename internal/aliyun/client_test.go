@@ -477,3 +477,19 @@ func TestGetTrafficSeoulIsInternational(t *testing.T) {
 		t.Fatalf("seoul traffic=%v err=%v", traffic, err)
 	}
 }
+
+func TestGetInstanceStatusAcceptsSingleObject(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":{"InstanceId":"i-test","Status":"Stopped"}}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret")
+	if err != nil || status != domain.StatusStopped {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}

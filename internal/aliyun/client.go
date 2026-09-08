@@ -383,6 +383,7 @@ func asSlice(value any) []any {
 		if item, ok := obj["Item"].(map[string]any); ok {
 			return []any{item}
 		}
+		return []any{obj}
 	}
 	return nil
 }
