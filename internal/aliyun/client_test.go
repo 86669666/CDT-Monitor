@@ -228,3 +228,33 @@ func TestCallRetriesTooManyRequestsThenSucceeds(t *testing.T) {
 		t.Fatalf("hits = %d", hits)
 	}
 }
+
+func TestGetTrafficUsesMockCdtAndCaches(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-beijing","Traffic":2147483648},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}
+	first, err := client.GetTraffic(context.Background(), account, "secret")
+	if err != nil || first != 3 {
+		t.Fatalf("first traffic=%v err=%v", first, err)
+	}
+	second, err := client.GetTraffic(context.Background(), account, "secret")
+	if err != nil || second != 3 {
+		t.Fatalf("cached traffic=%v err=%v", second, err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected one CDT call, hits=%d", hits)
+	}
+}
