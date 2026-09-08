@@ -49,7 +49,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | Workflow | 原行为 | 本 fork |
 | --- | --- | --- |
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot、`android-widget.yml` 或其它发布 workflow YAML 变更跳过 verify。仍不发布 |
-| `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true`。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
+| `Automatic Release` | `main` push 自动打 tag 并发布 | 不再因 `main` push 自动跑。仅 `workflow_dispatch`，且需要 `ENABLE_PRODUCTION_PUBLISH=true`。不把仓库 secrets inherit 进 reusable workflows。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
 | `Release Binaries` | 仅手动或被 auto-release `workflow_call` | 不再因 `v*.*.*` tag push 自动跑。仍要 `ENABLE_PRODUCTION_PUBLISH`；artifact 保留 7 天；只有 `publish` job 拿 `contents: write` |
 | `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。load 校验仍不 push；没有 `packages: write` |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
@@ -62,6 +62,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 - 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD` 去推 `qninq/cdt-monitor`。
 - 不要 force-push，不要用本分支做 production deploy。
 - Container / Automatic Release workflows 不再申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，本 fork 的 GITHUB_TOKEN 也推不了 GHCR，除非有人再把该 permission 加回去。
+- 不要给 `Automatic Release` 加回 `main`/`dev`/tag 的 `on.push`，也不要把 `secrets: inherit` 加回它调用的 reusable workflows。
 
 Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget` 的 Gradle。同类更新打成一组 PR（actions / docker base / widget Gradle 各一组），减少噪声。它会开 PR，不会自动设置 `ENABLE_PRODUCTION_PUBLISH`。合并 Dependabot 前仍要核对 SHA pin，且不要借机打开发布变量。
 
@@ -83,3 +84,12 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 - `actions/runs` 仍是 `total_count: 0`
 - `gh workflow list` 仍为空；仓库 Actions variables 为 `total_count: 0`（`ENABLE_PRODUCTION_PUBLISH` / `ENABLE_DOCKERHUB_PUBLISH` 未设置）
 - draft PR https://github.com/86669666/CDT-Monitor/pull/1 仍开着；不要把 contents 权限收口或 artifact 7 天过期写成远端 CI 已绿或已经发布 GHCR
+
+续推证据（`2026-09-08T06:37Z` / 2026-09-08 14:37 Asia/Taipei），对象 `86669666/CDT-Monitor`，基线仍是 `6667f35`，当时 HEAD `5c08e78`：
+
+- `gh api repos/86669666/CDT-Monitor/actions/runs` 仍是 `total_count: 0`；`actions/workflows` 仍是 `total_count: 0`
+- `gh workflow list --repo 86669666/CDT-Monitor --all` 为空；`gh workflow run ci.yml --repo 86669666/CDT-Monitor --ref work/ops` 仍是 404
+- Actions 权限 API：`enabled=true`，`default_workflow_permissions=read`；variables `total_count: 0`；`gh secret list --repo 86669666/CDT-Monitor` 为空
+- draft PR https://github.com/86669666/CDT-Monitor/pull/1 仍为 draft，当时 head `5c08e78`，`statusCheckRollup` 为空
+- 不要用无 `--repo 86669666/CDT-Monitor` 的 `gh workflow list` / `gh run list`：此工作区有 `upstream` remote 时，GitHub CLI 会落到 `wang4386/CDT-Monitor`，那些 run 不是本 fork 的证据
+- 默认分支 `main` 仍是上游未加发布开关、且仍 `packages: write` 的 `auto-release.yml`。为了“注册 workflow”去合入 `main` 可能触发自动打 tag / GHCR，**不要这样做**

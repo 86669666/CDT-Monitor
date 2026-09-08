@@ -229,9 +229,9 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 | Workflow | 触发条件 | 输出 |
 | --- | --- | --- |
 | `CI` | `dev`/`main`/`work/**` push、PR、手动 | 前端构建、Go race test、vet、Linux build（不发布镜像） |
-| `Automatic Release` | `main` push 或手动 | 自动计算 patch 版本、创建 tag 并调用正式发布流程 |
-| `Release Binaries` | 自动发布、`v*.*.*` tag 或手动 | Linux/Windows/macOS 二进制、SHA-256 校验和及 GitHub Release |
-| `Container Images` | `dev`/tag 或手动 | 先在 runner 上校验 linux/amd64 与 linux/arm64；发布另见下方 |
+| `Automatic Release` | 仅手动，且需 `ENABLE_PRODUCTION_PUBLISH` | 按输入版本打 tag，再调用 Release Binaries / Container Images |
+| `Release Binaries` | 手动或 Automatic Release `workflow_call`，且需 `ENABLE_PRODUCTION_PUBLISH` | Linux/Windows/macOS 二进制、SHA-256 校验和及 GitHub Release |
+| `Container Images` | 手动或 Automatic Release `workflow_call` | runner 上校验 linux/amd64；本 fork 不 login、不 push |
 | `Android Widget` | 仅手动触发 | Android 原型 APK/AAB workflow artifact |
 
 本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`；上游 Docker Hub 名 `qninq/cdt-monitor` 还需要 `ENABLE_DOCKERHUB_PUBLISH=true`。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开这些变量。

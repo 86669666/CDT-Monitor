@@ -1,5 +1,9 @@
 name: Automatic Release
 
+# This fork does not auto-run on main push. Keep workflow_dispatch only.
+# Jobs still require ENABLE_PRODUCTION_PUBLISH. Do not restore tag/dev/main
+# push triggers without an explicit publish authorization.
+
 on:
   workflow_dispatch:
     inputs:
@@ -7,9 +11,6 @@ on:
         description: 'Release version, for example v2.0.0'
         required: true
         type: string
-  push:
-    branches: [main]
-    paths-ignore: ['docs/**']
 
 concurrency:
   group: auto-release-${{ github.ref }}
@@ -24,7 +25,7 @@ permissions:
 # Publishing stays opt-in on this fork. Leave ENABLE_PRODUCTION_PUBLISH unset.
 jobs:
   tag:
-    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' && (github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip release]')) }}
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -39,24 +40,11 @@ jobs:
       - name: Calculate version
         id: version
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            version="${{ inputs.version }}"
-          else
-            latest=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n1)
-            if [ -z "$latest" ]; then
-              version="v2.0.0"
-            else
-              IFS='.' read -r major minor patch <<< "${latest#v}"
-              if [ "$major" -lt 2 ]; then
-                version="v2.0.0"
-              else
-                version="v${major}.${minor}.$((patch + 1))"
-              fi
-            fi
-          fi
-          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid version"; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Create tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -73,7 +61,8 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.tag.outputs.version }}
-    secrets: inherit
+    # Do not inherit repo secrets. GITHUB_TOKEN is enough for GitHub
+    # Releases; Docker Hub credentials must not reach reusable workflows.
 
   container:
     needs: tag
@@ -83,4 +72,3 @@ jobs:
     with:
       version: ${{ needs.tag.outputs.version }}
       ref: ${{ needs.tag.outputs.version }}
-    secrets: inherit
