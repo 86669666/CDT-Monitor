@@ -873,3 +873,18 @@ test('keep-alive disables stop without posting an action', async ({ page }) => {
   await expect(page.getByRole('button', { name: '保活启用，不能关机' })).toBeDisabled()
   expect(stopCalls).toBe(0)
 })
+
+
+test('dashboard shows live billing_error on the account card', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, billing_error: '账单查询失败' }],
+  }, { ...dashboardConfig, enable_billing: true })
+
+  await page.goto('/')
+  const billing = page.locator('.account-billing')
+  await expect(billing).toBeVisible()
+  await expect(billing.locator('.billing-error')).toHaveText('账单查询失败')
+  await expect(billing.getByText('已同步')).toHaveCount(0)
+})
