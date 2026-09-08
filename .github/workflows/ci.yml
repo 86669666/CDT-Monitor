@@ -3,6 +3,7 @@ name: CI
 # Verify only: frontend build, Go test/vet, linux/amd64 binary.
 # No GHCR/Docker Hub/GitHub Release. Manual dispatch is for when
 # GitHub has registered workflows on this fork; it still does not publish.
+# Widget workflow and Dependabot-only changes also skip this job.
 
 on:
   pull_request:
@@ -13,6 +14,8 @@ on:
       - 'LICENSE'
       - 'docker-compose.yml'
       - '.dockerignore'
+      - '.github/dependabot.yml'
+      - '.github/workflows/android-widget.yml'
   push:
     branches: [dev, main, 'work/**']
     paths-ignore:
@@ -22,6 +25,8 @@ on:
       - 'LICENSE'
       - 'docker-compose.yml'
       - '.dockerignore'
+      - '.github/dependabot.yml'
+      - '.github/workflows/android-widget.yml'
   workflow_dispatch:
 
 concurrency:
