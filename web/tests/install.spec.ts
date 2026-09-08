@@ -797,3 +797,36 @@ test('setup posts schedule window', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(account).toMatchObject({ schedule_enabled: true, start_time: '09:00', stop_time: '22:00' })
 })
+
+
+test('setup posts account remark instance id and secret', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let account: Record<string, unknown> | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+    account = body.accounts?.[0]
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5remark')
+  await page.getByLabel('AccessKey Secret').fill('fixture-secret-not-real')
+  await page.getByLabel('实例 ID').fill('i-bp-fixture')
+  await page.getByLabel('备注').fill('香港主节点')
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(account).toMatchObject({
+    access_key_id: 'LTAI5remark',
+    access_key_secret: 'fixture-secret-not-real',
+    instance_id: 'i-bp-fixture',
+    remark: '香港主节点',
+  })
+})
