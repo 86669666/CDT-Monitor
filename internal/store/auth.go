@@ -61,6 +61,23 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	return token, err
 }
 
+func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
+	token, err := security.NewToken(32)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().UTC()
+	err = s.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions`); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
+			security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
+		return err
+	})
+	return token, err
+}
+
 func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error) {
 	if token == "" {
 		return false, nil

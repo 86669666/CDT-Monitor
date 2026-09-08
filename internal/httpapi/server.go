@@ -170,7 +170,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "系统初始化完成 [IP: "+clientIP(r)+"]")
-	token, err := s.store.CreateSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
+	token, err := s.store.CreateExclusiveSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
@@ -210,7 +210,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.ClearLoginFailures(r.Context(), ip)
-	token, err := s.store.CreateSession(r.Context(), ip, r.UserAgent(), 24*time.Hour)
+	token, err := s.store.CreateExclusiveSession(r.Context(), ip, r.UserAgent(), 24*time.Hour)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
@@ -396,7 +396,7 @@ func (s *Server) completePasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 状态保存失败")
 		return
 	}
-	token, err := s.store.CreateSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
+	token, err := s.store.CreateExclusiveSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return

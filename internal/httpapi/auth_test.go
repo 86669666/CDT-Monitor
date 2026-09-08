@@ -291,6 +291,21 @@ func TestJSONAPIsRejectQueryStringAPIKey(t *testing.T) {
 	}
 }
 
+func TestLoginInvalidatesPreviousSession(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	firstSession, firstCSRF := loginCookies(t, handler)
+	secondSession, secondCSRF := loginCookies(t, handler)
+	denied := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{firstSession, firstCSRF}, nil)
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("old session status = %d body = %s", denied.Code, denied.Body.String())
+	}
+	ok := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{secondSession, secondCSRF}, nil)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("new session status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}
+
 func TestLogoutInvalidatesSession(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
@@ -945,7 +960,10 @@ func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
 	current, csrf := loginCookies(t, handler)
-	other, otherCSRF := loginCookies(t, handler)
+	other, err := st.CreateSession(t.Context(), "127.0.0.2", "other", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	missing := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"Replacement-Password-84!"}`, []*http.Cookie{current, csrf}, nil)
 	if missing.Code != http.StatusForbidden || !strings.Contains(missing.Body.String(), "csrf_failed") {
@@ -968,7 +986,8 @@ func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
 	if still.Code != http.StatusOK {
 		t.Fatalf("current session after update status = %d body = %s", still.Code, still.Body.String())
 	}
-	dropped := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{other, otherCSRF}, nil)
+	otherCookie := &http.Cookie{Name: "cdt_session", Value: other}
+	dropped := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{otherCookie}, nil)
 	if dropped.Code != http.StatusUnauthorized {
 		t.Fatalf("other session after update status = %d body = %s", dropped.Code, dropped.Body.String())
 	}

@@ -345,6 +345,33 @@ func TestMonitorJobKeepsMinuteDeduplicationAfterCompletion(t *testing.T) {
 	}
 }
 
+func TestCreateExclusiveSessionReplacesPrevious(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	first, err := st.CreateSession(ctx, "127.0.0.1", "first", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.CreateExclusiveSession(ctx, "127.0.0.2", "second", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid, _ := st.ValidateSession(ctx, first); valid {
+		t.Fatal("previous session must be replaced")
+	}
+	if valid, _ := st.ValidateSession(ctx, second); !valid {
+		t.Fatal("exclusive session must validate")
+	}
+	var count int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("session count = %d err=%v", count, err)
+	}
+}
+
 func TestSessionExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
