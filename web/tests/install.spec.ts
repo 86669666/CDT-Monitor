@@ -1684,3 +1684,41 @@ test('settings save surfaces the config_failed envelope', async ({ page }) => {
   await expect(page.locator('.toast--error').filter({ hasText: '配置保存失败' }).first()).toBeVisible()
   expect(saveCalls).toBe(1)
 })
+
+test('settings bark webhook template posts the live webhook contract', async ({ page }) => {
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+      savedWebhook = body.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: 'Bark' }).click()
+  await page.getByLabel('Bark Key').fill('test-key')
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.getByText('Bark 模板已生成，请检查后保存')).toBeVisible()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    provider: 'bark',
+    method: 'GET',
+    request_type: 'JSON',
+    headers: '',
+    url: 'https://api.day.app/test-key/#TITLE#/#MSG#',
+    body: '',
+    secret: '',
+    secret_configured: false,
+  })
+})
