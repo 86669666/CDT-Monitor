@@ -2111,3 +2111,24 @@ test('log heartbeat clear posts the live success contract', async ({ page }) => 
   await expect(page.getByText('暂无日志')).toBeVisible()
   expect(clearCalls).toBe(1)
 })
+
+test('settings save sends the CSRF header from the cdt_csrf cookie', async ({ page }) => {
+  const csrf = 'settings-csrf'
+  let saveCsrf = ''
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCsrf = route.request().headers()[CSRF_HEADER.toLowerCase()] || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.context().addCookies([{ name: CSRF_COOKIE, value: csrf, url: page.url() }])
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCsrf).toBe(csrf)
+})
