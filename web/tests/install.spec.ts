@@ -1487,3 +1487,25 @@ test('settings webhook test posts the live notification job contract', async ({ 
   await expect(page.getByText('测试通知已送达')).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings webhook test surfaces the enqueue_failed envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
