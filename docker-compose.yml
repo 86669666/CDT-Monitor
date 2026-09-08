@@ -28,6 +28,7 @@ services:
     user: "65532:65532"
     pids_limit: 256
     mem_limit: 512m
+    memswap_limit: 512m
     cpus: 1.0
     logging:
       driver: json-file
