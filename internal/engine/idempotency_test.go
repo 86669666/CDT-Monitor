@@ -24,6 +24,65 @@ func dueClock(now time.Time) string {
 	return candidate.Format("15:04")
 }
 
+func TestScheduledStartSkippedWhenAlreadyRunning(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().In(loc)
+	start := dueClock(now)
+	stop := now.Add(6 * time.Hour).Format("15:04")
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.Accounts[0].ScheduleEnabled = true
+		config.Accounts[0].StartTime = start
+		config.Accounts[0].StopTime = stop
+	})
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.UpdateRuntime(ctx, account.ID, 1.25, domain.StatusRunning, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err = eng.processAccount(ctx, account.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = eng.processAccount(ctx, account.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("running scheduled start must not call Aliyun, controls = %#v", got)
+	}
+}
+
+func TestScheduledStopSkippedWhenAlreadyStopped(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().In(loc)
+	stop := dueClock(now)
+	start := now.Add(6 * time.Hour).Format("15:04")
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.Accounts[0].ScheduleEnabled = true
+		config.Accounts[0].StartTime = start
+		config.Accounts[0].StopTime = stop
+	})
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.UpdateRuntime(ctx, account.ID, 1.25, domain.StatusStopped, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err = eng.processAccount(ctx, account.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("stopped scheduled stop must not call Aliyun, controls = %#v", got)
+	}
+}
+
 func TestScheduledStartIsIdempotentAcrossCycles(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {

@@ -404,6 +404,12 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 }
 
 func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Config, account domain.Account, secret, action string, now time.Time) (bool, error) {
+	if action == "start" && (account.InstanceStatus == domain.StatusRunning || inFlight(account.InstanceStatus)) {
+		return false, nil
+	}
+	if action == "stop" && (account.InstanceStatus == domain.StatusStopped || inFlight(account.InstanceStatus)) {
+		return false, nil
+	}
 	key := fmt.Sprintf("schedule:%d:%s:%s", account.ID, now.Format("20060102"), action)
 	fresh, err := e.store.RecordActionEvent(ctx, key, account.ID, "schedule_"+action, "attempting", "")
 	if err != nil || !fresh {
