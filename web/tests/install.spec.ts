@@ -3393,3 +3393,17 @@ test('settings webhook omits empty provider from the live notify contract', asyn
   })
   expect(savedWebhook).not.toHaveProperty('provider')
 })
+
+test('history chart treats a null hourly array as empty', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: {
+    hourly: null,
+    daily: [],
+  } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByText('等待采样数据')).toBeVisible()
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
