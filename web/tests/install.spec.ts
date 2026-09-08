@@ -3067,3 +3067,19 @@ test('settings save posts hourly api_interval', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect(interval).toBe(3600)
 })
+
+test('settings logs treat a null logs array as empty', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    expect(route.request().method()).toBe('GET')
+    expect(new URL(route.request().url()).searchParams.get('tab')).toBe('action')
+    return route.fulfill({ json: { logs: null } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
