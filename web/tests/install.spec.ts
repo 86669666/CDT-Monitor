@@ -3574,3 +3574,27 @@ test('instance refresh disables power controls while the job is in flight', asyn
   await expect(page.getByText('实例状态已刷新')).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('settings save disables submit while the config request is in flight', async ({ page }) => {
+  let saveCalls = 0
+  let releaseSave!: (value?: unknown) => void
+  const saveReady = new Promise((resolve) => { releaseSave = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      await saveReady
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByRole('button', { name: '保存更改' })).toBeDisabled()
+  releaseSave()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
