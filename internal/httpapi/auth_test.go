@@ -1146,3 +1146,26 @@ func TestReadyzIsPublic(t *testing.T) {
 		t.Fatalf("readyz status = %d body = %s", ready.Code, ready.Body.String())
 	}
 }
+
+func TestSaveConfigRejectsInvalidTimezone(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.Timezone = "Not/AZone"
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "config_failed") {
+		t.Fatalf("invalid timezone status = %d body = %s", bad.Code, bad.Body.String())
+	}
+}
