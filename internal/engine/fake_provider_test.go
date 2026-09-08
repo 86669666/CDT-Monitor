@@ -18,6 +18,8 @@ type fakeProvider struct {
 	controlErr error
 	trafficErr error
 	statusErr  error
+	balanceErr error
+	billErr    error
 	controls   []string
 }
 
@@ -52,13 +54,13 @@ func (p *fakeProvider) ControlInstance(_ context.Context, _ domain.Account, _ st
 func (p *fakeProvider) GetAccountBalance(context.Context, domain.Account, string) (aliyun.BillingBalance, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.balance, nil
+	return p.balance, p.balanceErr
 }
 
 func (p *fakeProvider) GetInstanceBill(context.Context, domain.Account, string, string) (aliyun.BillingBill, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.bill, nil
+	return p.bill, p.billErr
 }
 
 func (p *fakeProvider) controlActions() []string {

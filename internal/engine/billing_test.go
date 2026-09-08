@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,5 +58,40 @@ func TestProcessAccountFetchesMissingBillingCache(t *testing.T) {
 	summaries, _, err := engine.Summary(ctx)
 	if err != nil || len(summaries) != 1 || summaries[0].Balance == nil || *summaries[0].Balance != 123.45 || summaries[0].MonthlyCost == nil || *summaries[0].MonthlyCost != 23.456 {
 		t.Fatalf("summary=%#v err=%v", summaries, err)
+	}
+}
+
+func TestBillingErrorIsCachedThenCleared(t *testing.T) {
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.EnableBilling = true
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.balanceErr = errors.New("bss unavailable")
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	summaries, _, err := eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 || summaries[0].BillingError != "bss unavailable" || summaries[0].Balance != nil {
+		t.Fatalf("error summary=%#v err=%v", summaries, err)
+	}
+	logs, err := st.ListLogs(ctx, "action", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range logs {
+		if strings.Contains(strings.ToLower(entry.Message), "secret") {
+			t.Fatalf("billing error log leaked secret: %q", entry.Message)
+		}
+	}
+	provider.balanceErr = nil
+	if _, err = eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	summaries, _, err = eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 || summaries[0].BillingError != "" || summaries[0].Balance == nil || *summaries[0].Balance != 123.45 {
+		t.Fatalf("recovered summary=%#v err=%v", summaries, err)
 	}
 }
