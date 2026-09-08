@@ -830,3 +830,30 @@ test('setup posts account remark instance id and secret', async ({ page }) => {
     remark: '香港主节点',
   })
 })
+
+
+test('init-status failure surfaces the live init_status_failed envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'init_status_failed', message: '无法读取初始化状态' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('无法读取初始化状态')).toBeVisible()
+})
+
+test('login failure surfaces the live login_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+  await page.route('**/api/v1/auth/login', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'login_failed', message: '登录失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('登录失败')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
