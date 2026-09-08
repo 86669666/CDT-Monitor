@@ -43,7 +43,7 @@ Go HTTP API ──► SQLite WAL 状态快照
 
 ## Docker 安装
 
-上游已发布镜像仍可按下面的 Compose / CLI 示例拉取。本 fork（`86669666/CDT-Monitor`）仓库内的 `docker-compose.yml` 改为本地构建 `ghcr.io/86669666/cdt-monitor:local`，不会向 GHCR 或 Docker Hub 推送。本地步骤见 [本地 Docker](docs/local-docker.md)。
+上游已发布镜像仍可按下面的 Compose / CLI 示例拉取。本 fork（`86669666/CDT-Monitor`）仓库内的 `docker-compose.yml` 改为本地构建 `cdt-monitor:local`（没有 GHCR/Hub 前缀，避免 `docker compose push` 有仓库可推）。本地步骤见 [本地 Docker](docs/local-docker.md)。
 
 ### Docker Compose
 

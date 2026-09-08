@@ -42,7 +42,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 - 不申请 `packages: write`。误开 `ENABLE_PRODUCTION_PUBLISH` / `ENABLE_DOCKERHUB_PUBLISH` 也不会 login 或推仓库
 - 本 fork 两个变量都保持未设置
 
-本地开发标签 `ghcr.io/86669666/cdt-monitor:local` 只存在于 [本地 Docker](local-docker.md) 与 `docker-compose.yml`，不会被这个 workflow 推送。Dockerfile 默认 `IMAGE_SOURCE` 与 Compose 均为本 fork；Container Images 的 amd64 verify 传入 `IMAGE_SOURCE=https://github.com/${{ github.repository }}`，仍只 load 本地 `cdt-monitor:verify-amd64`。
+本地开发标签 `cdt-monitor:local` 只存在于 [本地 Docker](local-docker.md) 与 `docker-compose.yml`（无 GHCR/Hub 前缀），不会被这个 workflow 推送。Dockerfile 默认 `IMAGE_SOURCE` 与 Compose 均为本 fork；Container Images 的 amd64 verify 传入 `IMAGE_SOURCE=https://github.com/${{ github.repository }}`，仍只 load 本地 `cdt-monitor:verify-amd64`。
 
 ## 触发面
 

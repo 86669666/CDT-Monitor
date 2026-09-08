@@ -5,10 +5,10 @@
 本地标签：
 
 ```text
-ghcr.io/86669666/cdt-monitor:local
+cdt-monitor:local
 ```
 
-该名字只是为了标明 fork 来源。仓库内 `docker-compose.yml` 使用 `pull_policy: build`，因此 Compose 只会在本机构建，不会从 GHCR 拉取这个标签，也不要把这个标签 `docker push` / `docker compose push` 出去。
+不要用 `ghcr.io/...` 或 `qninq/...` 当本机 Compose 的 `image:`。仓库内 `docker-compose.yml` 使用 `pull_policy: build` 和无名仓库标签，因此 Compose 只会在本机构建；`docker compose push` 没有 GHCR/Hub 目标。fork 来源写在镜像 LABEL `org.opencontainers.image.source`，不写在 image 名里。
 
 ## 镜像形态（现状）
 
@@ -23,7 +23,7 @@ ghcr.io/86669666/cdt-monitor:local
 
 `.dockerignore` 排除 `.github/`、`android-widget/`、`.codex/`、keystore/env、`master.key`、SQLite 文件以及历史 PHP/static 路径。Go builder 的 `COPY . ./` 只需要 `cmd/`、`internal/`、`web/` 与 Go module 文件；本机向导写出来的密钥/库不能进构建上下文。CI 或小组件变更不应打爆编译层缓存。最终 `scratch` 镜像仍然只有二进制、CA 证书和 `/data`。
 
-默认 `org.opencontainers.image.source` 是本 fork `https://github.com/86669666/CDT-Monitor`（`docker build` 不传参时也用这个值，不再默认写成上游 `wang4386`）。Compose 仍显式传入同一 `IMAGE_SOURCE`，只影响本地标签 `ghcr.io/86669666/cdt-monitor:local` 的镜像 LABEL，不会 push。镜像 LABEL 另声明 `org.opencontainers.image.licenses=MIT`，与仓库 LICENSE 一致。
+默认 `org.opencontainers.image.source` 是本 fork `https://github.com/86669666/CDT-Monitor`（`docker build` 不传参时也用这个值，不再默认写成上游 `wang4386`）。Compose 仍显式传入同一 `IMAGE_SOURCE`，只影响本地标签 `cdt-monitor:local` 的镜像 LABEL，不会 push。镜像 LABEL 另声明 `org.opencontainers.image.licenses=MIT`，与仓库 LICENSE 一致。
 
 ## 启动
 
@@ -43,7 +43,7 @@ docker compose logs -f cdt-monitor
 等价的显式 build：
 
 ```bash
-docker build   --build-arg VERSION=local   --build-arg COMMIT="$(git rev-parse --short HEAD)"   --build-arg BUILT_AT=local   -t ghcr.io/86669666/cdt-monitor:local   .
+docker build   --build-arg VERSION=local   --build-arg COMMIT="$(git rev-parse --short HEAD)"   --build-arg BUILT_AT=local   -t cdt-monitor:local   .
 ```
 
 不要加 `--push`。不要登录 GHCR / Docker Hub 来完成本地验证。
@@ -58,7 +58,7 @@ TZ=Asia/Shanghai docker compose up -d
 
 ## 本机验证范围
 
-- 已验证：`docker compose config` 解析为本地 build + `ghcr.io/86669666/cdt-monitor:local`。
+- 已验证：`docker compose config` 解析为本地 build + `ghcr.io/86669666/cdt-monitor:local`（当时的 Compose image 名；现已改为无仓库前缀的 `cdt-monitor:local`）。
 - 已验证：`docker compose build --dry-run`。
 - 已验证（`2026-09-07T22:42Z` / 2026-09-08 06:42 Asia/Taipei）：`docker compose build` 在本机打出 `ghcr.io/86669666/cdt-monitor:local`（`sha256:ef9fbb591a54…`，约 13.2MB，`USER 65532:65532`，fork `IMAGE_SOURCE`，镜像 HEALTHCHECK 存在）。`docker run --rm --network none … version` 输出 `cdt-monitor local (unknown, local, linux/amd64)`。
 - **没有** `docker push` / `docker compose push` / GHCR login。不要把这次本机构建写成已经发布。
@@ -70,6 +70,7 @@ TZ=Asia/Shanghai docker compose up -d
 - 续推（`2026-09-08T07:01Z` / 2026-09-08 15:01 Asia/Taipei）：这台 ops 工作区当前 **没有** Docker CLI，也没有 JDK。上面的 compose/`/healthz` 记录是历史证据，本轮没有重跑 `docker compose config` 或镜像构建。不要把 Dockerfile 默认 `IMAGE_SOURCE` 改成 fork 写成一次新的本地运行证明。
 - 续推（`2026-09-08T14:54Z` / 2026-09-08 22:54 Asia/Taipei）：Compose 的 `COMMIT` 可从环境覆盖，默认仍是 `unknown`。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 - 续推（`2026-09-08T15:40Z` / 2026-09-08 23:40 Asia/Taipei）：`.dockerignore` 增加 `master.key` 与 `*.sqlite*`，避免本机数据文件进入 `COPY . ./`。本机仍无 Docker CLI，没有重跑构建。
+- 续推（`2026-09-08T15:43Z` / 2026-09-08 23:43 Asia/Taipei）：Compose `image` 改为 `cdt-monitor:local`，去掉 GHCR 前缀，避免 `docker compose push` 有仓库可推。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 
 ## 和上游安装文档的关系
 
