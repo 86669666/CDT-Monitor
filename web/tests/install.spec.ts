@@ -3803,3 +3803,23 @@ test('settings API key create stays disabled without a name', async ({ page }) =
   await expect(page.getByRole('button', { name: '创建 Key' })).toBeDisabled()
   expect(createCalls).toBe(0)
 })
+
+test('settings API key create stays disabled without a scope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({ status: 201, json: { key: { id: 1, name: '桌面小组件', scopes: ['widget:read'], created_at: new Date().toISOString() }, token: 'cdt_token' } })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByText('读取状态', { exact: true }).click()
+  await expect(page.getByRole('button', { name: '创建 Key' })).toBeDisabled()
+  expect(createCalls).toBe(0)
+})
