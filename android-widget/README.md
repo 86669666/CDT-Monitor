@@ -35,7 +35,7 @@ cd android-widget
 | --- | --- |
 | JDK 17 / `java` / `javac` | 不存在，`JAVA_HOME` 为空 |
 | Android SDK 35 / `sdkmanager` / `adb` | 不在 PATH |
-| Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 8.10.2，`distributionSha256Sum` 已钉死） |
+| Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 8.10.2，checksum 已钉死，`org.gradle.daemon=false`） |
 | Gradle Wrapper | 已加入 `gradlew` / `gradle-wrapper.jar`；本机仍缺 JDK，所以 **没有** 跑过 `./gradlew` |
 
 因此本机出包仍是 blocker（缺 JDK/SDK），不要把 Wrapper 入库写成 APK 已验证。支持的构建路径仍是手动触发 `.github/workflows/android-widget.yml`（现改为 `./gradlew`）。签名密钥只通过 Actions secrets 注入，keystore 不要进 git。
