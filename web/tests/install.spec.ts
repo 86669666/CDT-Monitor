@@ -3193,3 +3193,15 @@ test('settings API keys hide revoked keys from the live list contract', async ({
   await expect(page.locator('.key-row')).toContainText('桌面小组件')
   await expect(page.getByText('已撤销 Key')).toHaveCount(0)
 })
+
+test('settings API keys treat a null keys array as empty', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: null } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.getByRole('button', { name: '创建 Key' })).toBeVisible()
+  await expect(page.locator('.key-row')).toHaveCount(0)
+})
