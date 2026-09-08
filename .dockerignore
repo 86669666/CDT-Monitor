@@ -31,3 +31,7 @@ web/playwright-report
 *.jks
 *.keystore
 local.properties
+master.key
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
