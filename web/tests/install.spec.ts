@@ -3628,3 +3628,29 @@ test('login disables submit while the auth request is in flight', async ({ page 
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
   expect(loginCalls).toBe(1)
 })
+
+test('wizard disables finish while setup is in flight', async ({ page }) => {
+  let setupCalls = 0
+  let releaseSetup!: (value?: unknown) => void
+  const setupReady = new Promise((resolve) => { releaseSetup = resolve })
+  await mockInitStatus(page, false)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/setup', async (route) => {
+    setupCalls += 1
+    expect(route.request().method()).toBe('POST')
+    await setupReady
+    return route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('button', { name: '完成安装' })).toBeDisabled()
+  releaseSetup()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(setupCalls).toBe(1)
+})
