@@ -201,6 +201,9 @@ func billingSite(siteType string) string {
 }
 
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
+	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
+		return nil, errors.New("access key is required")
+	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		result, retry, err := c.callOnce(ctx, accessKeyID, secret, region, host, version, action, extras)

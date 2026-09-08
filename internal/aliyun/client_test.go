@@ -82,6 +82,27 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	}
 }
 
+func TestCallRequiresAccessKey(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{RegionID: "cn-hongkong"}, "secret")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty access key err=%v hits=%d", err, hits)
+	}
+	_, err = client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty secret err=%v hits=%d", err, hits)
+	}
+	err = client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "  ", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "start", "KeepCharging")
+	if err == nil || hits != 0 {
+		t.Fatalf("blank access key err=%v hits=%d", err, hits)
+	}
+}
+
 func TestCallErrorsRedactAccessKeyMaterial(t *testing.T) {
 	secret := "super-secret-ak-value"
 	accessKeyID := "LTAIleakkey"
