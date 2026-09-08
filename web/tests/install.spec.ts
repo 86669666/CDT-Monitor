@@ -964,3 +964,25 @@ test('refresh-all surfaces the enqueue_failed envelope after login', async ({ pa
   await expect(page.getByText('任务提交失败')).toBeVisible()
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+
+test('failed start job surfaces the live job error', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-fail', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('start-fail', 'failed', 1)
+    failed.error = '开机失败'
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.getByText('开机失败')).toBeVisible()
+})
