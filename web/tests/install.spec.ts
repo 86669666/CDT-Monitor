@@ -1585,3 +1585,33 @@ test('settings API keys surface the api_keys_failed envelope', async ({ page }) 
   await expect(page.locator('.inline-error')).toContainText('API Key 列表加载失败')
   await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
 })
+
+test('settings API key revoke posts the live success contract', async ({ page }) => {
+  const existing = {
+    id: 4,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    return route.fulfill({ json: { keys: revokeCalls > 0 ? [] : [existing] } })
+  })
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    expect(route.request().method()).toBe('DELETE')
+    expect(route.request().url()).toMatch(/\/api\/v1\/api-keys\/4$/)
+    revokeCalls += 1
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.getByText('API Key 已撤销')).toBeVisible()
+  await expect(page.locator('.key-row')).toHaveCount(0)
+  expect(revokeCalls).toBe(1)
+})
