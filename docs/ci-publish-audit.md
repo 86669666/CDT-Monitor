@@ -14,6 +14,18 @@
 引用形式一律是 `${{ secrets.NAME }}` 或 `GITHUB_TOKEN`。不要把 keystore、Docker Hub 密码或云账号写进仓库。
 Verify / widget / container / release 的 `actions/checkout` 设置 `persist-credentials: false` 和 `fetch-depth: 1`，避免后续步骤拿到可推送的 `GITHUB_TOKEN`。`Automatic Release` 的 tag job 仍保留凭据，因为它在开启发布时需要 `git push` tag；本 fork 默认不开启。
 
+`GITHUB_TOKEN` 默认只有 `contents: read`。`contents: write` 只给实际打 tag / 写 GitHub Release 的 job，且仍受 `ENABLE_PRODUCTION_PUBLISH` 门闩：
+
+| Job | Token | 何时运行 |
+| --- | --- | --- |
+| `CI` / widget / container | `contents: read` | 校验路径；不 login、不 push |
+| `Automatic Release` `tag` | `contents: write` | 仅发布开启时打 tag |
+| `Release Binaries` `frontend` / `build` | `contents: read` | 仅发布开启；artifact 保留 7 天 |
+| `Release Binaries` `publish` | `contents: write` | 仅发布开启；写 GitHub Release |
+| container caller in `Automatic Release` | `contents: read` | 不申请 `packages: write` |
+
+本 fork 的 Container / Automatic Release 都不申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，`GITHUB_TOKEN` 也推不了 GHCR。
+
 第三方 Actions 已按当前 major tag 解析并钉到 commit SHA（注释里保留 `v4`/`v5` 等标签名）。这不开启发布，也不等于远端 CI 已经跑过。
 各 job 加了 `timeout-minutes`（verify 20、widget 30、container 60、release 分段 15/20/10），避免一旦 Actions 能跑时挂死占用分钟。
 
@@ -26,7 +38,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 
 变更后：
 
-- GHCR 名称仍随 `repository_owner`，但只有仓库变量 `ENABLE_PRODUCTION_PUBLISH=true` 才会 login / push
+- GHCR 名称仍随 `repository_owner`；login / push 步骤仍要 `ENABLE_PRODUCTION_PUBLISH=true`，且本 fork 不申请 `packages: write`，误开变量也推不了 GHCR
 - `qninq/cdt-monitor` 仅当 `ENABLE_DOCKERHUB_PUBLISH=true` 时写入 metadata
 - 本 fork 两个变量都保持未设置
 
@@ -37,9 +49,9 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | Workflow | 原行为 | 本 fork |
 | --- | --- | --- |
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README 变更跳过 verify。仍不发布 |
-| `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true` |
-| `Release Binaries` | tag / 手动 / 被自动发布调用 | 同上变量，否则整条 job 跳过 |
-| `Container Images` | `dev`/tag 构建后 `push: true` | 未开启发布时只做 linux/amd64 load 校验，跳过 QEMU/arm64；push 仍要变量 |
+| `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true`。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
+| `Release Binaries` | tag / 手动 / 被自动发布调用 | 同上变量，否则整条 job 跳过。前端与二进制 artifact 保留 7 天；只有 `publish` job 拿 `contents: write` |
+| `Container Images` | `dev`/tag 构建后 `push: true` | 未开启发布时只做 linux/amd64 load 校验，跳过 QEMU/arm64；push 仍要变量。workflow token 只有 `contents: read`，没有 `packages: write` |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
 
 不要把一次绿色 CI 或一次本地 Docker 构建写成已经发布 GHCR / Docker Hub。
@@ -65,3 +77,9 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 - 默认分支 `main` 仍是上游未加发布开关的 `auto-release.yml`。为了“注册 workflow”去合入 `main` 可能触发自动打 tag / GHCR，**不要这样做**
 
 因此远端 CI 记为外部 blocker，不是 YAML 语法问题。candidate SHA 不能写成绿色。下一步只能由能在 GitHub UI 里确认 fork Actions 已真正开始跑的人处理，或由 integration owner 用带 `[skip release]` 的受控合入。不要设置发布变量，不要打生产 tag。
+
+续推证据（`2026-09-08T04:41Z` / 2026-09-08 12:41 Asia/Taipei）：
+
+- `actions/runs` 仍是 `total_count: 0`
+- `gh workflow list` 仍为空；仓库 Actions variables 为 `total_count: 0`（`ENABLE_PRODUCTION_PUBLISH` / `ENABLE_DOCKERHUB_PUBLISH` 未设置）
+- draft PR https://github.com/86669666/CDT-Monitor/pull/1 仍开着；不要把 contents 权限收口或 artifact 7 天过期写成远端 CI 已绿或已经发布 GHCR
