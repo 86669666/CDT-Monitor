@@ -151,3 +151,36 @@ func TestProcessJobsUnknownNotifyChannelRequeues(t *testing.T) {
 		t.Fatalf("status=%q error=%q", status, jobErr)
 	}
 }
+
+func TestProcessJobsFailedWebhookTestNotifyRequeues(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("upstream down"))
+	}))
+	defer server.Close()
+	st, _ := setupAccount(t, func(config *domain.Config) {
+		config.Notifications.Webhook.Enabled = true
+		config.Notifications.Webhook.URL = server.URL
+		config.Notifications.Webhook.Method = "POST"
+		config.Notifications.Webhook.Type = "JSON"
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobTestNotify, 0, ParseNotifyPayload("webhook"), "notify-fail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || !strings.Contains(jobErr, "webhook HTTP 502") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("notify test must not call Aliyun, controls=%#v", got)
+	}
+}
