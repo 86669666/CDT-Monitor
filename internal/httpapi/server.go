@@ -120,7 +120,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ready(r.Context()); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "database_not_ready", err.Error())
+		writeError(w, http.StatusServiceUnavailable, "database_not_ready", "数据库暂时不可用")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ready"})
@@ -129,7 +129,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 func (s *Server) initStatus(w http.ResponseWriter, r *http.Request) {
 	initialized, err := s.store.IsInitialized(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "init_status_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "init_status_failed", "无法读取初始化状态")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"initialized": initialized})
@@ -188,7 +188,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	failures, err := s.store.RecentLoginFailures(r.Context(), ip, time.Now().Add(-15*time.Minute))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "login_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "login_failed", "登录失败")
 		return
 	}
 	if failures >= 5 {

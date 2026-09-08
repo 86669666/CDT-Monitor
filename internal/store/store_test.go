@@ -574,6 +574,13 @@ func TestSQLiteUsesWALAndBusyTimeout(t *testing.T) {
 	if timeout != 5000 {
 		t.Fatalf("busy_timeout = %d", timeout)
 	}
+	var foreignKeys int
+	if err = st.db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatal(err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys = %d", foreignKeys)
+	}
 }
 
 func TestTwoStoresCannotClaimTheSameJob(t *testing.T) {

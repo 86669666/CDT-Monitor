@@ -588,3 +588,32 @@ func TestControlJobPayloadIsNotExposedOverHTTP(t *testing.T) {
 		t.Fatalf("job JSON leaked control payload: %s", body)
 	}
 }
+
+func TestPublicEndpointsHideDatabaseErrors(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	leak := dir
+	ready := doRequest(t, handler, http.MethodGet, "/readyz", "", nil, nil)
+	if ready.Code != http.StatusServiceUnavailable || strings.Contains(ready.Body.String(), leak) || strings.Contains(strings.ToLower(ready.Body.String()), "sqlite") {
+		t.Fatalf("readyz leaked internals: status=%d body=%s", ready.Code, ready.Body.String())
+	}
+	init := doRequest(t, handler, http.MethodGet, "/api/v1/system/init-status", "", nil, nil)
+	if init.Code != http.StatusInternalServerError || strings.Contains(init.Body.String(), leak) || strings.Contains(strings.ToLower(init.Body.String()), "sqlite") {
+		t.Fatalf("init-status leaked internals: status=%d body=%s", init.Code, init.Body.String())
+	}
+	login := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"x"}`, nil, nil)
+	if login.Code != http.StatusInternalServerError || strings.Contains(login.Body.String(), leak) || strings.Contains(strings.ToLower(login.Body.String()), "sqlite") {
+		t.Fatalf("login leaked internals: status=%d body=%s", login.Code, login.Body.String())
+	}
+	health := doRequest(t, handler, http.MethodGet, "/healthz", "", nil, nil)
+	if health.Code != http.StatusOK {
+		t.Fatalf("healthz status = %d body = %s", health.Code, health.Body.String())
+	}
+}
