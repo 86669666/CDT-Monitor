@@ -95,3 +95,47 @@ func TestBillingErrorIsCachedThenCleared(t *testing.T) {
 		t.Fatalf("recovered summary=%#v err=%v", summaries, err)
 	}
 }
+
+func TestBillingErrorRedactsAccessKeyMaterial(t *testing.T) {
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.EnableBilling = true
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.balanceErr = errors.New("bss rejected secret for LTAItest")
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	summaries, _, err := eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 {
+		t.Fatalf("summary=%#v err=%v", summaries, err)
+	}
+	msg := summaries[0].BillingError
+	if strings.Contains(msg, "secret") || strings.Contains(msg, "LTAItest") {
+		t.Fatalf("billing error leaked material: %q", msg)
+	}
+	if !strings.Contains(msg, "[redacted]") || !strings.Contains(msg, "LTAItes***") {
+		t.Fatalf("billing error was not redacted: %q", msg)
+	}
+	logs, err := st.ListLogs(ctx, "action", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawBilling bool
+	for _, entry := range logs {
+		if strings.Contains(strings.ToLower(entry.Message), "secret") || strings.Contains(entry.Message, "LTAItest") {
+			t.Fatalf("billing error log leaked material: %q", entry.Message)
+		}
+		if strings.Contains(entry.Message, "账单查询失败") {
+			sawBilling = true
+			if !strings.Contains(entry.Message, "[redacted]") {
+				t.Fatalf("billing log was not redacted: %q", entry.Message)
+			}
+		}
+	}
+	if !sawBilling {
+		t.Fatal("expected a redacted billing error log")
+	}
+}

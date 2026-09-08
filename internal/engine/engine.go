@@ -296,14 +296,14 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		wait.Wait()
 		if trafficErr != nil {
 			traffic = account.TrafficUsed
-			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %v", masked(account.AccessKeyID), trafficErr))
+			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(trafficErr, account.AccessKeyID, secret)))
 		}
 		if statusErr != nil || status == "" {
 			if statusErr == nil {
 				statusErr = errors.New("empty instance status")
 			}
 			status = account.InstanceStatus
-			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %v", masked(account.AccessKeyID), statusErr))
+			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(statusErr, account.AccessKeyID, secret)))
 		}
 		updatedAt := time.Now().UTC()
 		if trafficErr != nil && statusErr != nil {
@@ -341,7 +341,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			if freshStop {
 				if err = e.provider.ControlInstance(ctx, account, secret, "stop", config.ShutdownMode); err != nil {
 					_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
-					return "", err
+					return "", providerError(err, account.AccessKeyID, secret)
 				}
 				status = domain.StatusStopping
 				_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
@@ -370,7 +370,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		if fresh {
 			if err = e.provider.ControlInstance(ctx, account, secret, "start", config.ShutdownMode); err != nil {
 				_ = e.store.DeleteActionEvent(ctx, key)
-				return "", err
+				return "", providerError(err, account.AccessKeyID, secret)
 			}
 			status = domain.StatusStarting
 			_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
@@ -391,7 +391,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 		if force || now.Hour()%6 == 0 || !balanceCached || !billCached {
 			if billingErr := e.refreshBilling(ctx, account, secret, now); billingErr != nil {
-				_ = e.store.AddLog(ctx, "error", fmt.Sprintf("账单查询失败 [%s]: %v", masked(account.AccessKeyID), billingErr))
+				_ = e.store.AddLog(ctx, "error", fmt.Sprintf("账单查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(billingErr, account.AccessKeyID, secret)))
 			}
 		}
 	}
@@ -411,7 +411,7 @@ func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Confi
 	}
 	if err = e.provider.ControlInstance(ctx, account, secret, action, config.ShutdownMode); err != nil {
 		_ = e.store.DeleteActionEvent(ctx, key)
-		return false, err
+		return false, providerError(err, account.AccessKeyID, secret)
 	}
 	status := domain.StatusStarting
 	if action == "stop" {
@@ -453,7 +453,7 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 		return "", err
 	}
 	if err = e.provider.ControlInstance(ctx, account, secret, action, config.ShutdownMode); err != nil {
-		return "", err
+		return "", providerError(err, account.AccessKeyID, secret)
 	}
 	status := domain.StatusStarting
 	if action == "stop" {
@@ -475,7 +475,7 @@ func (e *Engine) accountLock(accountID int64) *sync.Mutex {
 func (e *Engine) refreshBilling(ctx context.Context, account domain.Account, secret string, now time.Time) error {
 	cycle := now.Format("2006-01")
 	setBillingError := func(err error) {
-		_ = e.store.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": err.Error()})
+		_ = e.store.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": sanitizeProviderError(err, account.AccessKeyID, secret)})
 	}
 	var balance aliyun.BillingBalance
 	cached, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 6*time.Hour, &balance)
@@ -601,6 +601,27 @@ func masked(accessKeyID string) string {
 		return accessKeyID + "***"
 	}
 	return accessKeyID[:7] + "***"
+}
+
+func sanitizeProviderError(err error, accessKeyID, secret string) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if secret != "" {
+		msg = strings.ReplaceAll(msg, secret, "[redacted]")
+	}
+	if accessKeyID != "" {
+		msg = strings.ReplaceAll(msg, accessKeyID, masked(accessKeyID))
+	}
+	return msg
+}
+
+func providerError(err error, accessKeyID, secret string) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(sanitizeProviderError(err, accessKeyID, secret))
 }
 
 func newEvent(eventType, title, summary string, accountID int64, fields map[string]string) domain.NotificationEvent {

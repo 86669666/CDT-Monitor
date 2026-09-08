@@ -216,3 +216,30 @@ func TestProcessJobsRecoversFromControlPanic(t *testing.T) {
 		t.Fatalf("follow-up refresh status=%q err=%v", refreshStatus, err)
 	}
 }
+
+func TestProcessJobsControlErrorRedactsAccessKeyMaterial(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.controlErr = errors.New("ecs denied secret for LTAItest")
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobControlInstance, account.ID, ParseControlPayload("start", "手动"), JobUniqueKey(JobControlInstance, account.ID, "start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || jobErr == "" {
+		t.Fatalf("failed control status=%q error=%q", status, jobErr)
+	}
+	if strings.Contains(jobErr, "secret") || strings.Contains(jobErr, "LTAItest") {
+		t.Fatalf("job error leaked material: %q", jobErr)
+	}
+	if !strings.Contains(jobErr, "[redacted]") || !strings.Contains(jobErr, "LTAItes***") {
+		t.Fatalf("job error was not redacted: %q", jobErr)
+	}
+}
