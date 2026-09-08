@@ -1742,3 +1742,36 @@ test('instance refresh surfaces the job_failed envelope', async ({ page }) => {
   await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('settings API key create posts all live scopes', async ({ page }) => {
+  const created = {
+    id: 5,
+    name: '桌面小组件',
+    scopes: ['widget:read', 'instance:control', 'cron:run'],
+    created_at: new Date().toISOString(),
+  }
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', async (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      expect(JSON.parse(route.request().postData() || '{}')).toEqual({
+        name: '桌面小组件',
+        scopes: ['widget:read', 'instance:control', 'cron:run'],
+      })
+      return route.fulfill({ status: 201, json: { key: created, token: 'cdt_scoped_token' } })
+    }
+    return route.fulfill({ json: { keys: createCalls > 0 ? [created] : [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByText('控制实例', { exact: true }).click()
+  await page.getByText('触发任务', { exact: true }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.getByText('仅显示一次')).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('widget:read · instance:control · cron:run')
+  expect(createCalls).toBe(1)
+})
