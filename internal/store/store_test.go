@@ -379,6 +379,28 @@ func TestUpdateAdminPasswordKeepsCurrentSessionOnly(t *testing.T) {
 	}
 }
 
+func TestPruneDeletesOldHeartbeatLogs(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES('heartbeat','old',unixepoch()-259201),('heartbeat','new',unixepoch()),('audit','keep',unixepoch()-259201)`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var heartbeat, audit int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM logs WHERE type='heartbeat'`).Scan(&heartbeat); err != nil || heartbeat != 1 {
+		t.Fatalf("heartbeat count = %d err=%v", heartbeat, err)
+	}
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM logs WHERE type='audit'`).Scan(&audit); err != nil || audit != 1 {
+		t.Fatalf("audit count = %d err=%v", audit, err)
+	}
+}
+
 func TestPruneDeletesOldLoginAttempts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

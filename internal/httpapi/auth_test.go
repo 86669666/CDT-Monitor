@@ -1017,3 +1017,35 @@ func TestSaveConfigRejectsInvalidShutdownAndInterval(t *testing.T) {
 		t.Fatalf("interval 29 status = %d body = %s", interval.Code, interval.Body.String())
 	}
 }
+
+func TestRecoverHidesPanicDetails(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	handler := server.recover(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("secret-panic-detail")
+	}))
+	request := httptest.NewRequest(http.MethodGet, "http://monitor.example.com/panic", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "internal_error") {
+		t.Fatalf("panic status = %d body = %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "secret-panic-detail") {
+		t.Fatalf("panic leaked: %s", response.Body.String())
+	}
+}
+
+func TestInitStatusIsPublic(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	before := doRequest(t, testAPIHandler(t, st), http.MethodGet, "/api/v1/system/init-status", "", nil, nil)
+	if before.Code != http.StatusOK || !strings.Contains(before.Body.String(), `"initialized":false`) {
+		t.Fatalf("before setup status = %d body = %s", before.Code, before.Body.String())
+	}
+	after := doRequest(t, testAPIHandler(t, initializedAuthStore(t)), http.MethodGet, "/api/v1/system/init-status", "", nil, nil)
+	if after.Code != http.StatusOK || !strings.Contains(after.Body.String(), `"initialized":true`) {
+		t.Fatalf("after setup status = %d body = %s", after.Code, after.Body.String())
+	}
+}
