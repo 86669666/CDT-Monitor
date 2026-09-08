@@ -1867,3 +1867,28 @@ test('settings billing enable starts account refresh', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect(refreshCalls).toBe(1)
 })
+
+test('settings billing enable keeps save when refresh enqueue fails', async ({ page }) => {
+  const unloaded = { ...dashboardConfig, enable_billing: false }
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, unloaded)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: unloaded })
+  })
+  await page.route('**/api/v1/accounts/1/refresh', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByText('账单与余额', { exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已保存，账单将在下次同步时更新')).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
