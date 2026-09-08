@@ -481,32 +481,36 @@ func (e *Engine) notificationWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for {
-				item, err := e.store.ClaimOutbox(ctx)
-				if errors.Is(err, sql.ErrNoRows) {
-					break
-				}
-				if err != nil {
-					e.logger.Error("claim notification", "error", err)
-					break
-				}
-				var event domain.NotificationEvent
-				if err = json.Unmarshal([]byte(item.Payload), &event); err == nil {
-					var config domain.Config
-					config, err = e.store.GetConfig(ctx)
-					if err == nil {
-						sendCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-						err = e.notify.Send(sendCtx, item.Channel, event, config)
-						cancel()
-					}
-				}
-				if err != nil {
-					_ = e.store.FailOutbox(ctx, item, err)
-					continue
-				}
-				_ = e.store.CompleteOutbox(ctx, item.ID)
+			e.flushOutbox(ctx)
+		}
+	}
+}
+
+func (e *Engine) flushOutbox(ctx context.Context) {
+	for {
+		item, err := e.store.ClaimOutbox(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return
+		}
+		if err != nil {
+			e.logger.Error("claim notification", "error", err)
+			return
+		}
+		var event domain.NotificationEvent
+		if err = json.Unmarshal([]byte(item.Payload), &event); err == nil {
+			var config domain.Config
+			config, err = e.store.GetConfig(ctx)
+			if err == nil {
+				sendCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+				err = e.notify.Send(sendCtx, item.Channel, event, config)
+				cancel()
 			}
 		}
+		if err != nil {
+			_ = e.store.FailOutbox(ctx, item, err)
+			continue
+		}
+		_ = e.store.CompleteOutbox(ctx, item.ID)
 	}
 }
 
