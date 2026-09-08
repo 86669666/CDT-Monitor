@@ -32,7 +32,7 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "43210:8080"
+      - "127.0.0.1:43210:8080"
     environment:
       CDT_DATA_DIR: /data
       CDT_LISTEN: :8080
