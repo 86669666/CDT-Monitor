@@ -1032,6 +1032,34 @@ func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
 	}
 }
 
+func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 8, 16, 0, 0, 0, time.UTC)
+	if err = st.AddTrafficStats(ctx, 1, 11, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(ctx, 2, 22, now); err != nil {
+		t.Fatal(err)
+	}
+	one, err := st.History(ctx, 1)
+	if err != nil || len(one.Hourly) != 1 || one.Hourly[0].Traffic != 11 {
+		t.Fatalf("account 1 history = %#v err=%v", one.Hourly, err)
+	}
+	two, err := st.History(ctx, 2)
+	if err != nil || len(two.Hourly) != 1 || two.Hourly[0].Traffic != 22 {
+		t.Fatalf("account 2 history = %#v err=%v", two.Hourly, err)
+	}
+	missing, err := st.History(ctx, 3)
+	if err != nil || missing.Hourly == nil || len(missing.Hourly) != 0 || missing.Daily == nil || len(missing.Daily) != 0 {
+		t.Fatalf("missing account history = %#v err=%v", missing, err)
+	}
+}
+
 func TestOutboxRetriesThenExhausts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

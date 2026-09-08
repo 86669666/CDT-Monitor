@@ -1130,6 +1130,37 @@ func TestSystemInfoRequiresAdminAndHistoryRejectsBadIDs(t *testing.T) {
 	}
 }
 
+func TestHistoryDoesNotLeakOtherAccountTraffic(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	accounts, err := st.ListAccounts(t.Context())
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	now := time.Date(2026, 9, 8, 16, 0, 0, 0, time.UTC)
+	if err = st.AddTrafficStats(t.Context(), accounts[0].ID, 11, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(t.Context(), accounts[0].ID+99, 99, now); err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := doRequest(t, handler, http.MethodGet, "/api/v1/accounts/"+itoa(accounts[0].ID)+"/history", "", nil, map[string]string{"X-API-Key": token})
+	if own.Code != http.StatusOK || !strings.Contains(own.Body.String(), `"traffic":11`) {
+		t.Fatalf("own history status = %d body = %s", own.Code, own.Body.String())
+	}
+	if strings.Contains(own.Body.String(), `"traffic":99`) {
+		t.Fatalf("own history leaked other account: %s", own.Body.String())
+	}
+	missing := doRequest(t, handler, http.MethodGet, "/api/v1/accounts/3/history", "", nil, map[string]string{"X-API-Key": token})
+	if missing.Code != http.StatusOK || !strings.Contains(missing.Body.String(), `"hourly":[]`) || strings.Contains(missing.Body.String(), `"traffic":11`) {
+		t.Fatalf("missing history status = %d body = %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestClearLogsRequiresAdminCSRF(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
