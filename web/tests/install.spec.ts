@@ -2082,3 +2082,32 @@ test('log clear posts the live success contract', async ({ page }) => {
   await expect(page.getByText('暂无日志')).toBeVisible()
   expect(clearCalls).toBe(1)
 })
+
+test('log heartbeat clear posts the live success contract', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    const tab = new URL(route.request().url()).searchParams.get('tab')
+    if (route.request().method() === 'DELETE') {
+      expect(tab).toBe('heartbeat')
+      clearCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    if (tab === 'heartbeat') {
+      return route.fulfill({ json: { logs: clearCalls > 0 ? [] : [{ id: 2, type: 'heartbeat', message: '待清空心跳', created_at: new Date().toISOString() }] } })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '动作日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('动作日志')).toBeVisible()
+  await page.getByRole('button', { name: '心跳' }).click()
+  await expect(page.getByText('待清空心跳')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.getByText('日志已清空')).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
