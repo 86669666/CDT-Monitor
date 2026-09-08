@@ -61,6 +61,7 @@ TZ=Asia/Shanghai docker compose up -d
 - 已验证（`2026-09-07T23:02Z` / 2026-09-08 07:02 Asia/Taipei）：`docker compose up -d --no-build` 后容器 `healthy`，`curl http://127.0.0.1:43210/healthz` 返回 `200 {"status":"ok"}`，进程用户 `65532:65532`，`CapDrop=ALL`，`no-new-privileges`。随后 `docker compose down` 并删除 named volume，避免把本机 `master.key` 留在宿主机。
 
 - 已验证（`2026-09-08T00:40Z` 量级）：`read_only: true` + tmpfs `/tmp` 下 `GET /healthz` 仍为 `200 {"status":"ok"}`，`ReadonlyRootfs=true`。测试后 `compose down` 并删除 volume。
+- 已验证（`2026-09-08T03:52Z` / 2026-09-08 11:52 Asia/Taipei）：当前 Compose（`user 65532:65532`、`read_only`、loopback `127.0.0.1:43210`）`up -d --no-build` 后 `healthy`，`GET /healthz` `200 {"status":"ok"}`，inspect 为 `User=65532:65532`、`ReadonlyRootfs=true`、`HostIp=127.0.0.1`。随后 down 并删除 volume。
 - 这只证明本地镜像能提供 `/healthz`，不是安装向导、阿里云账号或 GHCR 发布。未做远端 CI。
 
 ## 和上游安装文档的关系
