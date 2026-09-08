@@ -50,6 +50,8 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 - 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD` 去推 `qninq/cdt-monitor`。
 - 不要 force-push，不要用本分支做 production deploy。
 
+Dependabot 只跟踪 `github-actions` 与根目录 `docker`。它会开 PR，不会自动设置 `ENABLE_PRODUCTION_PUBLISH`。合并 Dependabot 前仍要核对 SHA pin，且不要借机打开发布变量。
+
 ## 远端质量门（尚未证明）
 
 截至 `2026-09-07T20:50Z`，`gh api repos/86669666/CDT-Monitor/actions/runs` 返回 `total_count: 0`。仓库 Actions 权限 API 为 enabled，但从未观察到 run。
