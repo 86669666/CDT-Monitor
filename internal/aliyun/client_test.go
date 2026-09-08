@@ -509,3 +509,34 @@ func TestGetTrafficAcceptsSingleTrafficDetailsObject(t *testing.T) {
 		t.Fatalf("traffic=%v err=%v", traffic, err)
 	}
 }
+
+func TestGetTrafficCacheIsPerAccessKey(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		traffic := "1073741824"
+		if values.Get("AccessKeyId") == "LTAItwo" {
+			traffic = "2147483648"
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"TrafficDetails":[{"BusinessRegionId":"cn-hangzhou","Traffic":` + traffic + `}]}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	one, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAIone", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || one != 1 {
+		t.Fatalf("one=%v err=%v", one, err)
+	}
+	two, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItwo", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || two != 2 {
+		t.Fatalf("two=%v err=%v", two, err)
+	}
+	if hits != 2 {
+		t.Fatalf("expected per-key CDT calls, hits=%d", hits)
+	}
+}
