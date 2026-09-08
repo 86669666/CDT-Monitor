@@ -1352,3 +1352,17 @@ test('admin password update rejects mismatched confirmation without a network ca
   await expect(page.getByText('两次新密码不一致')).toBeVisible()
   expect(passwordCalls).toBe(0)
 })
+
+test('dashboard shows never-run status from empty last_updated fields', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    accounts: [{ ...dashboardAccount, last_updated: '' }],
+    system_last_run: '',
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.overview-time b')).toHaveText('尚未运行')
+  await expect(page.locator('.account-card__footer')).toContainText('等待首次同步')
+  await expect(page.locator('.heartbeat')).toContainText('监控任务延迟')
+})
+
