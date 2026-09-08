@@ -109,3 +109,26 @@ func TestProcessJobsTestNotificationSendsWebhook(t *testing.T) {
 		t.Fatalf("job status = %q err=%v", status, err)
 	}
 }
+
+func TestProcessJobsInvalidControlPayloadRequeues(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := st.EnqueueJob(ctx, JobControlInstance, account.ID, `{`, "control-bad", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || jobErr == "" {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("invalid payload must not call Aliyun, controls=%#v", got)
+	}
+}
