@@ -3899,3 +3899,16 @@ test('login hides passkey sign-in without HTTPS', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   await expect(page.getByRole('button', { name: '使用 Passkey 登录' })).toHaveCount(0)
 })
+
+test('login password visibility toggle reveals the password field', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+
+  await page.goto('/')
+  const password = page.getByLabel('管理员密码')
+  await expect(password).toHaveAttribute('type', 'password')
+  await page.getByRole('button', { name: '显示密码' }).click()
+  await expect(password).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: '隐藏密码' }).click()
+  await expect(password).toHaveAttribute('type', 'password')
+})
