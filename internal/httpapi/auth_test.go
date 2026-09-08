@@ -437,6 +437,24 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 }
 
+func TestLegacyAdminAPIKeyCannotAccessAdminOrWidget(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	token := "cdt_legacy_admin_http"
+	if _, err := st.DB().Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('admin',?,'["admin"]',unixepoch())`, security.TokenHash(token)); err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"X-API-Key": token}
+	config := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", nil, headers)
+	if config.Code != http.StatusUnauthorized {
+		t.Fatalf("legacy admin config status = %d body = %s", config.Code, config.Body.String())
+	}
+	status := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, headers)
+	if status.Code != http.StatusUnauthorized {
+		t.Fatalf("legacy admin status status = %d body = %s", status.Code, status.Body.String())
+	}
+}
+
 func TestCreateAPIKeyRejectsUnknownScopesHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

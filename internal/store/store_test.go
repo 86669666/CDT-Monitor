@@ -639,6 +639,40 @@ func TestCreateAPIKeyRejectsUnknownScopes(t *testing.T) {
 	}
 }
 
+func TestValidateAPIKeyIgnoresUnknownScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	adminToken := "cdt_legacy_admin_scope"
+	mixedToken := "cdt_legacy_mixed_scope"
+	if _, err = st.db.Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('admin',?,'["admin"]',unixepoch()),('mixed',?,'["widget:read","admin"]',unixepoch())`, security.TokenHash(adminToken), security.TokenHash(mixedToken)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, adminToken); err == nil {
+		t.Fatal("admin-only key must not validate")
+	}
+	scopes, err := st.ValidateAPIKey(ctx, mixedToken)
+	if err != nil || len(scopes) != 1 || scopes[0] != "widget:read" {
+		t.Fatalf("mixed scopes=%v err=%v", scopes, err)
+	}
+	var adminUsed, mixedUsed sql.NullInt64
+	if err = st.db.QueryRow(`SELECT last_used_at FROM api_keys WHERE name='admin'`).Scan(&adminUsed); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT last_used_at FROM api_keys WHERE name='mixed'`).Scan(&mixedUsed); err != nil {
+		t.Fatal(err)
+	}
+	if adminUsed.Valid {
+		t.Fatal("rejected admin key must not record last_used_at")
+	}
+	if !mixedUsed.Valid {
+		t.Fatal("usable mixed key should record last_used_at")
+	}
+}
+
 func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

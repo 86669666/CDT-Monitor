@@ -75,13 +75,20 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+func allowedAPIKeyScope(scope string) bool {
+	return scope == "widget:read" || scope == "instance:control" || scope == "cron:run"
+}
+
 func validAPIKeyScopes(scopes []string) bool {
+	if len(scopes) == 0 {
+		return false
+	}
 	for _, scope := range scopes {
-		if scope != "widget:read" && scope != "instance:control" && scope != "cron:run" {
+		if !allowedAPIKeyScope(scope) {
 			return false
 		}
 	}
-	return len(scopes) > 0
+	return true
 }
 
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
@@ -155,8 +162,17 @@ func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, err
 	if err = json.Unmarshal([]byte(scopes), &result); err != nil {
 		return nil, err
 	}
+	filtered := make([]string, 0, len(result))
+	for _, scope := range result {
+		if allowedAPIKeyScope(scope) {
+			filtered = append(filtered, scope)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, sql.ErrNoRows
+	}
 	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
-	return result, nil
+	return filtered, nil
 }
 
 func (s *Store) UpdateAdminPassword(ctx context.Context, password, keepSessionToken string) error {
