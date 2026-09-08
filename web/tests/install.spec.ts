@@ -2344,3 +2344,29 @@ test('settings email smtp posts the live notify contract', async ({ page }) => {
     password_configured: false,
   })
 })
+
+test('settings email test surfaces a failed notification job', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email-fail', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-email-fail', 'failed')
+    failed.type = 'test_notification'
+    failed.error = 'SMTP host, port, username and recipient are required'
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'SMTP host, port, username and recipient are required' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
