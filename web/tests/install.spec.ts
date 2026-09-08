@@ -3764,3 +3764,22 @@ test('admin passkeys treat a null passkeys array as empty', async ({ page }) => 
   await page.getByRole('button', { name: '管理员' }).click()
   await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
 })
+
+test('settings API keys show loading while the list request is in flight', async ({ page }) => {
+  let releaseList!: (value?: unknown) => void
+  const listReady = new Promise((resolve) => { releaseList = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', async (route) => {
+    await listReady
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.getByText('加载 API Key')).toBeVisible()
+  releaseList()
+  await expect(page.getByRole('button', { name: '创建 Key' })).toBeVisible()
+  await expect(page.locator('.key-row')).toHaveCount(0)
+})
