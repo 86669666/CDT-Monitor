@@ -51,7 +51,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot、`android-widget.yml` 或其它发布 workflow YAML 变更跳过 verify。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 不再因 `main` push 自动跑。仅 `workflow_dispatch`，且需要 `ENABLE_PRODUCTION_PUBLISH=true`。不把仓库 secrets inherit 进 reusable workflows。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
 | `Release Binaries` | 仅手动或被 auto-release `workflow_call` | 不再因 `v*.*.*` tag push 自动跑。仍要 `ENABLE_PRODUCTION_PUBLISH`；本 fork 只编 linux/amd64；artifact 保留 7 天；只有 `publish` job 拿 `contents: write`，且 `draft: true`、`make_latest: false` |
-| `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；只 load 校验 linux/amd64，`push: false`，`provenance: false`，`sbom: false`，无 `type=gha` cache；`version` 检查用 `--network none --read-only --user 65532`；没有 `packages: write` |
+| `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；Buildx `driver: docker`；只 load 校验 linux/amd64，`push: false`，`provenance: false`，`sbom: false`，无 `type=gha` cache；`version` 检查用 `--network none --read-only --user 65532`；没有 `packages: write` |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
 
 不要把一次绿色 CI 或一次本地 Docker 构建写成已经发布 GHCR / Docker Hub。
