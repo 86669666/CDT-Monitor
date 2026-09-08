@@ -3988,3 +3988,14 @@ test('wizard back returns from automation policy to the password step', async ({
   await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
   await expect(page.getByLabel('管理员密码')).toHaveValue(TEST_PASSWORD)
 })
+
+test('wizard password strength follows the live password contract', async ({ page }) => {
+  await mockInitStatus(page, false)
+
+  await page.goto('/')
+  await expect(page.getByLabel('密码强度 0/4')).toBeVisible()
+  await page.getByLabel('管理员密码').fill('short')
+  await expect(page.getByLabel('密码强度 0/4')).toBeVisible()
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await expect(page.getByLabel('密码强度 4/4')).toBeVisible()
+})
