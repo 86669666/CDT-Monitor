@@ -916,3 +916,60 @@ func TestClearLogsRequiresAdminCSRF(t *testing.T) {
 		t.Fatalf("cleared logs status = %d body = %s", listed.Code, listed.Body.String())
 	}
 }
+
+func TestSaveConfigRejectsUnknownFieldsAndBadThreshold(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+
+	unknown := doRequest(t, handler, http.MethodPut, "/api/v1/config", `{"traffic_threshold":80,"extra":true}`, cookies, headers)
+	if unknown.Code != http.StatusBadRequest || !strings.Contains(unknown.Body.String(), "invalid_request") {
+		t.Fatalf("unknown field status = %d body = %s", unknown.Code, unknown.Body.String())
+	}
+
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.TrafficThreshold = 101
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "config_failed") {
+		t.Fatalf("threshold 101 status = %d body = %s", bad.Code, bad.Body.String())
+	}
+
+	config.TrafficThreshold = 80
+	raw, err = json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("save config status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	reload := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if reload.Code != http.StatusOK || !strings.Contains(reload.Body.String(), `"traffic_threshold":80`) {
+		t.Fatalf("reloaded config status = %d body = %s", reload.Code, reload.Body.String())
+	}
+	if strings.Contains(reload.Body.String(), "super-secret-ak") {
+		t.Fatalf("saved config leaked secret: %s", reload.Body.String())
+	}
+
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget save config status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
