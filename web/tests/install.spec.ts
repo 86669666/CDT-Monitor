@@ -3743,3 +3743,14 @@ test('admin password update disables submit while the request is in flight', asy
   await expect(page.getByText('管理员密码已更新')).toBeVisible()
   expect(updateCalls).toBe(1)
 })
+
+test('admin passkey create stays disabled without HTTPS', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.getByRole('button', { name: '创建 Passkey' })).toBeDisabled()
+  await expect(page.getByText('当前连接不是 HTTPS，Passkey 创建按钮已禁用。')).toBeVisible()
+})
