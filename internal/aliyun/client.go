@@ -161,6 +161,9 @@ func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, 
 }
 
 func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, secret, cycle string) (BillingBill, error) {
+	if account.InstanceID == "" {
+		return BillingBill{}, errors.New("instance_id is required")
+	}
 	bss := bssEndpoint(account.SiteType)
 	params := map[string]string{"BillingCycle": cycle, "InstanceID": account.InstanceID, "Granularity": "MONTHLY"}
 	result, err := c.call(ctx, account.AccessKeyID, secret, bss.region, bss.host, "2017-12-14", "DescribeInstanceBill", params)
