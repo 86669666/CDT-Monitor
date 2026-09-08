@@ -258,3 +258,48 @@ func TestGetTrafficUsesMockCdtAndCaches(t *testing.T) {
 		t.Fatalf("expected one CDT call, hits=%d", hits)
 	}
 }
+
+func TestGetInstanceBillSumsPretaxAmount(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Data":{"Items":{"Item":[{"PretaxAmount":"10.5"},{"PretaxAmount":"12.96"}]}}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	bill, err := client.GetInstanceBill(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china", InstanceID: "i-test"}, "secret", "2026-09")
+	if err != nil || bill.TotalCost != 23.46 {
+		t.Fatalf("bill=%#v err=%v", bill, err)
+	}
+}
+
+func TestGetAccountBalanceCachesForSixHours(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if request.URL.Host != "business.aliyuncs.com" {
+			t.Errorf("host = %s", request.URL.Host)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"50","Currency":"CNY"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}
+	first, err := client.GetAccountBalance(context.Background(), account, "secret")
+	if err != nil || first.Amount != 50 || first.Currency != "CNY" {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	second, err := client.GetAccountBalance(context.Background(), account, "secret")
+	if err != nil || second.Amount != 50 {
+		t.Fatalf("cached=%#v err=%v", second, err)
+	}
+	if hits != 1 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
