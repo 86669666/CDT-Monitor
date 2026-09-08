@@ -769,3 +769,31 @@ test('refresh-all surfaces the csrf_failed envelope after login', async ({ page 
   await expect(page.getByText('CSRF 校验失败')).toBeVisible()
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+
+test('setup posts schedule window', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let account: { schedule_enabled?: boolean; start_time?: string; stop_time?: string } | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { accounts?: typeof account[] }
+    account = body.accounts?.[0]
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5sched')
+  await page.getByText('每日定时开关机', { exact: true }).click()
+  await page.getByLabel('开机时间').fill('09:00')
+  await page.getByLabel('关机时间').fill('22:00')
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(account).toMatchObject({ schedule_enabled: true, start_time: '09:00', stop_time: '22:00' })
+})
