@@ -31,12 +31,12 @@ cdt-monitor:local
 
 ```bash
 docker compose config
-COMMIT="$(git rev-parse --short HEAD)" docker compose build
+VERSION=local COMMIT="$(git rev-parse --short HEAD)" BUILT_AT="$(date -u +%Y-%m-%dT%H:%MZ)" docker compose build
 docker compose up -d
 docker compose logs -f cdt-monitor
 ```
 
-`COMMIT` 只写入镜像 ldflags / `version` 输出。省略时 Compose 仍用 `unknown`，与历史本地镜像一致。不要为了填这个值去 `docker login` 或 `compose push`。
+`VERSION` / `COMMIT` / `BUILT_AT` 只写入镜像 ldflags / `version` 输出。省略时仍是 `local` / `unknown` / `local`，与历史本地镜像一致。不要为了填这些值去 `docker login` 或 `compose push`。
 
 浏览器访问 `http://127.0.0.1:43210`。第一次进入安装向导。数据在 named volume `cdt-data`。
 
@@ -72,6 +72,7 @@ TZ=Asia/Shanghai docker compose up -d
 - 续推（`2026-09-08T15:40Z` / 2026-09-08 23:40 Asia/Taipei）：`.dockerignore` 增加 `master.key` 与 `*.sqlite*`，避免本机数据文件进入 `COPY . ./`。本机仍无 Docker CLI，没有重跑构建。
 - 续推（`2026-09-08T15:43Z` / 2026-09-08 23:43 Asia/Taipei）：Compose `image` 改为 `cdt-monitor:local`，去掉 GHCR 前缀，避免 `docker compose push` 有仓库可推。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 - 续推（`2026-09-08T16:55Z` / 2026-09-09 00:55 Asia/Taipei）：`.dockerignore` 排除 `web/tests` 与 `web/playwright.config.ts`，避免 Playwright 测试进入 `COPY web`。本机仍无 Docker CLI，没有重跑构建。
+- 续推（`2026-09-08T19:29Z` / 2026-09-09 03:29 Asia/Taipei）：Compose 的 `VERSION` / `BUILT_AT` 也可从环境覆盖，默认仍是 `local`。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 
 ## 和上游安装文档的关系
 

@@ -9,10 +9,11 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VERSION: local
-        # Override with COMMIT="$(git rev-parse --short HEAD)" docker compose build.
+        # Override with VERSION=local COMMIT="$(git rev-parse --short HEAD)"
+        # BUILT_AT="$(date -u +%Y-%m-%dT%H:%MZ)" docker compose build.
+        VERSION: "${VERSION:-local}"
         COMMIT: "${COMMIT:-unknown}"
-        BUILT_AT: local
+        BUILT_AT: "${BUILT_AT:-local}"
         IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor
     image: cdt-monitor:local
     pull_policy: build
