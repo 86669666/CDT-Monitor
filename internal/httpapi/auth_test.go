@@ -694,3 +694,61 @@ func TestLoginSuccessClearsFailureLockout(t *testing.T) {
 		}
 	}
 }
+
+func TestWidgetSummaryOmitsSecretsAndStatusSupportsETag(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, token, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"X-API-Key": token}
+	summary := doRequest(t, handler, http.MethodGet, "/api/v1/widget/summary", "", nil, headers)
+	if summary.Code != http.StatusOK {
+		t.Fatalf("widget summary status = %d body = %s", summary.Code, summary.Body.String())
+	}
+	body := summary.Body.String()
+	for _, secret := range []string{testAdminPassword, "super-secret-ak", "smtp-password-value", "telegram-token-value", "webhook-secret-value"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("widget summary leaked %q: %s", secret, body)
+		}
+	}
+	if !strings.Contains(body, `"used"`) || !strings.Contains(body, `"total"`) {
+		t.Fatalf("widget summary missing compact fields: %s", body)
+	}
+
+	status := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, headers)
+	if status.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", status.Code, status.Body.String())
+	}
+	etag := status.Result().Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("status missing ETag")
+	}
+	cached := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": token, "If-None-Match": etag})
+	if cached.Code != http.StatusNotModified {
+		t.Fatalf("etag status = %d body = %s", cached.Code, cached.Body.String())
+	}
+}
+
+func TestTestNotificationRequiresAdminAndValidChannel(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	ok := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/webhook", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if ok.Code != http.StatusAccepted {
+		t.Fatalf("admin test notify status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	invalid := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/sms", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid channel status = %d body = %s", invalid.Code, invalid.Body.String())
+	}
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/webhook", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget test notify status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
