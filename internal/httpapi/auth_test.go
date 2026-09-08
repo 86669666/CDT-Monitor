@@ -1049,3 +1049,48 @@ func TestInitStatusIsPublic(t *testing.T) {
 		t.Fatalf("after setup status = %d body = %s", after.Code, after.Body.String())
 	}
 }
+
+func TestPasskeyCompleteRequiresLiveSession(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	expired := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/complete?session_id=missing", `{}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if expired.Code != http.StatusBadRequest || !strings.Contains(expired.Body.String(), "passkey_session_expired") {
+		t.Fatalf("expired passkey complete status = %d body = %s", expired.Code, expired.Body.String())
+	}
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/admin/passkeys", "", []*http.Cookie{session, csrf}, nil)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"passkeys":[]`) {
+		t.Fatalf("empty passkeys status = %d body = %s", listed.Code, listed.Body.String())
+	}
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := doRequest(t, handler, http.MethodGet, "/api/v1/admin/passkeys", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget passkeys status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
+
+func TestSaveConfigRejectsInvalidThresholdAction(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.ThresholdAction = "stop_only"
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "config_failed") {
+		t.Fatalf("invalid threshold action status = %d body = %s", bad.Code, bad.Body.String())
+	}
+}
