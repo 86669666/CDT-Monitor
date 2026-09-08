@@ -49,6 +49,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 - 不要在 `86669666/CDT-Monitor` 上设置 `ENABLE_PRODUCTION_PUBLISH` 或 `ENABLE_DOCKERHUB_PUBLISH`，除非有单独的发布授权。
 - 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD` 去推 `qninq/cdt-monitor`。
 - 不要 force-push，不要用本分支做 production deploy。
+- Container / Automatic Release workflows 不再申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，本 fork 的 GITHUB_TOKEN 也推不了 GHCR，除非有人再把该 permission 加回去。
 
 Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget` 的 Gradle。它会开 PR，不会自动设置 `ENABLE_PRODUCTION_PUBLISH`。合并 Dependabot 前仍要核对 SHA pin，且不要借机打开发布变量。
 

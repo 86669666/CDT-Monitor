@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 # Publishing stays opt-in on this fork. Leave ENABLE_PRODUCTION_PUBLISH unset.
 jobs:
