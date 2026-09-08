@@ -78,3 +78,28 @@ func TestFlushOutboxRetriesFailedWebhook(t *testing.T) {
 		t.Fatalf("outbox error leaked secret: %q", lastError)
 	}
 }
+
+func TestFlushOutboxRecoversFromNotifierPanic(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	eng := New(st, newFakeProvider(), nil, quietLogger(), 1)
+	ctx := context.Background()
+	if err := st.AddOutbox(ctx, domain.NotificationEvent{ID: "evt-panic-1", Type: "threshold", Title: "t", Summary: "s"}, []string{"webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddOutbox(ctx, domain.NotificationEvent{ID: "evt-panic-2", Type: "threshold", Title: "t", Summary: "s"}, []string{"webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	eng.flushOutbox(ctx)
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM notification_outbox WHERE status='queued' AND last_error=?`, errJobPanic.Error()).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("recovered outbox count=%d err=%v", count, err)
+	}
+	var lastError string
+	if err := st.DB().QueryRowContext(ctx, `SELECT last_error FROM notification_outbox WHERE event_id='evt-panic-1'`).Scan(&lastError); err != nil {
+		t.Fatal(err)
+	}
+	if lastError != errJobPanic.Error() || strings.Contains(lastError, "nil pointer") || strings.Contains(lastError, "runtime") {
+		t.Fatalf("outbox panic leaked internals: %q", lastError)
+	}
+}
