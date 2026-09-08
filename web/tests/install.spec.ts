@@ -2397,3 +2397,27 @@ test('settings telegram test surfaces a failed notification job', async ({ page 
   await expect(page.locator('.toast--error').filter({ hasText: 'telegram HTTP 401: unauthorized' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings dingtalk webhook template requires a token', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: '钉钉群机器人' }).click()
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请填写机器人 Access Token' }).first()).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '钉钉群机器人 模板配置' })).toBeVisible()
+  expect(saveCalls).toBe(0)
+})
