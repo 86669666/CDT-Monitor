@@ -413,3 +413,32 @@ func TestGetTrafficInternationalExcludesChina(t *testing.T) {
 		t.Fatalf("traffic=%v err=%v", traffic, err)
 	}
 }
+
+func TestCallRetriesThrottlingCodeThenSucceeds(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if hits == 1 {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"Code":"Throttling.User","Message":"slow down"}`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"3.5"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || balance.Amount != 3.5 {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
