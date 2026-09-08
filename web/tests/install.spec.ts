@@ -1536,3 +1536,37 @@ test('settings webhook test surfaces a failed notification job', async ({ page }
   await expect(page.locator('.toast--error').filter({ hasText: 'webhook HTTP 502: bad gateway' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings API key create posts the live key contract', async ({ page }) => {
+  const created = {
+    id: 3,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  const token = 'cdt_test_token_once'
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', async (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      expect(JSON.parse(route.request().postData() || '{}')).toEqual({
+        name: '桌面小组件',
+        scopes: ['widget:read'],
+      })
+      return route.fulfill({ status: 201, json: { key: created, token } })
+    }
+    return route.fulfill({ json: { keys: createCalls > 0 ? [created] : [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.getByText('仅显示一次')).toBeVisible()
+  await expect(page.locator('code')).toHaveText(token)
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  await expect(page.locator('.key-row')).toContainText('widget:read')
+  expect(createCalls).toBe(1)
+})
