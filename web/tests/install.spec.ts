@@ -2721,3 +2721,33 @@ test('about update check posts the live latest_version contract', async ({ page 
   await expect(page.getByText('请查看发布页获取更新')).toBeVisible()
   expect(checkCalls).toBe(1)
 })
+
+test('settings save posts Seoul region_id', async ({ page }) => {
+  let saveCalls = 0
+  let regionId = ''
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      const account = body.accounts?.[0]
+      if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+      regionId = String(account?.region_id || '')
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('combobox', { name: '地域' }).click()
+  await page.getByRole('combobox', { name: '地域' }).fill('首尔')
+  await page.getByRole('option', { name: /韩国（首尔）.*ap-northeast-2/ }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(regionId).toBe('ap-northeast-2')
+})
