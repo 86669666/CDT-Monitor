@@ -3133,3 +3133,25 @@ test('settings API keys treat null scopes as unconfigured', async ({ page }) => 
   await expect(page.locator('.key-row')).toContainText('旧版 Key')
   await expect(page.locator('.key-row')).toContainText('未配置权限')
 })
+
+test('settings API keys show last_used_at from the live key contract', async ({ page }) => {
+  const at = '2026-09-07T16:00:00.000Z'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, timezone: 'Asia/Shanghai' })
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [{
+    id: 4,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: at,
+    last_used_at: at,
+  }] } }))
+
+  await page.goto('/')
+  const expected = await page.evaluate(
+    (timestamp) => new Date(timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }),
+    at,
+  )
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.key-row time')).toHaveText(`最近使用 ${expected}`)
+})
