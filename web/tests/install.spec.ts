@@ -1244,3 +1244,19 @@ test('admin password update surfaces invalid_credentials for the current passwor
   await expect(page.getByText('当前密码错误')).toBeVisible()
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
 })
+
+
+test('Pending instance shows waiting status without power controls', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Pending' }],
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('等待中')).toBeVisible()
+  await expect(page.locator('.status-pill.warning')).toBeVisible()
+  await expect(page.getByRole('button', { name: '开机' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '关机' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeVisible()
+})
