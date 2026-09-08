@@ -1,7 +1,12 @@
 version: 2
+# This fork's default branch still has ungated auto-release. Keep
+# Dependabot PRs on work/ops so a docker/actions bump cannot land on
+# main. GitHub only reads this file from the default branch; do not
+# merge to main just to enable it.
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: work/ops
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -11,6 +16,7 @@ updates:
           - "*"
   - package-ecosystem: docker
     directory: /
+    target-branch: work/ops
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
@@ -20,6 +26,7 @@ updates:
           - "*"
   - package-ecosystem: gradle
     directory: /android-widget
+    target-branch: work/ops
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
