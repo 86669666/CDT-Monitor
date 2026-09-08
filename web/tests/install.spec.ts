@@ -3270,3 +3270,36 @@ test('settings email omits empty password from the live notify contract', async 
   })
   expect(savedEmail).not.toHaveProperty('password')
 })
+
+test('settings telegram omits empty token from the live notify contract', async ({ page }) => {
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByText('启用 Telegram', { exact: true }).click()
+  await page.getByLabel('Chat ID').fill('-1001')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    token_configured: false,
+    chat_id: '-1001',
+    proxy_type: 'none',
+    proxy_password_configured: false,
+  })
+  expect(savedTelegram).not.toHaveProperty('token')
+  expect(savedTelegram).not.toHaveProperty('proxy_pass')
+})
