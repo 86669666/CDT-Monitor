@@ -3503,3 +3503,23 @@ test('refresh-all surfaces partial instance refresh failure', async ({ page }) =
   await expect(page.locator('.toast--error').filter({ hasText: '已刷新 1/2 个实例，其余实例刷新失败' }).first()).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('refresh-all reports completion for every queued instance', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-1', 'queued'), jobFixture('refresh-2', 'queued')] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'refresh-1'
+    return route.fulfill({ json: jobFixture(id, 'completed') })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByText('已强制刷新 2 个实例')).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
