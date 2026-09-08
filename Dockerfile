@@ -40,7 +40,8 @@ ARG IMAGE_SOURCE=https://github.com/wang4386/CDT-Monitor
 LABEL org.opencontainers.image.title="CDT Monitor" \
       org.opencontainers.image.description="阿里云 CDT 流量监控与实例自动化控制台" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.source="${IMAGE_SOURCE}"
+      org.opencontainers.image.source="${IMAGE_SOURCE}" \
+      org.opencontainers.image.licenses="MIT"
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /cdt-monitor /cdt-monitor
 COPY --from=builder --chown=65532:65532 /runtime-data /data

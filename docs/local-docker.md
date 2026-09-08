@@ -21,7 +21,7 @@ ghcr.io/86669666/cdt-monitor:local
 
 运行镜像里没有 shell、包管理器或阿里云凭据。AccessKey、通知密钥和管理员密码都在首次 Web 向导写入数据卷，不要放进 Compose 或镜像构建参数。
 
-默认 `org.opencontainers.image.source` 仍是上游 `wang4386/CDT-Monitor`（`docker build` 不传参时）。本仓库 Compose 会传入 `IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor`，只影响本地标签 `ghcr.io/86669666/cdt-monitor:local` 的镜像 LABEL，不会 push。
+默认 `org.opencontainers.image.source` 仍是上游 `wang4386/CDT-Monitor`（`docker build` 不传参时）。本仓库 Compose 会传入 `IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor`，只影响本地标签 `ghcr.io/86669666/cdt-monitor:local` 的镜像 LABEL，不会 push。镜像 LABEL 另声明 `org.opencontainers.image.licenses=MIT`，与仓库 LICENSE 一致。
 
 ## 启动
 
