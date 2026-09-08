@@ -1127,3 +1127,18 @@ test('logout posts the live auth contract and returns to login', async ({ page }
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   expect(logoutCalls).toBe(1)
 })
+
+test('login surfaces the session_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+  await page.route('**/api/v1/auth/login', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'session_failed', message: '无法创建会话' } },
+  }))
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('无法创建会话')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
