@@ -470,3 +470,56 @@ func TestRefreshJobDedupAndWidgetJobRead(t *testing.T) {
 		t.Fatalf("anonymous job status = %d body = %s", anonymous.Code, anonymous.Body.String())
 	}
 }
+
+func TestCronKeyCannotAccessAdminOrWidgetAPIs(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, cronToken, err := st.CreateAPIKey(t.Context(), "cron", []string{"cron:run"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"X-API-Key": cronToken}
+	status := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, headers)
+	if status.Code != http.StatusForbidden {
+		t.Fatalf("cron status = %d body = %s", status.Code, status.Body.String())
+	}
+	refresh := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/refresh", `{}`, nil, headers)
+	if refresh.Code != http.StatusForbidden {
+		t.Fatalf("cron refresh = %d body = %s", refresh.Code, refresh.Body.String())
+	}
+	config := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", nil, headers)
+	if config.Code != http.StatusForbidden {
+		t.Fatalf("cron config = %d body = %s", config.Code, config.Body.String())
+	}
+	monitor := doRequest(t, handler, http.MethodGet, "/monitor.php", "", nil, headers)
+	if monitor.Code != http.StatusAccepted {
+		t.Fatalf("cron monitor = %d body = %s", monitor.Code, monitor.Body.String())
+	}
+}
+
+func TestRevokedAPIKeyCannotReadStatus(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	created := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":["widget:read"]}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body = %s", created.Code, created.Body.String())
+	}
+	var payload struct {
+		Token string `json:"token"`
+		Key   struct {
+			ID int64 `json:"id"`
+		} `json:"key"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	revoked := doRequest(t, handler, http.MethodDelete, "/api/v1/api-keys/"+itoa(payload.Key.ID), "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if revoked.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d body = %s", revoked.Code, revoked.Body.String())
+	}
+	denied := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": payload.Token})
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked key status = %d body = %s", denied.Code, denied.Body.String())
+	}
+}
