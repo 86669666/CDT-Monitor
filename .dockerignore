@@ -26,6 +26,8 @@ docker
 docs
 web/test-results
 web/playwright-report
+web/tests
+web/playwright.config.ts
 .tmp-*
 .env
 *.jks

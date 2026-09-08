@@ -21,7 +21,7 @@ cdt-monitor:local
 
 运行镜像里没有 shell、包管理器或阿里云凭据。AccessKey、通知密钥和管理员密码都在首次 Web 向导写入数据卷，不要放进 Compose 或镜像构建参数。
 
-`.dockerignore` 排除 `.github/`、`android-widget/`、`.codex/`、keystore/env、`master.key`、SQLite 文件以及历史 PHP/static 路径。Go builder 的 `COPY . ./` 只需要 `cmd/`、`internal/`、`web/` 与 Go module 文件；本机向导写出来的密钥/库不能进构建上下文。CI 或小组件变更不应打爆编译层缓存。最终 `scratch` 镜像仍然只有二进制、CA 证书和 `/data`。
+`.dockerignore` 排除 `.github/`、`android-widget/`、`.codex/`、keystore/env、`master.key`、SQLite 文件、`web/tests` / Playwright 配置以及历史 PHP/static 路径。Go builder 的 `COPY . ./` 只需要 `cmd/`、`internal/`、`web/` 与 Go module 文件；本机向导写出来的密钥/库不能进构建上下文。前端测试和 CI/小组件变更不应打爆编译层缓存。最终 `scratch` 镜像仍然只有二进制、CA 证书和 `/data`。
 
 默认 `org.opencontainers.image.source` 是本 fork `https://github.com/86669666/CDT-Monitor`（`docker build` 不传参时也用这个值，不再默认写成上游 `wang4386`）。Compose 仍显式传入同一 `IMAGE_SOURCE`，只影响本地标签 `cdt-monitor:local` 的镜像 LABEL，不会 push。镜像 LABEL 另声明 `org.opencontainers.image.licenses=MIT`，与仓库 LICENSE 一致。
 
@@ -71,6 +71,7 @@ TZ=Asia/Shanghai docker compose up -d
 - 续推（`2026-09-08T14:54Z` / 2026-09-08 22:54 Asia/Taipei）：Compose 的 `COMMIT` 可从环境覆盖，默认仍是 `unknown`。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 - 续推（`2026-09-08T15:40Z` / 2026-09-08 23:40 Asia/Taipei）：`.dockerignore` 增加 `master.key` 与 `*.sqlite*`，避免本机数据文件进入 `COPY . ./`。本机仍无 Docker CLI，没有重跑构建。
 - 续推（`2026-09-08T15:43Z` / 2026-09-08 23:43 Asia/Taipei）：Compose `image` 改为 `cdt-monitor:local`，去掉 GHCR 前缀，避免 `docker compose push` 有仓库可推。本机仍无 Docker CLI，没有重跑 `docker compose config`。
+- 续推（`2026-09-08T16:55Z` / 2026-09-09 00:55 Asia/Taipei）：`.dockerignore` 排除 `web/tests` 与 `web/playwright.config.ts`，避免 Playwright 测试进入 `COPY web`。本机仍无 Docker CLI，没有重跑构建。
 
 ## 和上游安装文档的关系
 
