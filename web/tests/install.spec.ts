@@ -3014,3 +3014,30 @@ test('settings save posts account identity fields', async ({ page }) => {
     instance_id: 'i-settings',
   })
 })
+
+test('about update check shows current version as latest', async ({ page }) => {
+  let checkCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', (route) => {
+    const check = new URL(route.request().url()).searchParams.get('check') === '1'
+    if (check) checkCalls += 1
+    return route.fulfill({ json: {
+      version: 'v2.0.1',
+      commit: 'abc1234',
+      built_at: 'github-run-12345',
+      repository: 'https://github.com/wang4386/CDT-Monitor',
+      release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+      ...(check ? { latest_version: 'v2.0.1' } : {}),
+    } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await page.getByRole('button', { name: '检查更新' }).click()
+  await expect(page.getByText('版本检查完成')).toBeVisible()
+  await expect(page.getByText('GitHub 最新版本：v2.0.1')).toBeVisible()
+  await expect(page.getByText('当前已是最新版本')).toBeVisible()
+  expect(checkCalls).toBe(1)
+})
