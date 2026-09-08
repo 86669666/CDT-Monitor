@@ -3950,3 +3950,19 @@ test('history chart closes from the dialog contract', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+test('wizard password visibility toggle reveals both password fields', async ({ page }) => {
+  await mockInitStatus(page, false)
+
+  await page.goto('/')
+  const password = page.getByLabel('管理员密码')
+  const confirm = page.getByLabel('确认密码')
+  await expect(password).toHaveAttribute('type', 'password')
+  await expect(confirm).toHaveAttribute('type', 'password')
+  await page.getByRole('button', { name: '显示密码' }).first().click()
+  await expect(password).toHaveAttribute('type', 'text')
+  await expect(confirm).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: '隐藏密码' }).first().click()
+  await expect(password).toHaveAttribute('type', 'password')
+  await expect(confirm).toHaveAttribute('type', 'password')
+})
