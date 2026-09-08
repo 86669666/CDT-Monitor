@@ -3890,3 +3890,12 @@ test('login stays disabled without a password', async ({ page }) => {
   await expect(page.getByRole('button', { name: '安全登录' })).toBeDisabled()
   expect(loginCalls).toBe(0)
 })
+
+test('login hides passkey sign-in without HTTPS', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '使用 Passkey 登录' })).toHaveCount(0)
+})
