@@ -45,6 +45,24 @@ func TestManualStopRejectedWhileStarting(t *testing.T) {
 	}
 }
 
+func TestManualStartRejectedWhilePending(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.UpdateRuntime(ctx, account.ID, 1.25, "Pending", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(ctx, domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: ParseControlPayload("start", "手动")})
+	if err == nil || !strings.Contains(err.Error(), "Pending") {
+		t.Fatalf("expected pending rejection, err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("pending start must not call Aliyun, controls = %#v", got)
+	}
+}
+
 func TestControlJobsShareUniqueKeyUntilComplete(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()
