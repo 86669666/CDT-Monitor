@@ -2575,3 +2575,20 @@ test('about update check surfaces the live check_error contract', async ({ page 
   await expect(page.locator('.toast--error').filter({ hasText: '暂时无法检查 GitHub Release' }).first()).toBeVisible()
   expect(checkCalls).toBe(1)
 })
+
+test('history chart daily range renders empty sampling state from the history contract', async ({ page }) => {
+  const hourStart = Math.floor(Date.now() / 3_600_000) * 3_600_000
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({ json: {
+    hourly: [{ at: new Date(hourStart).toISOString(), traffic: 1.25 }],
+    daily: [],
+  } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.locator('.chart-area .recharts-wrapper')).toBeVisible()
+  await page.getByRole('button', { name: '30 天' }).click()
+  await expect(page.getByText('等待采样数据')).toBeVisible()
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
