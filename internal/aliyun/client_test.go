@@ -582,3 +582,39 @@ func TestGetTrafficCacheIsPerAccessKey(t *testing.T) {
 		t.Fatalf("expected per-key CDT calls, hits=%d", hits)
 	}
 }
+
+func TestGetTrafficCacheIsPerTrafficClass(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-shanghai","Traffic":2147483648},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	china, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || china != 3 {
+		t.Fatalf("hangzhou traffic=%v err=%v", china, err)
+	}
+	international, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if err != nil || international != 4 {
+		t.Fatalf("hongkong traffic=%v err=%v", international, err)
+	}
+	if hits != 2 {
+		t.Fatalf("china and international caches must be distinct, hits=%d", hits)
+	}
+	shanghai, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-shanghai"}, "secret")
+	if err != nil || shanghai != 3 {
+		t.Fatalf("shanghai cached traffic=%v err=%v", shanghai, err)
+	}
+	if hits != 2 {
+		t.Fatalf("same-class regions should share the cache, hits=%d", hits)
+	}
+}
