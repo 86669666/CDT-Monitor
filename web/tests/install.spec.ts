@@ -903,3 +903,34 @@ test('dashboard marks over_threshold and stale from the status contract', async 
   await expect(page.locator('.account-card__footer .stale')).toBeVisible()
   await expect(page.locator('.metric--amber')).toContainText('1')
 })
+
+
+test('Stopped instance posts start and Starting has no power controls', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [
+      { ...dashboardAccount, id: 1, remark: '停止节点', instance_status: 'Stopped' },
+      { ...dashboardAccount, id: 2, remark: '启动节点', instance_status: 'Starting' },
+    ],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-1', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'start-1'
+    return route.fulfill({ json: jobFixture(id, 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('已停止')).toBeVisible()
+  await expect(page.getByText('启动中')).toBeVisible()
+  await expect(page.getByRole('button', { name: '开机' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '关机' })).toHaveCount(0)
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.getByText('已发送开机指令')).toBeVisible()
+  expect(startCalls).toBe(1)
+})
