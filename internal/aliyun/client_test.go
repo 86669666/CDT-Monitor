@@ -303,3 +303,57 @@ func TestGetAccountBalanceCachesForSixHours(t *testing.T) {
 		t.Fatalf("hits = %d", hits)
 	}
 }
+
+func TestGetAccountBalanceUsesInternationalEndpoint(t *testing.T) {
+	var host string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		host = request.URL.Host
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"1.5","Currency":"USD"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "international"}, "secret")
+	if err != nil || balance.Amount != 1.5 || balance.Currency != "USD" {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if host != "business.ap-southeast-1.aliyuncs.com" {
+		t.Fatalf("host = %s", host)
+	}
+}
+
+func TestControlInstanceStartSendsStartInstance(t *testing.T) {
+	var action, mode string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		action, mode = values.Get("Action"), values.Get("StoppedMode")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "start", "KeepCharging"); err != nil {
+		t.Fatal(err)
+	}
+	if action != "StartInstance" || mode != "" {
+		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
+	}
+}
+
+func TestGetTrafficMissingDetailsIsError(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","TrafficDetails":[]}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "TrafficDetails") {
+		t.Fatalf("err = %v", err)
+	}
+}
