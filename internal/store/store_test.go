@@ -639,6 +639,25 @@ func TestCreateAPIKeyRejectsUnknownScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyDeduplicatesScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	key, token, err := st.CreateAPIKey(context.Background(), "widget", []string{"widget:read", "instance:control", "widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(key.Scopes) != 2 || key.Scopes[0] != "widget:read" || key.Scopes[1] != "instance:control" {
+		t.Fatalf("scopes=%v", key.Scopes)
+	}
+	got, err := st.ValidateAPIKey(context.Background(), token)
+	if err != nil || len(got) != 2 || got[0] != "widget:read" || got[1] != "instance:control" {
+		t.Fatalf("validated scopes=%v err=%v", got, err)
+	}
+}
+
 func TestValidateAPIKeyIgnoresUnknownScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

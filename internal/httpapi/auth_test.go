@@ -475,6 +475,27 @@ func TestCreateAPIKeyRejectsUnknownScopesHTTP(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyDeduplicatesScopesHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	created := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":["widget:read","widget:read","instance:control"]}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body = %s", created.Code, created.Body.String())
+	}
+	var payload struct {
+		Key struct {
+			Scopes []string `json:"scopes"`
+		} `json:"key"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Key.Scopes) != 2 || payload.Key.Scopes[0] != "widget:read" || payload.Key.Scopes[1] != "instance:control" {
+		t.Fatalf("scopes=%v", payload.Key.Scopes)
+	}
+}
+
 func TestLegacyMonitorAcceptsBearerToken(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

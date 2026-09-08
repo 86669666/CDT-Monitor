@@ -91,10 +91,24 @@ func validAPIKeyScopes(scopes []string) bool {
 	return true
 }
 
+func uniqueAPIKeyScopes(scopes []string) []string {
+	seen := make(map[string]bool, len(scopes))
+	unique := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		unique = append(unique, scope)
+	}
+	return unique
+}
+
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
 	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
 	}
+	scopes = uniqueAPIKeyScopes(scopes)
 	if !validAPIKeyScopes(scopes) {
 		return domain.APIKey{}, "", errors.New("invalid API key scope")
 	}
