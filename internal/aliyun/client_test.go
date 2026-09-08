@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -150,5 +151,51 @@ func TestCallDoesNotRetryClientErrors(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("client error should not retry, hits = %d", hits)
+	}
+}
+
+func TestControlInstanceRequiresInstanceID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret", "start", "KeepCharging")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty instance_id err=%v hits=%d", err, hits)
+	}
+}
+
+func TestGetInstanceStatusFromDescribeResponse(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[{"InstanceId":"i-test","Status":"Running"}]}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret")
+	if err != nil || status != domain.StatusRunning {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
+
+func TestControlInstanceStopDefaultsToKeepCharging(t *testing.T) {
+	var action, mode string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		action, mode = values.Get("Action"), values.Get("StoppedMode")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "STOP", ""); err != nil {
+		t.Fatal(err)
+	}
+	if action != "StopInstance" || mode != "KeepCharging" {
+		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
 	}
 }
