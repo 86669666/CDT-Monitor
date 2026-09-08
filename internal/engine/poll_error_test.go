@@ -133,3 +133,47 @@ func TestTrafficPanicDoesNotStopOnStaleUsage(t *testing.T) {
 		t.Fatalf("fresh over-threshold poll should stop once, controls = %#v", got)
 	}
 }
+
+func TestStatusPanicDoesNotKeepAlive(t *testing.T) {
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.KeepAlive = true
+	})
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.UpdateRuntime(ctx, account.ID, 1.25, domain.StatusStopped, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	provider.status = domain.StatusStopped
+	provider.statusPanic = "ecs-secret-should-not-leak"
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("panic during status poll must not keep-alive, controls = %#v", got)
+	}
+	logs, err := st.ListLogs(ctx, "action", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawProviderPanic bool
+	for _, entry := range logs {
+		if strings.Contains(entry.Message, "ecs-secret-should-not-leak") {
+			t.Fatalf("status panic leaked into logs: %q", entry.Message)
+		}
+		if strings.Contains(entry.Message, errProviderPanic.Error()) {
+			sawProviderPanic = true
+		}
+	}
+	if !sawProviderPanic {
+		t.Fatal("expected provider panic to be logged as a status fetch failure")
+	}
+	provider.statusPanic = ""
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
+		t.Fatalf("fresh stopped poll should keep-alive once, controls = %#v", got)
+	}
+}
