@@ -752,3 +752,45 @@ func TestTestNotificationRequiresAdminAndValidChannel(t *testing.T) {
 		t.Fatalf("widget test notify status = %d body = %s", forbidden.Code, forbidden.Body.String())
 	}
 }
+
+func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	current, csrf := loginCookies(t, handler)
+	other, otherCSRF := loginCookies(t, handler)
+
+	missing := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"Replacement-Password-84!"}`, []*http.Cookie{current, csrf}, nil)
+	if missing.Code != http.StatusForbidden || !strings.Contains(missing.Body.String(), "csrf_failed") {
+		t.Fatalf("missing CSRF status = %d body = %s", missing.Code, missing.Body.String())
+	}
+	wrong := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"wrong-password-xx","new_password":"Replacement-Password-84!"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if wrong.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong current status = %d body = %s", wrong.Code, wrong.Body.String())
+	}
+	short := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"short"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if short.Code != http.StatusBadRequest || !strings.Contains(short.Body.String(), "invalid_password") {
+		t.Fatalf("short password status = %d body = %s", short.Code, short.Body.String())
+	}
+
+	ok := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"Replacement-Password-84!"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("password update status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	still := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{current, csrf}, nil)
+	if still.Code != http.StatusOK {
+		t.Fatalf("current session after update status = %d body = %s", still.Code, still.Body.String())
+	}
+	dropped := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{other, otherCSRF}, nil)
+	if dropped.Code != http.StatusUnauthorized {
+		t.Fatalf("other session after update status = %d body = %s", dropped.Code, dropped.Body.String())
+	}
+
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"Replacement-Password-84!","new_password":"Another-Password-99!"}`, nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget password update status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
