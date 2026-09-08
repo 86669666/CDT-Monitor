@@ -888,3 +888,18 @@ test('dashboard shows live billing_error on the account card', async ({ page }) 
   await expect(billing.locator('.billing-error')).toHaveText('账单查询失败')
   await expect(billing.getByText('已同步')).toHaveCount(0)
 })
+
+
+test('dashboard marks over_threshold and stale from the status contract', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, over_threshold: true, stale: true, percentage: 98 }],
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.locator('.account-card.account-card--alert')).toBeVisible()
+  await expect(page.locator('.account-card__footer .stale')).toBeVisible()
+  await expect(page.locator('.metric--amber')).toContainText('1')
+})
