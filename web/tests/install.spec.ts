@@ -252,12 +252,12 @@ test('history chart surfaces the history_failed envelope', async ({ page }) => {
   await mockDashboardReads(page)
   await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({
     status: 500,
-    json: { error: { code: 'history_failed', message: '历史流量加载失败' } },
+    json: { error: { code: 'history_failed', message: '历史记录加载失败' } },
   }))
 
   await page.goto('/')
   await page.getByRole('button', { name: '查看历史流量' }).click()
-  await expect(page.getByRole('alert')).toContainText('历史流量加载失败')
+  await expect(page.getByRole('alert')).toContainText('历史记录加载失败')
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
 
@@ -933,4 +933,34 @@ test('Stopped instance posts start and Starting has no power controls', async ({
   await page.getByRole('button', { name: '开机' }).click()
   await expect(page.getByText('已发送开机指令')).toBeVisible()
   expect(startCalls).toBe(1)
+})
+
+
+test('refresh-all surfaces the enqueue_failed envelope after login', async ({ page }) => {
+  await mockInitStatus(page, true)
+  let authed = false
+  await page.route('**/api/v1/auth/login', async (route) => {
+    authed = true
+    await route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardStatus })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+  await page.route('**/api/v1/accounts/refresh', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByText('任务提交失败')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
