@@ -31,10 +31,12 @@ ghcr.io/86669666/cdt-monitor:local
 
 ```bash
 docker compose config
-docker compose build
+COMMIT="$(git rev-parse --short HEAD)" docker compose build
 docker compose up -d
 docker compose logs -f cdt-monitor
 ```
+
+`COMMIT` 只写入镜像 ldflags / `version` 输出。省略时 Compose 仍用 `unknown`，与历史本地镜像一致。不要为了填这个值去 `docker login` 或 `compose push`。
 
 浏览器访问 `http://127.0.0.1:43210`。第一次进入安装向导。数据在 named volume `cdt-data`。
 
@@ -66,6 +68,7 @@ TZ=Asia/Shanghai docker compose up -d
 - 已验证（`2026-09-08T03:52Z` / 2026-09-08 11:52 Asia/Taipei）：当前 Compose（`user 65532:65532`、`read_only`、loopback `127.0.0.1:43210`）`up -d --no-build` 后 `healthy`，`GET /healthz` `200 {"status":"ok"}`，inspect 为 `User=65532:65532`、`ReadonlyRootfs=true`、`HostIp=127.0.0.1`。随后 down 并删除 volume。
 - 这只证明本地镜像能提供 `/healthz`，不是安装向导、阿里云账号或 GHCR 发布。未做远端 CI。
 - 续推（`2026-09-08T07:01Z` / 2026-09-08 15:01 Asia/Taipei）：这台 ops 工作区当前 **没有** Docker CLI，也没有 JDK。上面的 compose/`/healthz` 记录是历史证据，本轮没有重跑 `docker compose config` 或镜像构建。不要把 Dockerfile 默认 `IMAGE_SOURCE` 改成 fork 写成一次新的本地运行证明。
+- 续推（`2026-09-08T14:54Z` / 2026-09-08 22:54 Asia/Taipei）：Compose 的 `COMMIT` 可从环境覆盖，默认仍是 `unknown`。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 
 ## 和上游安装文档的关系
 

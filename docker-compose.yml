@@ -10,7 +10,8 @@ services:
       dockerfile: Dockerfile
       args:
         VERSION: local
-        COMMIT: unknown
+        # Override with COMMIT="$(git rev-parse --short HEAD)" docker compose build.
+        COMMIT: "${COMMIT:-unknown}"
         BUILT_AT: local
         IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor
     image: ghcr.io/86669666/cdt-monitor:local
