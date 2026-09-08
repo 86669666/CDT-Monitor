@@ -132,3 +132,22 @@ func TestProcessJobsInvalidControlPayloadRequeues(t *testing.T) {
 		t.Fatalf("invalid payload must not call Aliyun, controls=%#v", got)
 	}
 }
+
+func TestProcessJobsUnknownNotifyChannelRequeues(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobTestNotify, 0, ParseNotifyPayload("sms"), "notify-sms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || !strings.Contains(jobErr, "unsupported notification channel") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+}
