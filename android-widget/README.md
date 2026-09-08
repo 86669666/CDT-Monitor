@@ -29,13 +29,13 @@ cd android-widget
 
 ### 本机工具链（ops writer host）
 
-检查时间：2026-09-09 01:20 Asia/Taipei（`2026-09-08T17:20Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。
+检查时间：2026-09-09 01:34 Asia/Taipei（`2026-09-08T17:34Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。
 
 | 依赖 | 本机状态 |
 | --- | --- |
 | JDK 17 / `java` / `javac` | 不存在，`JAVA_HOME` 为空 |
 | Android SDK 35 / `sdkmanager` / `adb` | 不在 PATH |
-| Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 8.10.2，checksum 已钉死，`networkTimeout=120000`，`org.gradle.daemon=false`，`org.gradle.workers.max=2`，`org.gradle.parallel=false`，`org.gradle.caching=false`，`org.gradle.configuration-cache=false`，`org.gradle.vfs.watch=false`） |
+| Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 8.10.2，checksum 已钉死，`networkTimeout=120000`，`android.builder.sdkDownload=false`，`org.gradle.daemon=false`，`org.gradle.workers.max=2`，`org.gradle.parallel=false`，`org.gradle.caching=false`，`org.gradle.configuration-cache=false`，`org.gradle.vfs.watch=false`） |
 | Gradle Wrapper | 已加入 `gradlew` / `gradle-wrapper.jar`；本机 `sha256sum gradle/wrapper/gradle-wrapper.jar` = `2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046`，与 `gradle/actions` wrapper-validation 中 Gradle **8.10.2** 条目一致。本机仍缺 JDK，所以 **没有** 跑过 `./gradlew` |
 
 因此本机出包仍是 blocker（缺 JDK/SDK），不要把 Wrapper 入库写成 APK 已验证。支持的构建路径仍是手动触发 `.github/workflows/android-widget.yml`（现改为 `./gradlew`）。签名密钥只通过 Actions secrets 注入，keystore 不要进 git。
