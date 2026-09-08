@@ -51,7 +51,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot、`android-widget.yml` 或其它发布 workflow YAML 变更跳过 verify。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 不再因 `main` push 自动跑。仅 `workflow_dispatch`，且需要 `ENABLE_PRODUCTION_PUBLISH=true`。不把仓库 secrets inherit 进 reusable workflows。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
 | `Release Binaries` | 仅手动或被 auto-release `workflow_call` | 不再因 `v*.*.*` tag push 自动跑。仍要 `ENABLE_PRODUCTION_PUBLISH`；artifact 保留 7 天；只有 `publish` job 拿 `contents: write`，且 `draft: true`、`make_latest: false` |
-| `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；只 load 校验 linux/amd64，`push: false`；没有 `packages: write` |
+| `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；只 load 校验 linux/amd64，`push: false`，`provenance: false`，`sbom: false`；没有 `packages: write` |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
 
 不要把一次绿色 CI 或一次本地 Docker 构建写成已经发布 GHCR / Docker Hub。
@@ -59,7 +59,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 ## 操作红线
 
 - 不要在 `86669666/CDT-Monitor` 上设置 `ENABLE_PRODUCTION_PUBLISH` 或 `ENABLE_DOCKERHUB_PUBLISH`，除非有单独的发布授权。
-- 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD`，也不要把 `docker/login-action`、GHCR/Hub 镜像名或 `qninq/cdt-monitor` 加回 Container Images。
+- 不要配置 `DOCKER_USERNAME` / `DOCKER_PASSWORD`，也不要把 `docker/login-action`、GHCR/Hub 镜像名、`qninq/cdt-monitor` 或 provenance/SBOM 加回 Container Images。
 - 不要 force-push，不要用本分支做 production deploy。
 - Container / Automatic Release workflows 不再申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，本 fork 的 GITHUB_TOKEN 也推不了 GHCR，除非有人再把该 permission 加回去。
 - 不要给 `Automatic Release` 加回 `main`/`dev`/tag 的 `on.push`，也不要把 `secrets: inherit` 加回它调用的 reusable workflows。

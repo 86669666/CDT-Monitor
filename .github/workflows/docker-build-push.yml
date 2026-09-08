@@ -45,6 +45,8 @@ jobs:
           platforms: linux/amd64
           load: true
           push: false
+          provenance: false
+          sbom: false
           tags: cdt-monitor:verify-amd64
           build-args: |
             VERSION=${{ inputs.version || github.ref_name }}
