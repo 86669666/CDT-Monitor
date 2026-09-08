@@ -1775,3 +1775,17 @@ test('settings API key create posts all live scopes', async ({ page }) => {
   await expect(page.locator('.key-row')).toContainText('widget:read · instance:control · cron:run')
   expect(createCalls).toBe(1)
 })
+
+test('admin passkeys surface the passkeys_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'passkeys_failed', message: 'Passkey 列表加载失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'Passkey 列表加载失败' }).first()).toBeVisible()
+  await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
+})
