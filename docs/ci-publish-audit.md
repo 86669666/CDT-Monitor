@@ -38,7 +38,7 @@
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 需要 `ENABLE_PRODUCTION_PUBLISH=true` |
 | `Release Binaries` | tag / 手动 / 被自动发布调用 | 同上变量，否则整条 job 跳过 |
-| `Container Images` | `dev`/tag 构建后 `push: true` | 仍可做本机 load 校验；push 需要上述变量 |
+| `Container Images` | `dev`/tag 构建后 `push: true` | 未开启发布时只做 linux/amd64 load 校验，跳过 QEMU/arm64；push 仍要变量 |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
 
 不要把一次绿色 CI 或一次本地 Docker 构建写成已经发布 GHCR / Docker Hub。

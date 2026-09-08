@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish multi-arch images
+    name: Build container images
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -37,6 +37,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up QEMU
+        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
@@ -91,6 +92,7 @@ jobs:
         run: docker run --rm cdt-monitor:verify-amd64 version | grep -q 'linux/amd64)'
 
       - name: Verify linux/arm64 image
+        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -104,6 +106,7 @@ jobs:
           cache-from: type=gha
 
       - name: Check linux/arm64 binary architecture
+        if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
         run: docker run --rm cdt-monitor:verify-arm64 version | grep -q 'linux/arm64)'
 
       - name: Build and push linux/amd64 and linux/arm64
