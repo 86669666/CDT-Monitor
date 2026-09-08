@@ -3848,3 +3848,30 @@ test('settings API key copy posts the live token to the clipboard', async ({ pag
   await expect(page.getByText('已复制到剪贴板')).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token)
 })
+
+test('settings API keys retry reloads the live key list', async ({ page }) => {
+  let listCalls = 0
+  let allowSuccess = false
+  const existing = { id: 12, name: '桌面小组件', scopes: ['widget:read'], created_at: new Date().toISOString() }
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    listCalls += 1
+    if (!allowSuccess) {
+      return route.fulfill({
+        status: 500,
+        json: { error: { code: 'api_keys_failed', message: 'API Key 列表加载失败' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [existing] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.inline-error')).toContainText('API Key 列表加载失败')
+  allowSuccess = true
+  await page.getByRole('button', { name: '重试' }).click()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(listCalls).toBeGreaterThanOrEqual(2)
+})
