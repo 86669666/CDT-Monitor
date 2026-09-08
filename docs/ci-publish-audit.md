@@ -12,6 +12,7 @@
 | Aliyun AK / SMTP / Telegram | 无 workflow 引用 | 无 | 禁止写入 YAML、Compose 或文档示例 |
 
 引用形式一律是 `${{ secrets.NAME }}` 或 `GITHUB_TOKEN`。不要把 keystore、Docker Hub 密码或云账号写进仓库。
+Verify / widget / container / release 的 `actions/checkout` 设置 `persist-credentials: false`，避免后续步骤拿到可推送的 `GITHUB_TOKEN`。`Automatic Release` 的 tag job 仍保留凭据，因为它在开启发布时需要 `git push` tag；本 fork 默认不开启。
 
 第三方 Actions 已按当前 major tag 解析并钉到 commit SHA（注释里保留 `v4`/`v5` 等标签名）。这不开启发布，也不等于远端 CI 已经跑过。
 各 job 加了 `timeout-minutes`（verify 20、widget 30、container 60、release 分段 15/20/10），避免一旦 Actions 能跑时挂死占用分钟。
