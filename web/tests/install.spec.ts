@@ -3303,3 +3303,34 @@ test('settings telegram omits empty token from the live notify contract', async 
   expect(savedTelegram).not.toHaveProperty('token')
   expect(savedTelegram).not.toHaveProperty('proxy_pass')
 })
+
+test('settings save omits unchanged account secret', async ({ page }) => {
+  let saveCalls = 0
+  let account: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      account = body.accounts?.[0]
+      if (account) expectKnownKeys(account, ACCOUNT_OBJECT_KEYS)
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(account).toMatchObject({
+    access_key_id: 'LTAI5test',
+    secret_configured: true,
+    instance_id: 'i-test',
+  })
+  expect(account).not.toHaveProperty('access_key_secret')
+})
