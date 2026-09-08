@@ -166,7 +166,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	applyConfigDefaults(&config)
 	if err := s.store.Setup(r.Context(), config); err != nil {
-		writeError(w, http.StatusBadRequest, "setup_failed", err.Error())
+		writeStoreValidationError(w, "setup_failed", "系统初始化失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "系统初始化完成 [IP: "+clientIP(r)+"]")
@@ -564,7 +564,7 @@ func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	applyConfigDefaults(&config)
 	if err := s.store.SaveConfig(r.Context(), config); err != nil {
-		writeError(w, http.StatusBadRequest, "config_failed", err.Error())
+		writeStoreValidationError(w, "config_failed", "配置保存失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "管理员更新系统配置")
@@ -937,6 +937,31 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+func writeStoreValidationError(w http.ResponseWriter, code, fallback string, err error) {
+	msg := err.Error()
+	if !safeStoreValidationMessage(msg) {
+		msg = fallback
+	}
+	writeError(w, http.StatusBadRequest, code, msg)
+}
+
+func safeStoreValidationMessage(msg string) bool {
+	switch msg {
+	case "system is already initialized",
+		"traffic threshold must be between 1 and 100",
+		"invalid shutdown mode",
+		"invalid threshold action",
+		"api interval must be between 30 and 86400 seconds",
+		"invalid timezone",
+		"administrator password must be at least 10 characters",
+		"administrator password is required",
+		"account access_key_id and region_id are required":
+		return true
+	default:
+		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")
+	}
 }
 
 func pathInt64(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {

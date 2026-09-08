@@ -3,6 +3,7 @@ package httpapi
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -679,6 +680,51 @@ func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 	if reboot.Code != http.StatusBadRequest || !strings.Contains(reboot.Body.String(), "invalid_action") {
 		t.Fatalf("reboot status = %d body = %s", reboot.Code, reboot.Body.String())
 	}
+}
+
+func TestSetupHidesDatabaseErrors(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	setup := doRequest(t, handler, http.MethodPost, "/api/v1/setup", `{"admin_password":"Strong-Password-42!","traffic_threshold":95,"shutdown_mode":"KeepCharging","threshold_action":"stop_and_notify","api_interval":600,"timezone":"Asia/Shanghai"}`, nil, nil)
+	if setup.Code != http.StatusBadRequest || !strings.Contains(setup.Body.String(), "setup_failed") || !strings.Contains(setup.Body.String(), "系统初始化失败") {
+		t.Fatalf("setup status = %d body = %s", setup.Code, setup.Body.String())
+	}
+	if leakedInternalError(setup.Body.String(), dir) {
+		t.Fatalf("setup leaked internals: %s", setup.Body.String())
+	}
+}
+
+func TestStoreValidationErrorsStayPublic(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("invalid timezone"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid timezone") {
+		t.Fatalf("validation status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("sqlite: database is closed"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "配置保存失败") || leakedInternalError(rec.Body.String(), "") {
+		t.Fatalf("internal status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account LTAItest is missing access key secret"))
+	if !strings.Contains(rec.Body.String(), "missing access key secret") {
+		t.Fatalf("missing secret status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func leakedInternalError(body, path string) bool {
+	lower := strings.ToLower(body)
+	if strings.Contains(lower, "sqlite") || strings.Contains(lower, "sql:") || strings.Contains(lower, "no such") {
+		return true
+	}
+	return path != "" && strings.Contains(body, path)
 }
 
 func TestAuthenticatedEndpointsHideDatabaseErrors(t *testing.T) {
