@@ -1509,3 +1509,30 @@ test('settings webhook test surfaces the enqueue_failed envelope', async ({ page
   await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings webhook test surfaces a failed notification job', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-fail', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-webhook-fail', 'failed')
+    failed.type = 'test_notification'
+    failed.error = 'webhook HTTP 502: bad gateway'
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'webhook HTTP 502: bad gateway' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
