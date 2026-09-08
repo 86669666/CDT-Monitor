@@ -1088,3 +1088,24 @@ test('login surfaces the config_failed envelope when dashboard load fails', asyn
   await expect(page.getByText('配置加载失败')).toBeVisible()
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
+
+test('single instance refresh completes from the live job contract', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-one', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'refresh-one'
+    return route.fulfill({ json: jobFixture(id, 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.getByText('实例状态已刷新')).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
+
