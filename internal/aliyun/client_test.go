@@ -14,8 +14,11 @@ import (
 func TestTrafficClass(t *testing.T) {
 	cases := map[string]string{
 		"cn-hangzhou":    "china",
+		"cn-shanghai":    "china",
 		"cn-hongkong":    "international",
 		"ap-southeast-1": "international",
+		"ap-northeast-1": "international",
+		"ap-northeast-2": "international",
 	}
 	for region, expected := range cases {
 		if actual := trafficClass(region); actual != expected {
@@ -456,6 +459,45 @@ func TestGetInstanceStatusEmptyIsUnknown(t *testing.T) {
 	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-missing"}, "secret")
 	if err != nil || status != domain.StatusUnknown {
 		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
+
+func TestGetTrafficTokyoIsInternational(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"ap-northeast-1","Traffic":3221225472}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "ap-northeast-1"}, "secret")
+	if err != nil || traffic != 3 {
+		t.Fatalf("tokyo traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestGetTrafficShanghaiIsChina(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-shanghai","Traffic":2147483648},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-shanghai"}, "secret")
+	if err != nil || traffic != 3 {
+		t.Fatalf("shanghai traffic=%v err=%v", traffic, err)
 	}
 }
 

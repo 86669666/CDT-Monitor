@@ -39,3 +39,12 @@ func TestRegionNameIncludesSeoul(t *testing.T) {
 		t.Fatalf("got %q", name)
 	}
 }
+
+func TestRegionNameIncludesTokyoAndShanghai(t *testing.T) {
+	if name := RegionName("ap-northeast-1"); name != "日本（东京）" {
+		t.Fatalf("tokyo got %q", name)
+	}
+	if name := RegionName("cn-shanghai"); name != "华东 2（上海）" {
+		t.Fatalf("shanghai got %q", name)
+	}
+}
