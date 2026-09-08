@@ -140,23 +140,27 @@ func (e *Engine) worker(ctx context.Context, index int) {
 		case <-e.wake:
 		case <-ticker.C:
 		}
-		for {
-			job, err := e.store.ClaimJob(ctx)
-			if errors.Is(err, sql.ErrNoRows) {
-				break
-			}
-			if err != nil {
-				e.logger.Error("claim job", "worker", index, "error", err)
-				break
-			}
-			result, runErr := e.runJob(ctx, job)
-			if runErr != nil {
-				e.logger.Warn("job failed", "job_id", job.ID, "type", job.Type, "error", runErr)
-				_ = e.store.FailJob(ctx, job, runErr)
-				continue
-			}
-			_ = e.store.CompleteJob(ctx, job.ID, result)
+		e.processJobs(ctx, index)
+	}
+}
+
+func (e *Engine) processJobs(ctx context.Context, index int) {
+	for {
+		job, err := e.store.ClaimJob(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return
 		}
+		if err != nil {
+			e.logger.Error("claim job", "worker", index, "error", err)
+			return
+		}
+		result, runErr := e.runJob(ctx, job)
+		if runErr != nil {
+			e.logger.Warn("job failed", "job_id", job.ID, "type", job.Type, "error", runErr)
+			_ = e.store.FailJob(ctx, job, runErr)
+			continue
+		}
+		_ = e.store.CompleteJob(ctx, job.ID, result)
 	}
 }
 
