@@ -1019,3 +1019,25 @@ test('instance refresh surfaces the job_not_found envelope after login', async (
   await expect(page.getByText('任务不存在')).toBeVisible()
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+
+test('Running instance posts stop when keep_alive is off', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, { ...dashboardConfig, keep_alive: false })
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-1', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'stop-1'
+    return route.fulfill({ json: jobFixture(id, 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: '关机' })).toBeEnabled()
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.getByText('已发送关机指令')).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
