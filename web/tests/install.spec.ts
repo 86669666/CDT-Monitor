@@ -4228,3 +4228,16 @@ test('history chart scrim close returns to the dashboard', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+test('admin settings scrim close returns to the dashboard', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.getByRole('dialog', { name: '管理员设置' })).toBeVisible()
+  await page.locator('.modal-layer .modal-scrim').click({ position: { x: 8, y: 8 } })
+  await expect(page.getByRole('dialog', { name: '管理员设置' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
