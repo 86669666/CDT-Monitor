@@ -1789,3 +1789,27 @@ test('admin passkeys surface the passkeys_failed envelope', async ({ page }) => 
   await expect(page.locator('.toast--error').filter({ hasText: 'Passkey 列表加载失败' }).first()).toBeVisible()
   await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
 })
+
+test('admin passkey delete posts the live success contract', async ({ page }) => {
+  const existing = { id: 7, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => {
+    return route.fulfill({ json: { passkeys: deleteCalls > 0 ? [] : [existing] } })
+  })
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    expect(route.request().method()).toBe('DELETE')
+    expect(route.request().url()).toMatch(/\/api\/v1\/admin\/passkeys\/7$/)
+    deleteCalls += 1
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.getByText('Passkey 已删除')).toBeVisible()
+  await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
+  expect(deleteCalls).toBe(1)
+})
