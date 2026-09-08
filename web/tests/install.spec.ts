@@ -1570,3 +1570,18 @@ test('settings API key create posts the live key contract', async ({ page }) => 
   await expect(page.locator('.key-row')).toContainText('widget:read')
   expect(createCalls).toBe(1)
 })
+
+test('settings API keys surface the api_keys_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'api_keys_failed', message: 'API Key 列表加载失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.inline-error')).toContainText('API Key 列表加载失败')
+  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+})
