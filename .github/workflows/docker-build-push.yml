@@ -2,11 +2,9 @@ name: Container Images
 
 # GHCR / Docker Hub publish is opt-in via repository variables.
 # This fork leaves ENABLE_PRODUCTION_PUBLISH unset.
+# Do not auto-run on dev/tag pushes; accidental tags must not start a build.
 
 on:
-  push:
-    branches: [dev]
-    tags: ['v*.*.*']
   workflow_dispatch:
   workflow_call:
     inputs:
