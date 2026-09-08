@@ -1615,3 +1615,27 @@ test('settings API key revoke posts the live success contract', async ({ page })
   await expect(page.locator('.key-row')).toHaveCount(0)
   expect(revokeCalls).toBe(1)
 })
+
+test('settings API key create surfaces the api_key_failed envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'api_key_failed', message: '无法创建 API Key' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '无法创建 API Key' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
