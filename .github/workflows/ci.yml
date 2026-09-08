@@ -6,8 +6,18 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'android-widget/**'
+      - 'README.MD'
+      - 'LICENSE'
   push:
     branches: [dev, main, 'work/**']
+    paths-ignore:
+      - 'docs/**'
+      - 'android-widget/**'
+      - 'README.MD'
+      - 'LICENSE'
   workflow_dispatch:
 
 concurrency:
