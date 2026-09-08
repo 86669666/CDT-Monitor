@@ -1218,3 +1218,29 @@ test('empty dashboard opens settings from the zero-account state', async ({ page
   await page.getByRole('heading', { name: '添加第一个云端实例' }).click()
   await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
 })
+
+test('admin password update surfaces invalid_credentials for the current password', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    expect(route.request().method()).toBe('PUT')
+    expect(JSON.parse(route.request().postData() || '{}')).toEqual({
+      current_password: 'wrong-current-password',
+      new_password: TEST_PASSWORD,
+    })
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'invalid_credentials', message: '当前密码错误' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill('wrong-current-password')
+  await page.getByLabel('新密码', { exact: true }).fill(TEST_PASSWORD)
+  await page.getByLabel('确认新密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByText('当前密码错误')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+})
