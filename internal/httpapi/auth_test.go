@@ -794,3 +794,40 @@ func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
 		t.Fatalf("widget password update status = %d body = %s", forbidden.Code, forbidden.Body.String())
 	}
 }
+
+func TestPasskeyLoginRequiresHTTPS(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "https_required") {
+		t.Fatalf("insecure passkey login status = %d body = %s", response.Code, response.Body.String())
+	}
+
+	session, csrf := loginCookies(t, handler)
+	reg := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/admin/passkeys/register/begin", strings.NewReader(`{"name":"laptop"}`))
+	reg.Header.Set("Content-Type", "application/json")
+	reg.Header.Set("X-CDT-CSRF", csrf.Value)
+	reg.AddCookie(session)
+	reg.AddCookie(csrf)
+	regResponse := httptest.NewRecorder()
+	handler.ServeHTTP(regResponse, reg)
+	if regResponse.Code != http.StatusBadRequest || !strings.Contains(regResponse.Body.String(), "https_required") {
+		t.Fatalf("insecure passkey register status = %d body = %s", regResponse.Code, regResponse.Body.String())
+	}
+}
+
+func TestMissingJobIsNotFound(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, token, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/does-not-exist", "", nil, map[string]string{"X-API-Key": token})
+	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "job_not_found") {
+		t.Fatalf("missing job status = %d body = %s", missing.Code, missing.Body.String())
+	}
+}

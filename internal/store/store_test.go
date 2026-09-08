@@ -379,6 +379,25 @@ func TestUpdateAdminPasswordKeepsCurrentSessionOnly(t *testing.T) {
 	}
 }
 
+func TestPruneDeletesOldLoginAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES('1.1.1.1',unixepoch()-90000),('1.1.1.1',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Prune(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM login_attempts`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("login_attempts count = %d err=%v", count, err)
+	}
+}
+
 func TestPruneDeletesExpiredSessionsOnly(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
