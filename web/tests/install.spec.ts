@@ -4178,3 +4178,28 @@ test('dashboard mobile menu opens settings', async ({ page }) => {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
 })
+
+test('settings webhook template scrim close does not save', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: 'Bark' }).click()
+  await expect(page.getByRole('dialog', { name: 'Bark 模板配置' })).toBeVisible()
+  await page.locator('.modal-layer--nested .modal-scrim').click({ position: { x: 8, y: 8 } })
+  await expect(page.getByRole('dialog', { name: 'Bark 模板配置' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+  expect(saveCalls).toBe(0)
+})
