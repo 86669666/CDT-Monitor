@@ -493,3 +493,19 @@ func TestGetInstanceStatusAcceptsSingleObject(t *testing.T) {
 		t.Fatalf("status=%q err=%v", status, err)
 	}
 }
+
+func TestGetTrafficAcceptsSingleTrafficDetailsObject(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"TrafficDetails":{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || traffic != 1 {
+		t.Fatalf("traffic=%v err=%v", traffic, err)
+	}
+}
