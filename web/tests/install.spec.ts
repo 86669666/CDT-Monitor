@@ -4048,3 +4048,16 @@ test('settings panel closes from the dialog contract', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '控制台设置' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+test('admin settings close from the dialog contract', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  await page.getByRole('dialog', { name: '管理员设置' }).getByRole('button', { name: '关闭' }).click()
+  await expect(page.getByRole('dialog', { name: '管理员设置' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
