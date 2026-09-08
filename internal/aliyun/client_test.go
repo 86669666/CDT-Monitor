@@ -212,6 +212,22 @@ func TestGetInstanceStatusRequiresInstanceID(t *testing.T) {
 	}
 }
 
+func TestGetInstanceBillRequiresBillingCycle(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"Data":{"Items":[]}}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", SiteType: "china", InstanceID: "i-test"}
+	for _, cycle := range []string{"", "  ", "nope", "2026-13"} {
+		_, err := client.GetInstanceBill(context.Background(), account, "secret", cycle)
+		if err == nil || hits != 0 {
+			t.Fatalf("cycle %q err=%v hits=%d", cycle, err, hits)
+		}
+	}
+}
+
 func TestGetInstanceBillRequiresInstanceID(t *testing.T) {
 	var hits int
 	client := NewClient()

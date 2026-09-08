@@ -174,6 +174,9 @@ func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, se
 	if account.InstanceID == "" {
 		return BillingBill{}, errors.New("instance_id is required")
 	}
+	if err := validBillingCycle(cycle); err != nil {
+		return BillingBill{}, err
+	}
 	bss := bssEndpoint(account.SiteType)
 	params := map[string]string{"BillingCycle": cycle, "InstanceID": account.InstanceID, "Granularity": "MONTHLY"}
 	result, err := c.call(ctx, account.AccessKeyID, secret, bss.region, bss.host, "2017-12-14", "DescribeInstanceBill", params)
@@ -208,6 +211,15 @@ func billingSite(siteType string) string {
 		return "international"
 	}
 	return "china"
+}
+
+func validBillingCycle(cycle string) error {
+	cycle = strings.TrimSpace(cycle)
+	parsed, err := time.Parse("2006-01", cycle)
+	if err != nil || parsed.Format("2006-01") != cycle {
+		return errors.New("billing cycle is required")
+	}
+	return nil
 }
 
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
