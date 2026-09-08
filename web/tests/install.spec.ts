@@ -4241,3 +4241,15 @@ test('admin settings scrim close returns to the dashboard', async ({ page }) => 
   await expect(page.getByRole('dialog', { name: '管理员设置' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
 })
+
+test('dashboard mobile menu toggles closed', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '菜单' }).click()
+  await expect(page.getByRole('button', { name: '菜单' })).toHaveAttribute('aria-expanded', 'true')
+  await page.getByRole('button', { name: '菜单' }).click()
+  await expect(page.getByRole('button', { name: '菜单' })).toHaveAttribute('aria-expanded', 'false')
+})
