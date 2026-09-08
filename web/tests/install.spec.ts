@@ -3974,3 +3974,17 @@ test('wizard back stays disabled on the first setup step', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
   await expect(page.getByRole('button', { name: '返回' })).toBeDisabled()
 })
+
+test('wizard back returns from automation policy to the password step', async ({ page }) => {
+  await mockInitStatus(page, false)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+  await page.getByRole('button', { name: '返回' }).click()
+  await expect(page.getByRole('heading', { name: '创建安全边界' })).toBeVisible()
+  await expect(page.getByLabel('管理员密码')).toHaveValue(TEST_PASSWORD)
+})
