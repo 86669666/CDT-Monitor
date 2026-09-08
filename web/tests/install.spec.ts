@@ -1722,3 +1722,23 @@ test('settings bark webhook template posts the live webhook contract', async ({ 
     secret_configured: false,
   })
 })
+
+test('instance refresh surfaces the job_failed envelope', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-fail', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'job_failed', message: '任务查询失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
