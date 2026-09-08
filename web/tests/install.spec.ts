@@ -3999,3 +3999,17 @@ test('wizard password strength follows the live password contract', async ({ pag
   await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
   await expect(page.getByLabel('密码强度 4/4')).toBeVisible()
 })
+
+test('wizard back returns from instance setup to automation policy', async ({ page }) => {
+  await mockInitStatus(page, false)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+  await page.getByRole('button', { name: '返回' }).click()
+  await expect(page.getByRole('heading', { name: '设定自动化策略' })).toBeVisible()
+})
