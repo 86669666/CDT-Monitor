@@ -3875,3 +3875,18 @@ test('settings API keys retry reloads the live key list', async ({ page }) => {
   await expect(page.locator('.key-row')).toContainText('桌面小组件')
   expect(listCalls).toBeGreaterThanOrEqual(2)
 })
+
+test('login stays disabled without a password', async ({ page }) => {
+  let loginCalls = 0
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+  await page.route('**/api/v1/auth/login', (route) => {
+    loginCalls += 1
+    return route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '安全登录' })).toBeDisabled()
+  expect(loginCalls).toBe(0)
+})
