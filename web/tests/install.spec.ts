@@ -986,3 +986,36 @@ test('failed start job surfaces the live job error', async ({ page }) => {
   await page.getByRole('button', { name: '开机' }).click()
   await expect(page.getByText('开机失败')).toBeVisible()
 })
+
+test('instance refresh surfaces the job_not_found envelope after login', async ({ page }) => {
+  await mockInitStatus(page, true)
+  let authed = false
+  await page.route('**/api/v1/auth/login', async (route) => {
+    authed = true
+    await route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardStatus })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('missing-job', 'queued') })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'job_not_found', message: '任务不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.getByText('任务不存在')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+})
