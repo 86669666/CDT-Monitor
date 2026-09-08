@@ -2197,3 +2197,47 @@ test('settings telegram test surfaces the enqueue_failed envelope', async ({ pag
   await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings telegram socks5 proxy posts the live notify contract', async ({ page }) => {
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByText('启用 Telegram', { exact: true }).click()
+  await page.getByLabel('Bot Token').fill('123:abc')
+  await page.getByLabel('Chat ID').fill('-1001')
+  await page.getByLabel('代理类型').click()
+  await page.getByRole('option', { name: 'SOCKS5' }).click()
+  await page.getByLabel('代理 IP').fill('127.0.0.1')
+  await page.getByLabel('代理端口').fill('1080')
+  await page.getByLabel('代理账号').fill('proxy-user')
+  await page.getByLabel('代理密码').fill('proxy-pass')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    token: '123:abc',
+    token_configured: false,
+    chat_id: '-1001',
+    proxy_type: 'socks5',
+    proxy_url: '',
+    proxy_ip: '127.0.0.1',
+    proxy_port: '1080',
+    proxy_user: 'proxy-user',
+    proxy_pass: 'proxy-pass',
+    proxy_password_configured: false,
+  })
+})
