@@ -139,11 +139,11 @@ func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
 	var result []string
 	if err = json.Unmarshal([]byte(scopes), &result); err != nil {
 		return nil, err
 	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
 	return result, nil
 }
 

@@ -691,6 +691,28 @@ func TestAPIKeyLastUsedIsUpdatedOnValidate(t *testing.T) {
 	}
 }
 
+func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	token := "cdt_corrupt_scopes_token"
+	if _, err = st.db.Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('broken',?,'not-json',unixepoch())`, security.TokenHash(token)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(context.Background(), token); err == nil {
+		t.Fatal("expected corrupt scopes to fail")
+	}
+	var lastUsed sql.NullInt64
+	if err = st.db.QueryRow(`SELECT last_used_at FROM api_keys`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("corrupt key must not record last_used_at")
+	}
+}
+
 func TestPasskeyCredentialRoundTrip(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

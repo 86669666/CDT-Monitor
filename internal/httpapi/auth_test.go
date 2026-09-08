@@ -266,6 +266,31 @@ func TestAPIKeyLastUsedIsListedWithoutToken(t *testing.T) {
 	}
 }
 
+func TestJSONAPIsRejectQueryStringAPIKey(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := doRequest(t, handler, http.MethodGet, "/api/v1/status?key="+widgetToken, "", nil, nil)
+	if query.Code != http.StatusUnauthorized {
+		t.Fatalf("query status key status = %d body = %s", query.Code, query.Body.String())
+	}
+	header := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if header.Code != http.StatusOK {
+		t.Fatalf("header status key status = %d body = %s", header.Code, header.Body.String())
+	}
+	_, cronToken, err := st.CreateAPIKey(t.Context(), "cron", []string{"cron:run"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := doRequest(t, handler, http.MethodGet, "/monitor.php?key="+cronToken, "", nil, nil)
+	if legacy.Code != http.StatusAccepted {
+		t.Fatalf("legacy query key status = %d body = %s", legacy.Code, legacy.Body.String())
+	}
+}
+
 func TestLogoutInvalidatesSession(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
