@@ -887,3 +887,32 @@ func TestSystemInfoRequiresAdminAndHistoryRejectsBadIDs(t *testing.T) {
 		t.Fatalf("abc history status = %d body = %s", malformed.Code, malformed.Body.String())
 	}
 }
+
+func TestClearLogsRequiresAdminCSRF(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	if err := st.AddLog(t.Context(), "audit", "keep-me"); err != nil {
+		t.Fatal(err)
+	}
+	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := doRequest(t, handler, http.MethodDelete, "/api/v1/logs", "", nil, map[string]string{"X-API-Key": widgetToken})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("widget clear logs status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+	session, csrf := loginCookies(t, handler)
+	missing := doRequest(t, handler, http.MethodDelete, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
+	if missing.Code != http.StatusForbidden || !strings.Contains(missing.Body.String(), "csrf_failed") {
+		t.Fatalf("clear logs CSRF status = %d body = %s", missing.Code, missing.Body.String())
+	}
+	ok := doRequest(t, handler, http.MethodDelete, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("admin clear logs status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"logs":[]`) {
+		t.Fatalf("cleared logs status = %d body = %s", listed.Code, listed.Body.String())
+	}
+}
