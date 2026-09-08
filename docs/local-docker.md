@@ -17,7 +17,7 @@ ghcr.io/86669666/cdt-monitor:local
 1. `node:22-alpine`（digest 钉死）构建 `web/`，产物落到 `internal/web/dist`。
 2. `golang:1.24-alpine`（digest 钉死）按 `TARGETOS` / `TARGETARCH` 交叉编译 `./cmd/cdt-monitor`（`CGO_ENABLED=0`）。
 3. `alpine:3.21`（digest 钉死）只提供 CA 证书。
-4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`、`STOPSIGNAL SIGTERM`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `restart: on-failure:3`（本地不自动 unless-stopped）、`no-new-privileges`、`cap_drop: ALL`、`pids_limit: 256`、`mem_limit: 512m`、`cpus: 1.0`、`stop_grace_period: 15s`，以及 json-file 日志上限 `10m` × 3。
+4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`、`STOPSIGNAL SIGTERM`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `restart: on-failure:3`（本地不自动 unless-stopped）、`no-new-privileges`、`cap_drop: ALL`、`pids_limit: 256`、`mem_limit: 512m`、`cpus: 1.0`、只读根文件系统（`/data` 可写，`/tmp` 为 tmpfs）、`stop_grace_period: 15s`，以及 json-file 日志上限 `10m` × 3。
 
 运行镜像里没有 shell、包管理器或阿里云凭据。AccessKey、通知密钥和管理员密码都在首次 Web 向导写入数据卷，不要放进 Compose 或镜像构建参数。
 
@@ -59,6 +59,8 @@ TZ=Asia/Shanghai docker compose up -d
 - 已验证（`2026-09-07T22:42Z` / 2026-09-08 06:42 Asia/Taipei）：`docker compose build` 在本机打出 `ghcr.io/86669666/cdt-monitor:local`（`sha256:ef9fbb591a54…`，约 13.2MB，`USER 65532:65532`，fork `IMAGE_SOURCE`，镜像 HEALTHCHECK 存在）。`docker run --rm --network none … version` 输出 `cdt-monitor local (unknown, local, linux/amd64)`。
 - **没有** `docker push` / `docker compose push` / GHCR login。不要把这次本机构建写成已经发布。
 - 已验证（`2026-09-07T23:02Z` / 2026-09-08 07:02 Asia/Taipei）：`docker compose up -d --no-build` 后容器 `healthy`，`curl http://127.0.0.1:43210/healthz` 返回 `200 {"status":"ok"}`，进程用户 `65532:65532`，`CapDrop=ALL`，`no-new-privileges`。随后 `docker compose down` 并删除 named volume，避免把本机 `master.key` 留在宿主机。
+
+- 已验证（`2026-09-08T00:40Z` 量级）：`read_only: true` + tmpfs `/tmp` 下 `GET /healthz` 仍为 `200 {"status":"ok"}`，`ReadonlyRootfs=true`。测试后 `compose down` 并删除 volume。
 - 这只证明本地镜像能提供 `/healthz`，不是安装向导、阿里云账号或 GHCR 发布。未做远端 CI。
 
 ## 和上游安装文档的关系

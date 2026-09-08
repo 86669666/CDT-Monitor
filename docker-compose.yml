@@ -38,6 +38,9 @@ services:
       CDT_LISTEN: :8080
       CDT_WORKERS: 4
       TZ: Asia/Taipei
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     volumes:
       - cdt-data:/data
     healthcheck:
