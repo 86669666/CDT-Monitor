@@ -3440,3 +3440,19 @@ test('refresh-all with no jobs shows the live empty-queue message', async ({ pag
   await expect(page.getByText('暂无可刷新的实例')).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('refresh-all treats a null jobs array as empty', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: null } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByText('暂无可刷新的实例')).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
