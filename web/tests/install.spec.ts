@@ -3754,3 +3754,13 @@ test('admin passkey create stays disabled without HTTPS', async ({ page }) => {
   await expect(page.getByRole('button', { name: '创建 Passkey' })).toBeDisabled()
   await expect(page.getByText('当前连接不是 HTTPS，Passkey 创建按钮已禁用。')).toBeVisible()
 })
+
+test('admin passkeys treat a null passkeys array as empty', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: null } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
+})
