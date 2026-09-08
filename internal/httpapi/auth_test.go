@@ -1119,3 +1119,30 @@ func TestHeartbeatLogsRequireAdmin(t *testing.T) {
 		t.Fatalf("delete passkey 0 status = %d body = %s", badID.Code, badID.Body.String())
 	}
 }
+
+func TestLoginRateLimitAfterEightAttempts(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 8; i++ {
+		response := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"wrong-password-xx"}`, nil, nil)
+		if i < 5 && response.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d body = %s", i+1, response.Code, response.Body.String())
+		}
+		if i >= 5 && i < 8 && (response.Code != http.StatusTooManyRequests || !strings.Contains(response.Body.String(), "login_locked")) {
+			t.Fatalf("attempt %d expected lockout, status = %d body = %s", i+1, response.Code, response.Body.String())
+		}
+	}
+	limited := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"wrong-password-xx"}`, nil, nil)
+	if limited.Code != http.StatusTooManyRequests || !strings.Contains(limited.Body.String(), "rate_limited") {
+		t.Fatalf("ninth attempt status = %d body = %s", limited.Code, limited.Body.String())
+	}
+}
+
+func TestReadyzIsPublic(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ready := doRequest(t, handler, http.MethodGet, "/readyz", "", nil, nil)
+	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"ready"`) {
+		t.Fatalf("readyz status = %d body = %s", ready.Code, ready.Body.String())
+	}
+}
