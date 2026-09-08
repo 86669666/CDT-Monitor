@@ -23,6 +23,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    user: "65532:65532"
     pids_limit: 256
     mem_limit: 512m
     cpus: 1.0

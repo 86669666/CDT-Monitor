@@ -17,7 +17,7 @@ ghcr.io/86669666/cdt-monitor:local
 1. `node:22-alpine`（digest 钉死）构建 `web/`，产物落到 `internal/web/dist`。
 2. `golang:1.24-alpine`（digest 钉死）按 `TARGETOS` / `TARGETARCH` 交叉编译 `./cmd/cdt-monitor`（`CGO_ENABLED=0`）。
 3. `alpine:3.21`（digest 钉死）只提供 CA 证书。
-4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`、`STOPSIGNAL SIGTERM`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `restart: on-failure:3`（本地不自动 unless-stopped）、`no-new-privileges`、`cap_drop: ALL`、`pids_limit: 256`、`mem_limit: 512m`、`cpus: 1.0`、只绑定 `127.0.0.1:43210`、只读根文件系统（`/data` 可写，`/tmp` 为 tmpfs）、`stop_grace_period: 15s`，以及 json-file 日志上限 `10m` × 3。
+4. 最终 `scratch` 镜像：非 root `65532:65532`、`VOLUME /data`、`EXPOSE 8080`、入口 `/cdt-monitor serve`、`STOPSIGNAL SIGTERM`，以及镜像内 `HEALTHCHECK`（`/cdt-monitor healthcheck` → `/healthz`）。Compose 另加 `user: "65532:65532"`、`restart: on-failure:3`（本地不自动 unless-stopped）、`no-new-privileges`、`cap_drop: ALL`、`pids_limit: 256`、`mem_limit: 512m`、`cpus: 1.0`、只绑定 `127.0.0.1:43210`、只读根文件系统（`/data` 可写，`/tmp` 为 tmpfs）、`stop_grace_period: 15s`，以及 json-file 日志上限 `10m` × 3。
 
 运行镜像里没有 shell、包管理器或阿里云凭据。AccessKey、通知密钥和管理员密码都在首次 Web 向导写入数据卷，不要放进 Compose 或镜像构建参数。
 
