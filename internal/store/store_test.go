@@ -555,6 +555,47 @@ INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) V
 	}
 }
 
+func TestBillingCacheIsIsolatedPerAccount(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.SetBillingCache(ctx, 1, "balance", "", map[string]float64{"amount": 10.5}); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]float64
+	ok, err := st.BillingCache(ctx, 2, "balance", "", time.Hour, &got)
+	if err != nil || ok {
+		t.Fatalf("account 2 must miss, ok=%v err=%v", ok, err)
+	}
+	ok, err = st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
+	if err != nil || !ok || got["amount"] != 10.5 {
+		t.Fatalf("account 1 cache=%v ok=%v err=%v", got, ok, err)
+	}
+}
+
+func TestBillingCacheExpiresByMaxAge(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.SetBillingCache(ctx, 1, "balance", "", map[string]float64{"amount": 8}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE billing_cache SET updated_at=unixepoch()-120`); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]float64
+	ok, err := st.BillingCache(ctx, 1, "balance", "", 30*time.Second, &got)
+	if err != nil || ok {
+		t.Fatalf("stale cache must miss, ok=%v err=%v", ok, err)
+	}
+}
+
 func TestPruneDeletesSentAndFailedOutbox(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
