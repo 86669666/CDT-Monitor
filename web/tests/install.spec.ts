@@ -1286,3 +1286,29 @@ test('admin password update surfaces the password_update_failed envelope', async
   await expect(page.getByText('管理员密码更新失败')).toBeVisible()
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
 })
+
+
+test('admin password update posts the live success contract', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    expect(route.request().method()).toBe('PUT')
+    expect(JSON.parse(route.request().postData() || '{}')).toEqual({
+      current_password: TEST_PASSWORD,
+      new_password: 'Rotated-Password-42!',
+    })
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByText('管理员密码已更新')).toBeVisible()
+  await expect(page.getByLabel('当前密码')).toHaveValue('')
+  await expect(page.getByLabel('新密码', { exact: true })).toHaveValue('')
+  await expect(page.getByLabel('确认新密码')).toHaveValue('')
+})
