@@ -3424,3 +3424,19 @@ test('history chart treats a null daily array as empty', async ({ page }) => {
   await expect(page.getByText('等待采样数据')).toBeVisible()
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
+
+test('refresh-all with no jobs shows the live empty-queue message', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByText('暂无可刷新的实例')).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
