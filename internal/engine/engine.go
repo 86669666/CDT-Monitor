@@ -448,6 +448,9 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	if config.KeepAlive && action == "stop" {
 		return "", errors.New("manual shutdown is disabled while keep-alive is enabled")
 	}
+	if (action == "start" && account.InstanceStatus == domain.StatusRunning) || (action == "stop" && account.InstanceStatus == domain.StatusStopped) {
+		return fmt.Sprintf("%s控制实例 [%s]：%s", source, masked(account.AccessKeyID), action), nil
+	}
 	secret, err := e.store.AccountSecret(ctx, accountID)
 	if err != nil {
 		return "", err

@@ -45,6 +45,40 @@ func TestManualStopRejectedWhileStarting(t *testing.T) {
 	}
 }
 
+func TestManualStartSkippedWhenAlreadyRunning(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.UpdateRuntime(ctx, account.ID, 1.25, domain.StatusRunning, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err := eng.runJob(ctx, domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: ParseControlPayload("start", "手动")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("running start must not call Aliyun, controls = %#v", got)
+	}
+}
+
+func TestManualStopSkippedWhenAlreadyStopped(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.UpdateRuntime(ctx, account.ID, 1.25, domain.StatusStopped, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	if _, err := eng.runJob(ctx, domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: ParseControlPayload("stop", "手动")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("stopped stop must not call Aliyun, controls = %#v", got)
+	}
+}
+
 func TestManualStartRejectedWhilePending(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()
