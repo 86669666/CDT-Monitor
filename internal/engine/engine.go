@@ -250,8 +250,8 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	}
 	due := force || account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) >= interval || now.Minute() == 0 || statusChangedBySchedule
 	traffic, status := account.TrafficUsed, account.InstanceStatus
+	var trafficErr, statusErr error
 	if due {
-		var trafficErr, statusErr error
 		var wait sync.WaitGroup
 		wait.Add(2)
 		go func() {
@@ -294,11 +294,11 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	overThreshold := percentage >= float64(config.TrafficThreshold)
 	thresholdKey := fmt.Sprintf("threshold:%d:active", account.ID)
 	thresholdStopKey := fmt.Sprintf("threshold:%d:stop", account.ID)
-	if !overThreshold {
+	if !overThreshold && trafficErr == nil {
 		_ = e.store.DeleteActionEvent(ctx, thresholdKey)
 		_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
 	}
-	if overThreshold && due {
+	if overThreshold && due && trafficErr == nil {
 		if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && status != domain.StatusStopping {
 			freshStop, recordErr := e.store.RecordActionEvent(ctx, thresholdStopKey, account.ID, "threshold_stop", "attempting", fmt.Sprintf("%.2f%%", percentage))
 			if recordErr != nil {
@@ -327,7 +327,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 	}
 
-	if config.KeepAlive && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
+	if config.KeepAlive && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && statusErr == nil && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
 		key := fmt.Sprintf("keepalive:%d:%s", account.ID, now.Format("200601021504"))
 		fresh, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "keepalive", "attempting", "")
 		if recordErr != nil {

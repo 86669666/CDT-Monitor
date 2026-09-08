@@ -16,6 +16,8 @@ type fakeProvider struct {
 	balance    aliyun.BillingBalance
 	bill       aliyun.BillingBill
 	controlErr error
+	trafficErr error
+	statusErr  error
 	controls   []string
 }
 
@@ -31,13 +33,13 @@ func newFakeProvider() *fakeProvider {
 func (p *fakeProvider) GetTraffic(context.Context, domain.Account, string) (float64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.traffic, nil
+	return p.traffic, p.trafficErr
 }
 
 func (p *fakeProvider) GetInstanceStatus(context.Context, domain.Account, string) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.status, nil
+	return p.status, p.statusErr
 }
 
 func (p *fakeProvider) ControlInstance(_ context.Context, _ domain.Account, _ string, action, _ string) error {
