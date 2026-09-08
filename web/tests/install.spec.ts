@@ -3116,3 +3116,20 @@ test('settings webhook get json posts the live webhook contract', async ({ page 
     secret_configured: false,
   })
 })
+
+test('settings API keys treat null scopes as unconfigured', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [{
+    id: 9,
+    name: '旧版 Key',
+    scopes: null,
+    created_at: new Date().toISOString(),
+  }] } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.key-row')).toContainText('旧版 Key')
+  await expect(page.locator('.key-row')).toContainText('未配置权限')
+})
