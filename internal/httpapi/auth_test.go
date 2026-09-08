@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -70,6 +71,7 @@ func doRequest(t *testing.T, handler http.Handler, method, path, body string, co
 		reader = strings.NewReader(body)
 	}
 	request := httptest.NewRequest(method, "https://monitor.example.com"+path, reader)
+	request.TLS = &tls.ConnectionState{}
 	request.Header.Set("X-Forwarded-Proto", "https")
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
@@ -301,7 +303,7 @@ func loginAttempt(t *testing.T, handler http.Handler, password, remoteAddr, forw
 	if forwardedFor != "" {
 		headers["X-Forwarded-For"] = forwardedFor
 	}
-	request := httptest.NewRequest(http.MethodPost, "https://monitor.example.com/api/v1/auth/login", strings.NewReader(`{"password":"`+password+`"}`))
+	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/login", strings.NewReader(`{"password":"`+password+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Forwarded-Proto", "https")
 	request.RemoteAddr = remoteAddr
@@ -817,6 +819,35 @@ func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
 	forbidden := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"Replacement-Password-84!","new_password":"Another-Password-99!"}`, nil, map[string]string{"X-API-Key": widgetToken})
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("widget password update status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
+
+func TestPasskeyBeginIgnoresSpoofedForwardedProto(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.RemoteAddr = "203.0.113.10:443"
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "https_required") {
+		t.Fatalf("spoofed proto status = %d body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestLoginCookiesHonorTrustedProxyProto(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	secure := loginAttempt(t, handler, testAdminPassword, "10.0.0.2:8080", "")
+	session := cookieNamed(secure.Result().Cookies(), "cdt_session")
+	if secure.Code != http.StatusOK || session == nil || !session.Secure {
+		t.Fatalf("trusted proxy proto status = %d secure=%v", secure.Code, session != nil && session.Secure)
+	}
+	spoofed := loginAttempt(t, handler, testAdminPassword, "203.0.113.10:443", "")
+	session = cookieNamed(spoofed.Result().Cookies(), "cdt_session")
+	if spoofed.Code != http.StatusOK || session == nil || session.Secure {
+		t.Fatalf("spoofed proto must not set Secure cookies, status = %d secure=%v", spoofed.Code, session != nil && session.Secure)
 	}
 }
 

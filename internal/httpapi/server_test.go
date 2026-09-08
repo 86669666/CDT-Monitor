@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
@@ -46,6 +47,7 @@ func TestBeginPasskeyLoginIncludesRegisteredCredentialIDs(t *testing.T) {
 
 	server := &Server{store: st, limits: make(map[string]*rateWindow), passkeys: make(map[string]passkeySession)}
 	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.TLS = &tls.ConnectionState{}
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
 	server.beginPasskeyLogin(response, request)
@@ -88,6 +90,7 @@ func TestBeginPasskeyLoginIgnoresSpoofedForwardedHost(t *testing.T) {
 
 	spoofed := httptest.NewRequest(http.MethodPost, "https://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
 	spoofed.RemoteAddr = "203.0.113.10:443"
+	spoofed.TLS = &tls.ConnectionState{}
 	spoofed.Header.Set("X-Forwarded-Proto", "https")
 	spoofed.Header.Set("X-Forwarded-Host", "attacker.example")
 	spoofedResponse := httptest.NewRecorder()
@@ -136,6 +139,7 @@ func TestBeginPasskeyLoginRejectsEmptyCredentialList(t *testing.T) {
 	defer st.Close()
 	server := &Server{store: st, limits: make(map[string]*rateWindow), passkeys: make(map[string]passkeySession)}
 	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.TLS = &tls.ConnectionState{}
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
 	server.beginPasskeyLogin(response, request)

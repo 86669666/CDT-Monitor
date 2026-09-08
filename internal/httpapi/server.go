@@ -437,11 +437,7 @@ func requestOrigin(r *http.Request) string {
 	}
 	host := r.Host
 	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
-		remote, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			remote = r.RemoteAddr
-		}
-		if trustedProxy(remote) {
+		if trustedProxy(remoteIP(r)) {
 			host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
 		}
 	}
@@ -833,7 +829,10 @@ func validCSRF(r *http.Request) bool {
 }
 
 func requestSecure(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && trustedProxy(remoteIP(r))
 }
 
 func newCSRFToken() string {
@@ -903,12 +902,17 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 }
 
 func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
+	host := remoteIP(r)
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" && trustedProxy(host) {
 		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
+	}
+	return host
+}
+
+func remoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return host
 }
