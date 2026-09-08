@@ -26,7 +26,8 @@ jobs:
   publish:
     name: Build container images
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # linux/amd64 load-verify only; QEMU/arm64 are if: false on this fork.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

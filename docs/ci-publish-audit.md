@@ -27,7 +27,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 本 fork 的 Container / Automatic Release 都不申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，`GITHUB_TOKEN` 也推不了 GHCR。
 
 第三方 Actions 已按当前 major tag 解析并钉到 commit SHA（注释里保留 `v4`/`v5` 等标签名）。这不开启发布，也不等于远端 CI 已经跑过。
-各 job 加了 `timeout-minutes`（verify 20、widget 30、container 60、release 分段 15/20/10），避免一旦 Actions 能跑时挂死占用分钟。
+各 job 加了 `timeout-minutes`（verify 20、widget 30、container amd64-only 30、release 分段 15/20/10），避免一旦 Actions 能跑时挂死占用分钟。
 
 ## 镜像名
 
