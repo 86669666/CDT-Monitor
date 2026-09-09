@@ -4385,3 +4385,31 @@ test('settings telegram test surfaces the job_failed envelope', async ({ page })
   await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('instance start disables power controls while the job is in flight', async ({ page }) => {
+  let startCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-busy', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    return route.fulfill({ json: jobFixture('start-busy', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.getByRole('button', { name: '开机' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeDisabled()
+  releaseJob()
+  await expect(page.getByText('已发送开机指令')).toBeVisible()
+  expect(startCalls).toBe(1)
+})
