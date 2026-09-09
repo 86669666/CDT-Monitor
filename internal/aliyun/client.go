@@ -66,6 +66,9 @@ func NewClient() *Client {
 }
 
 func (c *Client) GetTraffic(ctx context.Context, account domain.Account, secret string) (float64, error) {
+	if strings.TrimSpace(account.RegionID) == "" {
+		return 0, errors.New("region_id is required")
+	}
 	key := account.AccessKeyID + ":" + trafficClass(account.RegionID)
 	c.trafficMu.Lock()
 	if cached, ok := c.traffic[key]; ok && time.Since(cached.createdAt) < 45*time.Second {
