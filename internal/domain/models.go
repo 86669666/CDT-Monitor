@@ -8,6 +8,8 @@ const (
 	StatusStopped  = "Stopped"
 	StatusStarting = "Starting"
 	StatusStopping = "Stopping"
+
+	ClearSecretSentinel = "__clear__"
 )
 
 type Account struct {
@@ -60,15 +62,16 @@ type TelegramConfig struct {
 }
 
 type WebhookConfig struct {
-	Enabled          bool   `json:"enabled"`
-	URL              string `json:"url"`
-	Method           string `json:"method"`
-	Type             string `json:"request_type"`
-	Headers          string `json:"headers,omitempty"`
-	Body             string `json:"body"`
-	Provider         string `json:"provider,omitempty"`
-	Secret           string `json:"secret,omitempty"`
-	SecretConfigured bool   `json:"secret_configured"`
+	Enabled           bool   `json:"enabled"`
+	URL               string `json:"url"`
+	Method            string `json:"method"`
+	Type              string `json:"request_type"`
+	Headers           string `json:"headers,omitempty"`
+	Body              string `json:"body"`
+	Provider          string `json:"provider,omitempty"`
+	Secret            string `json:"secret,omitempty"`
+	SecretConfigured  bool   `json:"secret_configured"`
+	HeadersConfigured bool   `json:"headers_configured"`
 }
 
 type NotificationConfig struct {

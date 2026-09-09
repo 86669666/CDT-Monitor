@@ -24,22 +24,51 @@ type Cipher struct {
 
 func LoadOrCreateCipher(dataDir string) (*Cipher, error) {
 	path := filepath.Join(dataDir, "master.key")
-	key, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		key = make([]byte, 32)
+		key := make([]byte, 32)
 		if _, err = rand.Read(key); err != nil {
 			return nil, fmt.Errorf("generate master key: %w", err)
 		}
 		if err = os.WriteFile(path, []byte(base64.RawURLEncoding.EncodeToString(key)), 0o600); err != nil {
 			return nil, fmt.Errorf("write master key: %w", err)
 		}
-	} else if err != nil {
+		if err = restrictKeyFile(path); err != nil {
+			return nil, err
+		}
+		return newCipher(key)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("read master key: %w", err)
 	}
-
-	if decoded, decodeErr := base64.RawURLEncoding.DecodeString(strings.TrimSpace(string(key))); decodeErr == nil {
-		key = decoded
+	if err = restrictKeyFile(path); err != nil {
+		return nil, err
 	}
+	key, err := parseMasterKey(raw)
+	if err != nil {
+		return nil, err
+	}
+	return newCipher(key)
+}
+
+func restrictKeyFile(path string) error {
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("restrict master key permissions: %w", err)
+	}
+	return nil
+}
+
+func parseMasterKey(raw []byte) ([]byte, error) {
+	if decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(string(raw))); err == nil && len(decoded) == 32 {
+		return decoded, nil
+	}
+	if len(raw) == 32 {
+		return raw, nil
+	}
+	return nil, fmt.Errorf("master key must contain 32 bytes")
+}
+
+func newCipher(key []byte) (*Cipher, error) {
 	if len(key) != 32 {
 		return nil, fmt.Errorf("master key must contain 32 bytes")
 	}
@@ -121,10 +150,14 @@ func hashPassword(password string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(hash)), nil
 }
 
+func IsArgon2id(encoded string) bool {
+	return strings.HasPrefix(encoded, "$argon2id$")
+}
+
 func VerifyPassword(encoded, password string) bool {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
-		return subtle.ConstantTimeCompare([]byte(encoded), []byte(password)) == 1
+		return false
 	}
 	var memory, iterations uint32
 	var parallelism uint8

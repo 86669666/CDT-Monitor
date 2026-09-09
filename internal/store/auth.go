@@ -22,15 +22,6 @@ func (s *Store) VerifyAdminPassword(ctx context.Context, password string) (bool,
 	if !security.VerifyPassword(encoded, password) {
 		return false, nil
 	}
-	if !strings.HasPrefix(encoded, "$argon2id$") {
-		hash, err := security.HashLegacyPassword(password)
-		if err != nil {
-			return false, err
-		}
-		if _, err = s.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash); err != nil {
-			return false, err
-		}
-	}
 	return true, nil
 }
 
@@ -61,6 +52,23 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	return token, err
 }
 
+func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
+	token, err := security.NewToken(32)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().UTC()
+	err = s.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions`); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
+			security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
+		return err
+	})
+	return token, err
+}
+
 func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error) {
 	if token == "" {
 		return false, nil
@@ -75,9 +83,45 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+func allowedAPIKeyScope(scope string) bool {
+	return scope == "widget:read" || scope == "instance:control" || scope == "cron:run"
+}
+
+func validAPIKeyScopes(scopes []string) bool {
+	if len(scopes) == 0 {
+		return false
+	}
+	for _, scope := range scopes {
+		if !allowedAPIKeyScope(scope) {
+			return false
+		}
+	}
+	return true
+}
+
+func uniqueAPIKeyScopes(scopes []string) []string {
+	seen := make(map[string]bool, len(scopes))
+	unique := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		unique = append(unique, scope)
+	}
+	return unique
+}
+
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
 	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
+	}
+	scopes = uniqueAPIKeyScopes(scopes)
+	if !validAPIKeyScopes(scopes) {
+		return domain.APIKey{}, "", errors.New("invalid API key scope")
+	}
+	if expiresAt != nil && !expiresAt.UTC().After(time.Now().UTC()) {
+		return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
 	}
 	secret, err := security.NewToken(32)
 	if err != nil {
@@ -136,12 +180,21 @@ func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
 	var result []string
 	if err = json.Unmarshal([]byte(scopes), &result); err != nil {
 		return nil, err
 	}
-	return result, nil
+	filtered := make([]string, 0, len(result))
+	for _, scope := range result {
+		if allowedAPIKeyScope(scope) {
+			filtered = append(filtered, scope)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
+	return filtered, nil
 }
 
 func (s *Store) UpdateAdminPassword(ctx context.Context, password, keepSessionToken string) error {

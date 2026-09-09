@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,28 +13,6 @@ import (
 	"github.com/wang4386/CDT-Monitor/internal/notify"
 	"github.com/wang4386/CDT-Monitor/internal/store"
 )
-
-type billingTestProvider struct{}
-
-func (billingTestProvider) GetTraffic(context.Context, domain.Account, string) (float64, error) {
-	return 1.25, nil
-}
-
-func (billingTestProvider) GetInstanceStatus(context.Context, domain.Account, string) (string, error) {
-	return domain.StatusRunning, nil
-}
-
-func (billingTestProvider) ControlInstance(context.Context, domain.Account, string, string, string) error {
-	return nil
-}
-
-func (billingTestProvider) GetAccountBalance(context.Context, domain.Account, string) (aliyun.BillingBalance, error) {
-	return aliyun.BillingBalance{Amount: 123.45, Currency: "CNY"}, nil
-}
-
-func (billingTestProvider) GetInstanceBill(context.Context, domain.Account, string, string) (aliyun.BillingBill, error) {
-	return aliyun.BillingBill{TotalCost: 23.456}, nil
-}
 
 func TestProcessAccountFetchesMissingBillingCache(t *testing.T) {
 	st, err := store.Open(t.TempDir())
@@ -62,7 +42,7 @@ func TestProcessAccountFetchesMissingBillingCache(t *testing.T) {
 		t.Fatalf("accounts=%v err=%v", accounts, err)
 	}
 
-	engine := New(st, billingTestProvider{}, notify.New(), slog.Default(), 1)
+	engine := New(st, newFakeProvider(), notify.New(), slog.Default(), 1)
 	if _, err = engine.processAccount(ctx, accounts[0].ID, false); err != nil {
 		t.Fatal(err)
 	}
@@ -78,5 +58,84 @@ func TestProcessAccountFetchesMissingBillingCache(t *testing.T) {
 	summaries, _, err := engine.Summary(ctx)
 	if err != nil || len(summaries) != 1 || summaries[0].Balance == nil || *summaries[0].Balance != 123.45 || summaries[0].MonthlyCost == nil || *summaries[0].MonthlyCost != 23.456 {
 		t.Fatalf("summary=%#v err=%v", summaries, err)
+	}
+}
+
+func TestBillingErrorIsCachedThenCleared(t *testing.T) {
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.EnableBilling = true
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.balanceErr = errors.New("bss unavailable")
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	summaries, _, err := eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 || summaries[0].BillingError != "bss unavailable" || summaries[0].Balance != nil {
+		t.Fatalf("error summary=%#v err=%v", summaries, err)
+	}
+	logs, err := st.ListLogs(ctx, "action", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range logs {
+		if strings.Contains(strings.ToLower(entry.Message), "secret") {
+			t.Fatalf("billing error log leaked secret: %q", entry.Message)
+		}
+	}
+	provider.balanceErr = nil
+	if _, err = eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	summaries, _, err = eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 || summaries[0].BillingError != "" || summaries[0].Balance == nil || *summaries[0].Balance != 123.45 {
+		t.Fatalf("recovered summary=%#v err=%v", summaries, err)
+	}
+}
+
+func TestBillingErrorRedactsAccessKeyMaterial(t *testing.T) {
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.EnableBilling = true
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.balanceErr = errors.New("bss rejected secret for LTAItest")
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	summaries, _, err := eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 {
+		t.Fatalf("summary=%#v err=%v", summaries, err)
+	}
+	msg := summaries[0].BillingError
+	if strings.Contains(msg, "secret") || strings.Contains(msg, "LTAItest") {
+		t.Fatalf("billing error leaked material: %q", msg)
+	}
+	if !strings.Contains(msg, "[redacted]") || !strings.Contains(msg, "LTAItes***") {
+		t.Fatalf("billing error was not redacted: %q", msg)
+	}
+	logs, err := st.ListLogs(ctx, "action", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawBilling bool
+	for _, entry := range logs {
+		if strings.Contains(strings.ToLower(entry.Message), "secret") || strings.Contains(entry.Message, "LTAItest") {
+			t.Fatalf("billing error log leaked material: %q", entry.Message)
+		}
+		if strings.Contains(entry.Message, "账单查询失败") {
+			sawBilling = true
+			if !strings.Contains(entry.Message, "[redacted]") {
+				t.Fatalf("billing log was not redacted: %q", entry.Message)
+			}
+		}
+	}
+	if !sawBilling {
+		t.Fatal("expected a redacted billing error log")
 	}
 }

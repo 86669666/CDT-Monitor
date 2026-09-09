@@ -66,6 +66,9 @@ func NewClient() *Client {
 }
 
 func (c *Client) GetTraffic(ctx context.Context, account domain.Account, secret string) (float64, error) {
+	if strings.TrimSpace(account.RegionID) == "" {
+		return 0, errors.New("region_id is required")
+	}
 	key := account.AccessKeyID + ":" + trafficClass(account.RegionID)
 	c.trafficMu.Lock()
 	if cached, ok := c.traffic[key]; ok && time.Since(cached.createdAt) < 45*time.Second {
@@ -94,11 +97,21 @@ func trafficClass(region string) string {
 	return "international"
 }
 
-func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
-	params := map[string]string{"RegionId": account.RegionID}
-	if account.InstanceID != "" {
-		params["InstanceId"] = account.InstanceID
+func ecsTargetError(account domain.Account) error {
+	if account.InstanceID == "" {
+		return errors.New("instance_id is required")
 	}
+	if strings.TrimSpace(account.RegionID) == "" {
+		return errors.New("region_id is required")
+	}
+	return nil
+}
+
+func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
+	if err := ecsTargetError(account); err != nil {
+		return domain.StatusUnknown, err
+	}
+	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
 	result, err := c.call(ctx, account.AccessKeyID, secret, account.RegionID, "ecs."+account.RegionID+".aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", params)
 	if err != nil {
 		return domain.StatusUnknown, err
@@ -119,8 +132,8 @@ func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, 
 }
 
 func (c *Client) ControlInstance(ctx context.Context, account domain.Account, secret, action, shutdownMode string) error {
-	if account.InstanceID == "" {
-		return errors.New("instance_id is required")
+	if err := ecsTargetError(account); err != nil {
+		return err
 	}
 	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
 	action = strings.ToLower(action)
@@ -137,7 +150,7 @@ func (c *Client) ControlInstance(ctx context.Context, account domain.Account, se
 }
 
 func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, secret string) (BillingBalance, error) {
-	key := account.AccessKeyID + ":" + account.SiteType
+	key := account.AccessKeyID + ":" + billingSite(account.SiteType)
 	c.balanceMu.Lock()
 	if cached, ok := c.balance[key]; ok && time.Since(cached.createdAt) < 6*time.Hour {
 		c.balanceMu.Unlock()
@@ -161,6 +174,12 @@ func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, 
 }
 
 func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, secret, cycle string) (BillingBill, error) {
+	if account.InstanceID == "" {
+		return BillingBill{}, errors.New("instance_id is required")
+	}
+	if err := validBillingCycle(cycle); err != nil {
+		return BillingBill{}, err
+	}
 	bss := bssEndpoint(account.SiteType)
 	params := map[string]string{"BillingCycle": cycle, "InstanceID": account.InstanceID, "Granularity": "MONTHLY"}
 	result, err := c.call(ctx, account.AccessKeyID, secret, bss.region, bss.host, "2017-12-14", "DescribeInstanceBill", params)
@@ -184,13 +203,32 @@ func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, se
 type bssConfig struct{ region, host string }
 
 func bssEndpoint(siteType string) bssConfig {
-	if siteType == "international" {
+	if billingSite(siteType) == "international" {
 		return bssConfig{region: "ap-southeast-1", host: "business.ap-southeast-1.aliyuncs.com"}
 	}
 	return bssConfig{region: "cn-hangzhou", host: "business.aliyuncs.com"}
 }
 
+func billingSite(siteType string) string {
+	if siteType == "international" {
+		return "international"
+	}
+	return "china"
+}
+
+func validBillingCycle(cycle string) error {
+	cycle = strings.TrimSpace(cycle)
+	parsed, err := time.Parse("2006-01", cycle)
+	if err != nil || parsed.Format("2006-01") != cycle {
+		return errors.New("billing cycle is required")
+	}
+	return nil
+}
+
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
+	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
+		return nil, errors.New("access key is required")
+	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		result, retry, err := c.callOnce(ctx, accessKeyID, secret, region, host, version, action, extras)
@@ -203,11 +241,32 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, redactErr(ctx.Err(), accessKeyID, secret)
 		case <-time.After(time.Duration(1<<attempt)*300*time.Millisecond + time.Duration(attempt*100)*time.Millisecond):
 		}
 	}
-	return nil, last
+	return nil, redactErr(last, accessKeyID, secret)
+}
+
+func redactErr(err error, accessKeyID, secret string) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if secret != "" {
+		msg = strings.ReplaceAll(msg, secret, "[redacted]")
+	}
+	if accessKeyID != "" {
+		masked := accessKeyID + "***"
+		if len(accessKeyID) > 7 {
+			masked = accessKeyID[:7] + "***"
+		}
+		msg = strings.ReplaceAll(msg, accessKeyID, masked)
+	}
+	if msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
 }
 
 func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, bool, error) {
@@ -270,7 +329,11 @@ func compactMessage(result map[string]any, raw []byte) string {
 	if message := stringValue(result["Message"]); message != "" {
 		return message
 	}
-	return string(raw)
+	text := strings.TrimSpace(string(raw))
+	if len(text) > 240 {
+		return text[:240] + "..."
+	}
+	return text
 }
 
 func sign(values map[string]string, secret string) string {
@@ -358,6 +421,7 @@ func asSlice(value any) []any {
 		if item, ok := obj["Item"].(map[string]any); ok {
 			return []any{item}
 		}
+		return []any{obj}
 	}
 	return nil
 }

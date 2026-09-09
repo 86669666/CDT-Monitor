@@ -1,0 +1,37 @@
+name: Publish Guard
+
+# Cheap tripwire for this fork. Does not publish, log in, or push.
+# Fails if production publish vars are set, if workflow YAML
+# regains GHCR/Hub login, packages: write, secrets: inherit, or
+# registry image names, or if Compose drops 127.0.0.1:43210.
+# CI verify still skips these files so a login regression would
+# not run Go tests; this workflow covers that.
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main, 'work/**']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-guard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  assert-no-publish:
+    name: Assert no publish surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Assert fork publish surfaces stay closed
+        env:
+          ENABLE_PRODUCTION_PUBLISH: ${{ vars.ENABLE_PRODUCTION_PUBLISH }}
+          ENABLE_DOCKERHUB_PUBLISH: ${{ vars.ENABLE_DOCKERHUB_PUBLISH }}
+        run: bash .github/scripts/assert-no-publish.sh

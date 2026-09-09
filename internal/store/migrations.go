@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 
 	"github.com/wang4386/CDT-Monitor/internal/security"
 )
@@ -238,7 +239,12 @@ func (s *Store) ensureColumn(ctx context.Context, table, column, definition stri
 
 func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
-		for _, key := range []string{"notify_password", "notify_tg_token", "notify_tg_proxy_pass", "notify_wh_headers"} {
+		keys := make([]string, 0, len(sensitiveSettings))
+		for key := range sensitiveSettings {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
 			var value string
 			err := tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&value)
 			if err == sql.ErrNoRows || value == "" || security.IsEncrypted(value) {
@@ -285,6 +291,19 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 				return err
 			}
 		}
-		return nil
+		var password string
+		err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='admin_password'`).Scan(&password)
+		if err == sql.ErrNoRows || password == "" || security.IsArgon2id(password) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		hash, err := security.HashLegacyPassword(password)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash)
+		return err
 	})
 }

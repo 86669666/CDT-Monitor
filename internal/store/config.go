@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/security"
@@ -21,6 +22,7 @@ var sensitiveSettings = map[string]bool{
 	"notify_tg_proxy_pass": true,
 	"notify_wh_headers":    true,
 	"notify_wh_secret":     true,
+	"notify_wh_url":        true,
 }
 
 func boolSetting(settings map[string]string, key string, fallback bool) bool {
@@ -117,15 +119,16 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				ProxyConfigured: settings["notify_tg_proxy_pass"] != "",
 			},
 			Webhook: domain.WebhookConfig{
-				Enabled:          boolSetting(settings, "notify_wh_enabled", false),
-				URL:              valueOr(settings, "notify_wh_url", ""),
-				Method:           valueOr(settings, "notify_wh_method", "GET"),
-				Type:             valueOr(settings, "notify_wh_request_type", "JSON"),
-				Headers:          valueOr(settings, "notify_wh_headers", ""),
-				Body:             valueOr(settings, "notify_wh_body", ""),
-				Provider:         valueOr(settings, "notify_wh_provider", "generic"),
-				Secret:           valueOr(settings, "notify_wh_secret", ""),
-				SecretConfigured: settings["notify_wh_secret"] != "",
+				Enabled:           boolSetting(settings, "notify_wh_enabled", false),
+				URL:               valueOr(settings, "notify_wh_url", ""),
+				Method:            valueOr(settings, "notify_wh_method", "GET"),
+				Type:              valueOr(settings, "notify_wh_request_type", "JSON"),
+				Headers:           valueOr(settings, "notify_wh_headers", ""),
+				Body:              valueOr(settings, "notify_wh_body", ""),
+				Provider:          valueOr(settings, "notify_wh_provider", "generic"),
+				Secret:            valueOr(settings, "notify_wh_secret", ""),
+				SecretConfigured:  settings["notify_wh_secret"] != "",
+				HeadersConfigured: settings["notify_wh_headers"] != "",
 			},
 		},
 	}
@@ -179,6 +182,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if config.Timezone == "" {
 		config.Timezone = "Asia/Shanghai"
 	}
+	if _, err := time.LoadLocation(config.Timezone); err != nil {
+		return errors.New("invalid timezone")
+	}
 	if setup && len(config.AdminPassword) < 10 {
 		return errors.New("administrator password must be at least 10 characters")
 	}
@@ -219,7 +225,6 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_tg_proxy_port":   config.Notifications.Telegram.ProxyPort,
 			"notify_tg_proxy_user":   config.Notifications.Telegram.ProxyUser,
 			"notify_wh_enabled":      strconv.FormatBool(config.Notifications.Webhook.Enabled),
-			"notify_wh_url":          config.Notifications.Webhook.URL,
 			"notify_wh_method":       config.Notifications.Webhook.Method,
 			"notify_wh_request_type": config.Notifications.Webhook.Type,
 			"notify_wh_body":         config.Notifications.Webhook.Body,
@@ -237,16 +242,12 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_wh_headers":    config.Notifications.Webhook.Headers,
 			"notify_wh_secret":     config.Notifications.Webhook.Secret,
 		} {
-			if value == "" {
-				continue
-			}
-			encrypted, err := s.Encrypt(value)
-			if err != nil {
+			if err := s.saveSensitiveSetting(ctx, tx, key, value); err != nil {
 				return err
 			}
-			if err = putSettingTx(ctx, tx, key, encrypted); err != nil {
-				return err
-			}
+		}
+		if err := s.saveWebhookURL(ctx, tx, config.Notifications.Webhook.URL); err != nil {
+			return err
 		}
 
 		if err := saveAccountsTx(ctx, tx, s, config.Accounts); err != nil {
@@ -254,6 +255,34 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 		}
 		return nil
 	})
+}
+
+func (s *Store) saveWebhookURL(ctx context.Context, tx *sql.Tx, endpoint string) error {
+	if endpoint == domain.ClearSecretSentinel {
+		endpoint = ""
+	}
+	if endpoint == "" {
+		return putSettingTx(ctx, tx, "notify_wh_url", "")
+	}
+	encrypted, err := s.Encrypt(endpoint)
+	if err != nil {
+		return err
+	}
+	return putSettingTx(ctx, tx, "notify_wh_url", encrypted)
+}
+
+func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value string) error {
+	if value == domain.ClearSecretSentinel {
+		return putSettingTx(ctx, tx, key, "")
+	}
+	if value == "" {
+		return nil
+	}
+	encrypted, err := s.Encrypt(value)
+	if err != nil {
+		return err
+	}
+	return putSettingTx(ctx, tx, key, encrypted)
 }
 
 func hashOrKeepPassword(password string) (string, error) {

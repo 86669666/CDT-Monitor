@@ -1,3 +1,8 @@
+import type { APIErrorBody, Job, JobStatus } from './types'
+
+export const CSRF_COOKIE = 'cdt_csrf'
+export const CSRF_HEADER = 'X-CDT-CSRF'
+
 export class APIError extends Error {
   status: number
   code: string
@@ -14,18 +19,25 @@ function cookie(name: string) {
   return value ? decodeURIComponent(value.slice(prefix.length)) : ''
 }
 
+function errorDetail(body: unknown): { code: string; message?: string } | undefined {
+  if (!body || typeof body !== 'object' || !('error' in body)) return undefined
+  const detail = (body as APIErrorBody).error
+  if (!detail || typeof detail !== 'object') return undefined
+  return detail
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (init.method && init.method !== 'GET' && init.method !== 'HEAD') {
-    const csrf = cookie('cdt_csrf')
-    if (csrf) headers.set('X-CDT-CSRF', csrf)
+    const csrf = cookie(CSRF_COOKIE)
+    if (csrf) headers.set(CSRF_HEADER, csrf)
   }
   const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
   if (response.status === 204) return undefined as T
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const detail = body?.error
+    const detail = errorDetail(body)
     throw new APIError(response.status, detail?.code ?? 'request_failed', detail?.message ?? `HTTP ${response.status}`)
   }
   return body as T
@@ -50,13 +62,15 @@ export async function fetchLatestReleaseFromGitHub() {
   }
 }
 
-export async function waitForJob(jobId: string, onProgress?: (status: string) => void) {
+export const JOB_FAILED_USER_MESSAGE = '任务失败，详见日志'
+
+export async function waitForJob(jobId: string, onProgress?: (status: JobStatus) => void) {
   const deadline = Date.now() + 70_000
   while (Date.now() < deadline) {
-    const job = await api<{ status: string; result?: string; error?: string }>(`/api/v1/jobs/${jobId}`)
+    const job = await api<Job>(`/api/v1/jobs/${jobId}`)
     onProgress?.(job.status)
     if (job.status === 'completed') return job
-    if (job.status === 'failed') throw new Error(job.error || '任务执行失败')
+    if (job.status === 'failed') throw new Error(JOB_FAILED_USER_MESSAGE)
     await new Promise((resolve) => window.setTimeout(resolve, 900))
   }
   throw new Error('任务仍在后台执行，请稍后刷新')
