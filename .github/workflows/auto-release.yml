@@ -63,7 +63,6 @@ jobs:
     # already skip this caller; keep the var check so removing the
     # tag `if` cannot start a GitHub Release by itself.
     if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
-    timeout-minutes: 45
     needs: tag
     permissions:
       contents: write
@@ -76,7 +75,6 @@ jobs:
   container:
     name: Call container load-verify (gated)
     if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
-    timeout-minutes: 25
     needs: tag
     permissions:
       contents: read
