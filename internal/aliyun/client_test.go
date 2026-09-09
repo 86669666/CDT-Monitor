@@ -199,6 +199,23 @@ func TestECSRequiresRegionID(t *testing.T) {
 	}
 }
 
+func TestGetTrafficRequiresRegionID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest"}, "secret")
+	if err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is required") {
+		t.Fatalf("empty region err=%v hits=%d", err, hits)
+	}
+	_, err = client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "   "}, "secret")
+	if err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is required") {
+		t.Fatalf("blank region err=%v hits=%d", err, hits)
+	}
+}
+
 func TestGetInstanceStatusRequiresInstanceID(t *testing.T) {
 	var hits int
 	client := NewClient()
