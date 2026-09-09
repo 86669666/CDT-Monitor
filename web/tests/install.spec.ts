@@ -3500,6 +3500,108 @@ test('settings telegram omits empty token from the live notify contract', async 
   expect(savedTelegram).not.toHaveProperty('proxy_pass')
 })
 
+test('settings telegram keeps configured token when left empty', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      telegram: {
+        enabled: true,
+        token_configured: true,
+        chat_id: '-1001',
+        proxy_type: 'none',
+        proxy_url: '',
+        proxy_ip: '',
+        proxy_port: '',
+        proxy_user: '',
+        proxy_password_configured: false,
+      },
+    },
+  }
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const tokenField = page.getByLabel('Bot Token · 已配置')
+  await expect(tokenField).toBeVisible()
+  await expect(tokenField).toHaveAttribute('placeholder', '留空保持不变')
+  await expect(tokenField).toHaveValue('')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    chat_id: '-1001',
+    token_configured: true,
+  })
+  expect(savedTelegram).not.toHaveProperty('token')
+  expect(JSON.stringify(savedTelegram)).not.toContain('__clear__')
+})
+
+test('settings telegram clears configured token with the live sentinel', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      telegram: {
+        enabled: true,
+        token_configured: true,
+        chat_id: '-1001',
+        proxy_type: 'none',
+        proxy_url: '',
+        proxy_ip: '',
+        proxy_port: '',
+        proxy_user: '',
+        proxy_password_configured: false,
+      },
+    },
+  }
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const tokenField = page.getByLabel('Bot Token · 已配置')
+  await expect(tokenField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByText('清除已配置的 Bot Token', { exact: true }).click()
+  await expect(tokenField).toHaveAttribute('placeholder', '保存后清除')
+  await expect(tokenField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    chat_id: '-1001',
+    token: '__clear__',
+    token_configured: true,
+  })
+})
+
 test('settings save omits unchanged account secret', async ({ page }) => {
   let saveCalls = 0
   let account: Record<string, unknown> | undefined
