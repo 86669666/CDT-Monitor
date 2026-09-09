@@ -25,6 +25,7 @@ permissions:
 # commits. Do not flip those without an explicit publish authorization.
 jobs:
   frontend:
+    name: Build embedded web (gated)
     if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -112,6 +113,7 @@ jobs:
           retention-days: 7
 
   publish:
+    name: Draft GitHub Release (gated, not latest)
     if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: build
     runs-on: ubuntu-latest

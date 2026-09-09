@@ -121,6 +121,27 @@ scan_container() {
   fi
 }
 
+scan_checkout_credentials() {
+  local f body base
+  shopt -s nullglob
+  for f in .github/workflows/*.yml; do
+    body="$(strip_comments "$f")"
+    base="$(basename "$f")"
+    if [ "$base" = "auto-release.yml" ]; then
+      if ! grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
+        bad "$f: gated tag job must keep persist-credentials true for git push tag"
+      fi
+      continue
+    fi
+    if grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
+      bad "$f: persist-credentials: true is forbidden outside Automatic Release tag"
+    fi
+    if grep -q 'actions/checkout@' <<<"$body" && ! grep -Eq 'persist-credentials:[[:space:]]*false' <<<"$body"; then
+      bad "$f: checkout must set persist-credentials: false"
+    fi
+  done
+}
+
 scan_dockerfile() {
   local f="Dockerfile"
   require_file "$f" || return
@@ -190,6 +211,7 @@ scan_release_binaries
 scan_container
 scan_dockerfile
 scan_compose
+scan_checkout_credentials
 
 if [ "$fail" -ne 0 ]; then
   note "publish-guard failed; do not set publish vars or restore GHCR/Hub login"
