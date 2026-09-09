@@ -245,7 +245,8 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 
 ## 安全建议
 
-- 公网部署必须在反向代理或网关层启用 HTTPS。
+- 公网部署必须在反向代理或网关层启用 HTTPS。由代理写入 `X-Forwarded-Proto: https` 并覆盖客户端伪造的同名头；HSTS 加在代理层。应用在本地 HTTP Compose 下不会发 HSTS。
+- 本 fork 的 Compose 只绑定 `127.0.0.1:43210`。在 `CDT_TRUSTED_PROXIES` 落地前，不要把监听改到局域网或 `0.0.0.0` 并信任私网来源的转发头。说明见 [本地 Docker](docs/local-docker.md)。
 - 阿里云 RAM 用户只授予 CDT 查询、ECS 查询/启停和可选 BSS 查询所需的最小权限。
 - 小组件只使用 `widget:read` Key；不要把 `instance:control` Key 放入公开脚本。
 - 定期撤销不再使用的 Key，并备份整个数据目录。
