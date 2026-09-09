@@ -4505,3 +4505,36 @@ test('failed notify job toast omits transport secrets', async ({ page }) => {
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
+
+test('settings API key create posts optional expires_at', async ({ page }) => {
+  const expiresLocal = '2026-12-31T23:59'
+  const created = {
+    id: 13,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+    expires_at: new Date(expiresLocal).toISOString(),
+  }
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', async (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { name?: string; scopes?: string[]; expires_at?: string }
+      expect(body.name).toBe('桌面小组件')
+      expect(body.scopes).toEqual(['widget:read'])
+      expect(new Date(body.expires_at || '').toISOString()).toBe(new Date(expiresLocal).toISOString())
+      return route.fulfill({ status: 201, json: { key: created, token: 'cdt_expiring_token' } })
+    }
+    return route.fulfill({ json: { keys: createCalls > 0 ? [created] : [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByLabel('过期时间（可选）').fill(expiresLocal)
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.getByText('仅显示一次')).toBeVisible()
+  expect(createCalls).toBe(1)
+})
