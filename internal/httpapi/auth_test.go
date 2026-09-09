@@ -236,6 +236,42 @@ func TestWebhookHeadersStayUntilClearedOverHTTP(t *testing.T) {
 	}
 }
 
+func TestWebhookURLIsReturnedButNotStoredPlain(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "https://example.test/hook?access_token=url-token-value"
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Webhook.URL = endpoint
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if !strings.Contains(body, endpoint) {
+		t.Fatalf("admin GET must return webhook URL for editing: %s", body)
+	}
+	if strings.Contains(body, "enc:v1:") {
+		t.Fatalf("GET config leaked ciphertext: %s", body)
+	}
+	var stored string
+	if err = st.DB().QueryRow(`SELECT value FROM settings WHERE key='notify_wh_url'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !security.IsEncrypted(stored) || strings.Contains(stored, "url-token-value") {
+		t.Fatalf("webhook URL must stay encrypted at rest: %q", stored)
+	}
+}
+
 func TestAdminMutationRequiresMatchingCSRF(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
