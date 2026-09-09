@@ -1,10 +1,11 @@
 name: Publish Guard
 
 # Cheap tripwire for this fork. Does not publish, log in, or push.
-# Fails if production publish vars are set, or if workflow YAML
+# Fails if production publish vars are set, if workflow YAML
 # regains GHCR/Hub login, packages: write, secrets: inherit, or
-# registry image names. CI verify still skips these files so a
-# login regression would not run Go tests; this workflow covers that.
+# registry image names, or if Compose drops 127.0.0.1:43210.
+# CI verify still skips these files so a login regression would
+# not run Go tests; this workflow covers that.
 
 on:
   pull_request:

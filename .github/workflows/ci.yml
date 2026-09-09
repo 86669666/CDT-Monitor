@@ -49,6 +49,7 @@ permissions:
 
 jobs:
   verify:
+    name: Verify (no publish)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

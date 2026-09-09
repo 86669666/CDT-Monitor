@@ -53,7 +53,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | `Release Binaries` | 仅手动或被 auto-release `workflow_call` | 不再因 `v*.*.*` tag push 自动跑。仍要 `ENABLE_PRODUCTION_PUBLISH`；本 fork 只编 linux/amd64；artifact 保留 7 天；只有 `publish` job 拿 `contents: write`，且 `draft: true`、`make_latest: false`、`generate_release_notes: false` |
 | `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；Buildx `driver: docker`；只 load 校验 linux/amd64，`push: false`，`provenance: false`，`sbom: false`，无 `type=gha` cache；`version` 检查用 `--network none --read-only --user 65532`；没有 `packages: write` |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
-| `Publish Guard` | 无（本 fork 新增） | `dev`/`main`/`work/**` push、PR、手动。只跑 `.github/scripts/assert-no-publish.sh`：发布变量不能为 true；workflow YAML 不能恢复 `packages: write` / login / Hub 名 / `secrets: inherit` / `push: true`；Compose `image:` 必须是无仓库前缀的 `cdt-monitor:local`。不 login、不 push |
+| `Publish Guard` | 无（本 fork 新增） | `dev`/`main`/`work/**` push、PR、手动。只跑 `.github/scripts/assert-no-publish.sh`：发布变量不能为 true；workflow YAML 不能恢复 `packages: write` / login / Hub 名 / `secrets: inherit` / `push: true`；Compose `image:` 必须是无仓库前缀的 `cdt-monitor:local`，端口必须是 `127.0.0.1:43210:8080`，环境里不能有 AK/通知密钥/`CDT_TRUSTED_PROXIES`。不 login、不 push |
 
 不要把一次绿色 CI 或一次本地 Docker 构建写成已经发布 GHCR / Docker Hub。
 
@@ -67,6 +67,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 - 不要把 Release Binaries 的 `draft: true` 改成正式发布，也不要把 `make_latest` 或 `generate_release_notes` 打开，除非有单独的发布授权。
 - 不要把 Release Binaries 的 GOOS/GOARCH matrix 从 linux/amd64 扩回去，除非有单独的发布授权。
 - 不要删掉 `Publish Guard` 或 `.github/scripts/assert-no-publish.sh`，也不要从 Automatic Release 的 `tag` / `release` / `container` 三个 job 上拿掉 `ENABLE_PRODUCTION_PUBLISH` 门闩。
+- 不要把 Compose 端口改成 `0.0.0.0` 或省略 `127.0.0.1`；Publish Guard 会把它当成发布面回归。
 - CI `paths-ignore` 仍会跳过发布 workflow / guard 脚本的纯 YAML 变更，因此 Publish Guard 必须单独跑；不要把这些路径加回昂贵的 Go verify 来代替这个扫描。
 
 Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget` 的 Gradle。同类更新打成一组 PR（actions / docker base / widget Gradle 各一组），减少噪声。`target-branch` 是 `work/ops`，避免 bump PR 默认打到仍带未加开关 `auto-release.yml` 的 `main`。它会开 PR，不会自动设置 `ENABLE_PRODUCTION_PUBLISH`。合并 Dependabot 前仍要核对 SHA pin，且不要借机打开发布变量。GitHub 只从默认分支读这个文件；不要为了启用 Dependabot 去合 `main`。
@@ -133,3 +134,9 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 - Actions 权限 API：`enabled=true`，`allowed_actions=all`，`sha_pinning_required=false`，`default_workflow_permissions=read`
 - `origin/main` 仍是上游未加发布开关、且 `packages: write` + `secrets: inherit` 的 `auto-release.yml`（`on.push.branches: [main]`）。**不要**为了登记 Publish Guard 或 Dependabot 把未加开关的 `main` 工作流留着合入；替换它是 integration 把已加开关的 PR#2 合进 `main` 的事，ops 不合 `main`
 - 本轮在 `work/ops` 给 Automatic Release 的 `release` / `container` caller 补了独立的 `ENABLE_PRODUCTION_PUBLISH` 门闩，并新增 Publish Guard。本地已跑 `bash .github/scripts/assert-no-publish.sh`。这仍不是 GHCR 发布，也不是 widget / Container Images workflow 已登记
+
+续推证据（`2026-09-09T18:26Z` / 2026-09-10 02:26 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `89ebdbf` 再加 Compose loopback 扫描：
+
+- Publish Guard 现检查 `docker-compose.yml` 必须发布 `127.0.0.1:43210:8080`，且环境里不能出现 `CDT_MASTER_KEY` / `CDT_TRUSTED_PROXIES` / AK 或通知密钥。这锁的是本机绑定，不是 `CDT_TRUSTED_PROXIES` 已经实现
+- `origin/main` 仍是未加开关的 Automatic Release。不要把这次扫描写成 PR#2 可以合进 `main`
+- 仓库 Actions variables 仍应保持未设置；本轮没有打开 `ENABLE_PRODUCTION_PUBLISH`
