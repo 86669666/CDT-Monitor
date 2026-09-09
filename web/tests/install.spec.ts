@@ -4413,3 +4413,28 @@ test('instance start disables power controls while the job is in flight', async 
   await expect(page.getByText('已发送开机指令')).toBeVisible()
   expect(startCalls).toBe(1)
 })
+
+test('instance stop disables power controls while the job is in flight', async ({ page }) => {
+  let stopCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-busy', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    return route.fulfill({ json: jobFixture('stop-busy', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.getByRole('button', { name: '关机' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeDisabled()
+  releaseJob()
+  await expect(page.getByText('已发送关机指令')).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
