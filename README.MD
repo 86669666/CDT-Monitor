@@ -232,7 +232,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 | `Publish Guard` | `dev`/`main`/`work/**` push、PR、手动 | 检查发布变量未打开；扫描 workflow YAML / Compose 是否回到 GHCR/Hub login、`packages: write`、带仓库前缀的镜像名，或把端口改成非 `127.0.0.1`（不发布） |
 | `Automatic Release` | 仅手动，且需 `ENABLE_PRODUCTION_PUBLISH` | 按输入版本打 tag，再调用 Release Binaries / Container Images |
 | `Release Binaries` | 手动或 Automatic Release `workflow_call`，且需 `ENABLE_PRODUCTION_PUBLISH` | 本 fork 只编 linux/amd64；SHA-256 校验和及 **draft** GitHub Release（不标 latest） |
-| `Container Images` | 手动或 Automatic Release `workflow_call` | runner 上 load 校验 linux/amd64 本地标签 `cdt-monitor:verify-amd64`；无 registry login / 镜像名 / push |
+| `Container Images` | 仅手动或 Automatic Release `workflow_call`（无 `dev`/tag `on.push`） | runner 上 load 校验 linux/amd64 本地标签 `cdt-monitor:verify-amd64`；无 registry login / 镜像名 / push |
 | `Android Widget` | 仅手动；本 fork 默认分支尚未登记，dispatch 现为 404 | 原型 APK/AAB artifact（不是本机 JDK 出包，也不是 Play/GHCR）。不要为了登记它去合未加开关的 `main` |
 
 本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`。Container Images 不再 login，也不再给 GHCR / Docker Hub 打 metadata 名。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开发布变量。

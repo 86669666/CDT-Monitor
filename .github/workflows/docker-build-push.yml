@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify linux/amd64 image
+    name: Load-verify linux/amd64 (no push)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
