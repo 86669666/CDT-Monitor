@@ -62,13 +62,15 @@ export async function fetchLatestReleaseFromGitHub() {
   }
 }
 
+export const JOB_FAILED_USER_MESSAGE = '任务失败，详见日志'
+
 export async function waitForJob(jobId: string, onProgress?: (status: JobStatus) => void) {
   const deadline = Date.now() + 70_000
   while (Date.now() < deadline) {
     const job = await api<Job>(`/api/v1/jobs/${jobId}`)
     onProgress?.(job.status)
     if (job.status === 'completed') return job
-    if (job.status === 'failed') throw new Error(job.error || '任务执行失败')
+    if (job.status === 'failed') throw new Error(JOB_FAILED_USER_MESSAGE)
     await new Promise((resolve) => window.setTimeout(resolve, 900))
   }
   throw new Error('任务仍在后台执行，请稍后刷新')

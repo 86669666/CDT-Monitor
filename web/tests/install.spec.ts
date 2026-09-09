@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { CSRF_COOKIE, CSRF_HEADER } from '../src/api'
+import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -966,7 +966,7 @@ test('refresh-all surfaces the enqueue_failed envelope after login', async ({ pa
 })
 
 
-test('failed start job surfaces the live job error', async ({ page }) => {
+test('failed start job surfaces a generic failure toast', async ({ page }) => {
   await mockInitStatus(page, true)
   await mockDashboardReads(page, {
     ...dashboardStatus,
@@ -984,7 +984,7 @@ test('failed start job surfaces the live job error', async ({ page }) => {
 
   await page.goto('/')
   await page.getByRole('button', { name: '开机' }).click()
-  await expect(page.getByText('开机失败')).toBeVisible()
+  await expect(page.getByText(JOB_FAILED_USER_MESSAGE)).toBeVisible()
 })
 
 test('instance refresh surfaces the job_not_found envelope after login', async ({ page }) => {
@@ -1533,7 +1533,7 @@ test('settings webhook test surfaces a failed notification job', async ({ page }
   await page.getByRole('button', { name: '通知', exact: true }).click()
   await page.getByRole('button', { name: 'Webhook' }).click()
   await page.getByRole('button', { name: '发送测试' }).click()
-  await expect(page.locator('.toast--error').filter({ hasText: 'webhook HTTP 502: bad gateway' }).first()).toBeVisible()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
 
@@ -2367,7 +2367,7 @@ test('settings email test surfaces a failed notification job', async ({ page }) 
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: '通知', exact: true }).click()
   await page.getByRole('button', { name: '发送测试' }).click()
-  await expect(page.locator('.toast--error').filter({ hasText: 'SMTP host, port, username and recipient are required' }).first()).toBeVisible()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
 
@@ -2394,7 +2394,7 @@ test('settings telegram test surfaces a failed notification job', async ({ page 
   await page.getByRole('button', { name: '通知', exact: true }).click()
   await page.getByRole('button', { name: 'Telegram' }).click()
   await page.getByRole('button', { name: '发送测试' }).click()
-  await expect(page.locator('.toast--error').filter({ hasText: 'telegram HTTP 401: unauthorized' }).first()).toBeVisible()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
 
@@ -4478,4 +4478,30 @@ test('instance stop surfaces the enqueue_failed envelope', async ({ page }) => {
   await page.getByRole('button', { name: '关机' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
   expect(stopCalls).toBe(1)
+})
+
+test('failed notify job toast omits transport secrets', async ({ page }) => {
+  const leaked = 'FIXTURE-SECRET-TOKEN'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/telegram', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-secret-fail', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-secret-fail', 'failed')
+    failed.type = 'test_notification'
+    failed.error = `telegram HTTP 401: https://api.telegram.org/bot${leaked}/sendMessage`
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
