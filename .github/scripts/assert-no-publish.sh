@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Local + CI tripwire for 86669666/CDT-Monitor.
-# Fail if fork workflows regain GHCR/Hub publish surfaces, or if
-# ENABLE_PRODUCTION_PUBLISH / ENABLE_DOCKERHUB_PUBLISH are set true.
+# Fail if fork workflows regain GHCR/Hub publish surfaces, if
+# ENABLE_PRODUCTION_PUBLISH / ENABLE_DOCKERHUB_PUBLISH are set true,
+# or if Compose drops the loopback bind / grows secret env keys.
 # This script does not publish, log in, or set those variables.
 set -euo pipefail
 
@@ -129,6 +130,21 @@ scan_compose() {
   if grep -Eq '^[[:space:]]*image:[[:space:]].*/' <<<"$images"; then
     bad "$f: image: must stay an unprefixed local tag (no registry slash)"
   fi
+  if grep -Eq '0\.0\.0\.0' <<<"$body"; then
+    bad "$f: 0.0.0.0 bind is forbidden; keep 127.0.0.1 until CDT_TRUSTED_PROXIES exists"
+  fi
+  if ! grep -Eq '^[[:space:]]*-[[:space:]]*"127\.0\.0\.1:43210:8080"' <<<"$body"; then
+    bad "$f: published port must stay 127.0.0.1:43210:8080"
+  fi
+  if grep -Eq '^[[:space:]]*-[[:space:]]*"?[0-9]+:[0-9]+' <<<"$body"; then
+    bad "$f: host port without 127.0.0.1 publishes 0.0.0.0"
+  fi
+  if grep -Eq '^[[:space:]]+(CDT_MASTER_KEY|CDT_TRUSTED_PROXIES|ENABLE_PRODUCTION_PUBLISH|ENABLE_DOCKERHUB_PUBLISH|DOCKER_USERNAME|DOCKER_PASSWORD|ANDROID_KEYSTORE_BASE64|ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_ALIAS|ANDROID_KEY_PASSWORD):' <<<"$body"; then
+    bad "$f: do not put publish vars, cloud secrets, or unimplemented CDT_TRUSTED_PROXIES in Compose"
+  fi
+  if grep -Eiq '^[[:space:]]+([A-Z0-9_]*ACCESS_KEY[A-Z0-9_]*|[A-Z0-9_]*SECRET[A-Z0-9_]*|SMTP_PASSWORD|TELEGRAM_TOKEN|BOT_TOKEN):' <<<"$body"; then
+    bad "$f: do not put Aliyun/notify secrets in Compose env"
+  fi
 }
 
 scan_vars() {
@@ -155,4 +171,4 @@ if [ "$fail" -ne 0 ]; then
   note "publish-guard failed; do not set publish vars or restore GHCR/Hub login"
   exit 1
 fi
-note "publish-guard ok: workflow YAML stays local-verify, publish vars unset"
+note "publish-guard ok: workflow YAML stays local-verify, compose stays loopback, publish vars unset"
