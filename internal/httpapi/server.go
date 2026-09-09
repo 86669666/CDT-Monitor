@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -927,7 +928,53 @@ func remoteIP(r *http.Request) string {
 
 func trustedProxy(ip string) bool {
 	parsed := net.ParseIP(ip)
-	return parsed != nil && (parsed.IsLoopback() || parsed.IsPrivate())
+	if parsed == nil {
+		return false
+	}
+	if parsed.IsLoopback() {
+		return true
+	}
+	return trustedProxyAllowlistContains(parsed)
+}
+
+func trustedProxyAllowlistContains(ip net.IP) bool {
+	for _, network := range trustedProxyNetworks() {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func trustedProxyNetworks() []*net.IPNet {
+	raw := strings.TrimSpace(os.Getenv("CDT_TRUSTED_PROXIES"))
+	if raw == "" {
+		return nil
+	}
+	networks := make([]*net.IPNet, 0, 4)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			parsed := net.ParseIP(part)
+			if parsed == nil {
+				continue
+			}
+			if parsed.To4() != nil {
+				part += "/32"
+			} else {
+				part += "/128"
+			}
+		}
+		_, network, err := net.ParseCIDR(part)
+		if err != nil {
+			continue
+		}
+		networks = append(networks, network)
+	}
+	return networks
 }
 
 func decodeJSON(r *http.Request, target any) error {

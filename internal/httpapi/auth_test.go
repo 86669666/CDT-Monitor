@@ -1049,15 +1049,77 @@ func TestPasskeyBeginIgnoresSpoofedForwardedProto(t *testing.T) {
 func TestLoginCookiesHonorTrustedProxyProto(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
-	secure := loginAttempt(t, handler, testAdminPassword, "10.0.0.2:8080", "")
-	session := cookieNamed(secure.Result().Cookies(), "cdt_session")
-	if secure.Code != http.StatusOK || session == nil || !session.Secure {
-		t.Fatalf("trusted proxy proto status = %d secure=%v", secure.Code, session != nil && session.Secure)
+	loopback := loginAttempt(t, handler, testAdminPassword, "127.0.0.1:8080", "")
+	session := cookieNamed(loopback.Result().Cookies(), "cdt_session")
+	if loopback.Code != http.StatusOK || session == nil || !session.Secure {
+		t.Fatalf("loopback proxy proto status = %d secure=%v", loopback.Code, session != nil && session.Secure)
+	}
+	private := loginAttempt(t, handler, testAdminPassword, "10.0.0.2:8080", "")
+	session = cookieNamed(private.Result().Cookies(), "cdt_session")
+	if private.Code != http.StatusOK || session == nil || session.Secure {
+		t.Fatalf("private IP spoof must not set Secure cookies, status = %d secure=%v", private.Code, session != nil && session.Secure)
 	}
 	spoofed := loginAttempt(t, handler, testAdminPassword, "203.0.113.10:443", "")
 	session = cookieNamed(spoofed.Result().Cookies(), "cdt_session")
 	if spoofed.Code != http.StatusOK || session == nil || session.Secure {
 		t.Fatalf("spoofed proto must not set Secure cookies, status = %d secure=%v", spoofed.Code, session != nil && session.Secure)
+	}
+}
+
+func TestLoginCookiesHonorConfiguredTrustedProxies(t *testing.T) {
+	t.Setenv("CDT_TRUSTED_PROXIES", "10.0.0.0/8")
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	secure := loginAttempt(t, handler, testAdminPassword, "10.0.0.2:8080", "")
+	session := cookieNamed(secure.Result().Cookies(), "cdt_session")
+	if secure.Code != http.StatusOK || session == nil || !session.Secure {
+		t.Fatalf("allowlisted proxy proto status = %d secure=%v", secure.Code, session != nil && session.Secure)
+	}
+	otherPrivate := loginAttempt(t, handler, testAdminPassword, "192.168.1.10:8080", "")
+	session = cookieNamed(otherPrivate.Result().Cookies(), "cdt_session")
+	if otherPrivate.Code != http.StatusOK || session == nil || session.Secure {
+		t.Fatalf("non-allowlisted private proxy must not set Secure cookies, status = %d secure=%v", otherPrivate.Code, session != nil && session.Secure)
+	}
+}
+
+func TestPasskeyBeginIgnoresSpoofedForwardedProtoFromPrivateIP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.RemoteAddr = "10.0.0.2:8080"
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "https_required") {
+		t.Fatalf("private IP spoofed proto status = %d body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestTrustedProxyDefaultsToLoopback(t *testing.T) {
+	if !trustedProxy("127.0.0.1") || !trustedProxy("::1") {
+		t.Fatal("loopback must be trusted")
+	}
+	for _, ip := range []string{"10.0.0.2", "192.168.1.1", "172.16.0.8", "203.0.113.10", "not-an-ip"} {
+		if trustedProxy(ip) {
+			t.Fatalf("%s must not be trusted by default", ip)
+		}
+	}
+}
+
+func TestTrustedProxyAllowlistParsesCIDRsAndBareIPs(t *testing.T) {
+	t.Setenv("CDT_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.50, not-a-cidr")
+	if !trustedProxy("10.1.2.3") {
+		t.Fatal("10.0.0.0/8 should match 10.1.2.3")
+	}
+	if !trustedProxy("192.168.1.50") {
+		t.Fatal("bare IP should match itself")
+	}
+	if trustedProxy("192.168.1.51") {
+		t.Fatal("neighbor IP must stay untrusted")
+	}
+	if !trustedProxy("127.0.0.1") {
+		t.Fatal("loopback must stay trusted when an allowlist is set")
 	}
 }
 
