@@ -46,6 +46,15 @@ func TestVerifyPasswordRejectsMalformedHash(t *testing.T) {
 	}
 }
 
+func TestVerifyPasswordRejectsPlaintext(t *testing.T) {
+	if VerifyPassword("Correct-Horse-42!", "Correct-Horse-42!") {
+		t.Fatal("plaintext password material must not verify after migrate")
+	}
+	if IsArgon2id("Correct-Horse-42!") {
+		t.Fatal("plaintext must not be reported as argon2id")
+	}
+}
+
 func TestCipherPersistsMasterKey(t *testing.T) {
 	dir := t.TempDir()
 	first, err := LoadOrCreateCipher(dir)
