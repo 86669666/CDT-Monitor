@@ -217,7 +217,20 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 		return false, err
 	}
 	count, _ := result.RowsAffected()
-	return count == 1, nil
+	if count == 1 {
+		return true, nil
+	}
+	// A same-owner refresh in the same unix second can be a no-op write.
+	var current string
+	var expires int64
+	err = s.db.QueryRowContext(ctx, `SELECT owner, expires_at FROM scheduler_leases WHERE name=?`, name).Scan(&current, &expires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return current == owner && expires >= now.Unix(), nil
 }
 
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {

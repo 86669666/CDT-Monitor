@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/security"
@@ -178,6 +179,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	}
 	if config.Timezone == "" {
 		config.Timezone = "Asia/Shanghai"
+	}
+	if _, err := time.LoadLocation(config.Timezone); err != nil {
+		return errors.New("invalid timezone")
 	}
 	if setup && len(config.AdminPassword) < 10 {
 		return errors.New("administrator password must be at least 10 characters")
