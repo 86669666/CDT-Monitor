@@ -56,6 +56,24 @@ TZ=Asia/Shanghai docker compose up -d
 
 或在 overlay / 环境里覆盖 `TZ`。不要把真实 Aliyun AK、SMTP 密码或 Telegram token 写进 Compose。
 
+## HTTPS 与反向代理
+
+本 fork 的 Compose 只绑定 `127.0.0.1:43210`，用明文 HTTP 跑本地向导。应用**不会**发送 `Strict-Transport-Security`（HSTS），避免把浏览器锁到 `https://127.0.0.1`。不要在容器里开 TLS，也不要把端口改成 `0.0.0.0` 或局域网地址来“先看公网”。
+
+公网入口必须在反向代理（或网关）终止 TLS。代理需要：
+
+- 自己写入 `X-Forwarded-Proto: https`（以及需要时的 `X-Forwarded-Host` / `X-Forwarded-For`）
+- **覆盖**客户端带来的同名头，不要原样转发
+- 在代理层加 HSTS；不要指望应用补这个头
+
+当前应用把 `X-Forwarded-Proto: https` 当成“已加密”，并且会信任环回**或私网**来源 IP。因此：
+
+- Compose 默认的 loopback 绑定是现在唯一视为安全的信任路径
+- 在后端 `CDT_TRUSTED_PROXIES` CIDR 白名单落地之前，不要把服务监听到局域网/公网，再靠私网对端的转发头
+- 不要把 `CDT_TRUSTED_PROXIES` 写进 Compose：这个变量还不存在，写了也不会收紧信任面
+
+本段是部署说明，不是已经实现的代理白名单，也不是把 PR#2 合进仍带未加开关 `auto-release.yml` 的 `origin/main` 的许可。
+
 ## 本机验证范围
 
 - 已验证：`docker compose config` 解析为本地 build + `ghcr.io/86669666/cdt-monitor:local`（当时的 Compose image 名；现已改为无仓库前缀的 `cdt-monitor:local`）。
@@ -73,9 +91,10 @@ TZ=Asia/Shanghai docker compose up -d
 - 续推（`2026-09-08T15:43Z` / 2026-09-08 23:43 Asia/Taipei）：Compose `image` 改为 `cdt-monitor:local`，去掉 GHCR 前缀，避免 `docker compose push` 有仓库可推。本机仍无 Docker CLI，没有重跑 `docker compose config`。
 - 续推（`2026-09-08T16:55Z` / 2026-09-09 00:55 Asia/Taipei）：`.dockerignore` 排除 `web/tests` 与 `web/playwright.config.ts`，避免 Playwright 测试进入 `COPY web`。本机仍无 Docker CLI，没有重跑构建。
 - 续推（`2026-09-08T19:29Z` / 2026-09-09 03:29 Asia/Taipei）：Compose 的 `VERSION` / `BUILT_AT` 也可从环境覆盖，默认仍是 `local`。本机仍无 Docker CLI，没有重跑 `docker compose config`。
+- 续推（`2026-09-09T17:56Z` / 2026-09-10 01:56 Asia/Taipei）：补了 HTTPS / 反向代理说明（HSTS 在代理层，`X-Forwarded-Proto` 只能由代理写）。本机仍无 Docker CLI，没有重跑 Compose，也没有把 PR#2 合进 `main`。
 
 ## 和上游安装文档的关系
 
 [README.MD](../README.MD) 里的 Docker 安装示例仍展示上游已发布镜像，方便对照。本 fork 的默认 Compose 文件已经改为本地构建。若只想跑上游镜像，请显式使用 README 中的 `image:` 片段，而不是这份仓库 Compose。
 
-CI 工作流的镜像名与发布开关见 [CI 发布与密钥审计](ci-publish-audit.md)。
+CI 工作流的镜像名与发布开关见 [CI 发布与密钥审计](ci-publish-audit.md)。`origin/main` 仍是上游未加开关的 Automatic Release（`packages: write`、`on.push` 到 `main`）。PR#2 即使 CI 绿了，也不要合进这条默认分支来“登记 workflow”。
