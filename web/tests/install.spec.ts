@@ -4536,5 +4536,6 @@ test('settings API key create posts optional expires_at', async ({ page }) => {
   await page.getByLabel('过期时间（可选）').fill(expiresLocal)
   await page.getByRole('button', { name: '创建 Key' }).click()
   await expect(page.getByText('仅显示一次')).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('过期')
   expect(createCalls).toBe(1)
 })
