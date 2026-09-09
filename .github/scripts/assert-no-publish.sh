@@ -142,6 +142,31 @@ scan_checkout_credentials() {
   done
 }
 
+scan_job_limits() {
+  local f body base runs timeouts
+  shopt -s nullglob
+  for f in .github/workflows/*.yml; do
+    body="$(strip_comments "$f")"
+    base="$(basename "$f")"
+    if grep -Eq 'id-token:[[:space:]]*write' <<<"$body"; then
+      bad "$f: id-token: write is forbidden on this fork"
+    fi
+    case "$base" in
+      auto-release.yml|release.yml) ;;
+      *)
+        if grep -Eq 'contents:[[:space:]]*write' <<<"$body"; then
+          bad "$f: contents: write is forbidden outside gated Automatic Release / Release Binaries"
+        fi
+        ;;
+    esac
+    runs="$(grep -c 'runs-on:' <<<"$body" || true)"
+    timeouts="$(grep -c 'timeout-minutes:' <<<"$body" || true)"
+    if [ "$runs" -gt "$timeouts" ]; then
+      bad "$f: each runs-on job must set timeout-minutes (runs-on=$runs timeout-minutes=$timeouts)"
+    fi
+  done
+}
+
 scan_dockerfile() {
   local f="Dockerfile"
   require_file "$f" || return
@@ -212,6 +237,7 @@ scan_container
 scan_dockerfile
 scan_compose
 scan_checkout_credentials
+scan_job_limits
 
 if [ "$fail" -ne 0 ]; then
   note "publish-guard failed; do not set publish vars or restore GHCR/Hub login"
