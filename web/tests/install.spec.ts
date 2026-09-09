@@ -4253,3 +4253,86 @@ test('dashboard mobile menu toggles closed', async ({ page }) => {
   await page.getByRole('button', { name: '菜单' }).click()
   await expect(page.getByRole('button', { name: '菜单' })).toHaveAttribute('aria-expanded', 'false')
 })
+
+test('logout sends the CSRF header from the cdt_csrf cookie', async ({ page }) => {
+  const csrf = 'test-csrf'
+  let logoutCsrf = ''
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    logoutCsrf = route.request().headers()[CSRF_HEADER.toLowerCase()] || ''
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.context().addCookies([{ name: CSRF_COOKIE, value: csrf, url: page.url() }])
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+  expect(logoutCsrf).toBe(csrf)
+})
+
+test('logout returns to login when CSRF check fails', async ({ page }) => {
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+})
+
+test('dashboard mobile menu logout posts the live auth contract', async ({ page }) => {
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ json: { success: true } })
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '菜单' }).click()
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+})
+
+test('settings webhook test surfaces the job_failed envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-job', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'job_failed', message: '任务查询失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
