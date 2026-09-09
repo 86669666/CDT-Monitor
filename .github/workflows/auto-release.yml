@@ -57,6 +57,10 @@ jobs:
           git push origin "$VERSION"
 
   release:
+    # Gate independently of `needs: tag`. A skipped tag job would
+    # already skip this caller; keep the var check so removing the
+    # tag `if` cannot start a GitHub Release by itself.
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: tag
     permissions:
       contents: write
@@ -67,6 +71,7 @@ jobs:
     # Releases; Docker Hub credentials must not reach reusable workflows.
 
   container:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: tag
     permissions:
       contents: read

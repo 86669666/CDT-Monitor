@@ -4,6 +4,7 @@ name: CI
 # No GHCR/Docker Hub/GitHub Release. Manual dispatch is for when
 # GitHub has registered workflows on this fork; it still does not publish.
 # Widget, Dependabot, and publish-workflow-only changes also skip this job.
+# Publish Guard still scans those YAML files; this job does not publish.
 
 on:
   pull_request:
@@ -19,6 +20,8 @@ on:
       - '.github/workflows/auto-release.yml'
       - '.github/workflows/release.yml'
       - '.github/workflows/docker-build-push.yml'
+      - '.github/workflows/publish-guard.yml'
+      - '.github/scripts/**'
   push:
     branches: [dev, main, 'work/**']
     paths-ignore:
@@ -33,6 +36,8 @@ on:
       - '.github/workflows/auto-release.yml'
       - '.github/workflows/release.yml'
       - '.github/workflows/docker-build-push.yml'
+      - '.github/workflows/publish-guard.yml'
+      - '.github/scripts/**'
   workflow_dispatch:
 
 concurrency:
