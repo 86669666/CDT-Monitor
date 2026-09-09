@@ -4253,3 +4253,24 @@ test('dashboard mobile menu toggles closed', async ({ page }) => {
   await page.getByRole('button', { name: '菜单' }).click()
   await expect(page.getByRole('button', { name: '菜单' })).toHaveAttribute('aria-expanded', 'false')
 })
+
+test('logout sends the CSRF header from the cdt_csrf cookie', async ({ page }) => {
+  const csrf = 'test-csrf'
+  let logoutCsrf = ''
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    logoutCsrf = route.request().headers()[CSRF_HEADER.toLowerCase()] || ''
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.context().addCookies([{ name: CSRF_COOKIE, value: csrf, url: page.url() }])
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+  expect(logoutCsrf).toBe(csrf)
+})
