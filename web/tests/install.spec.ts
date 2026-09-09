@@ -2242,6 +2242,108 @@ test('settings telegram socks5 proxy posts the live notify contract', async ({ p
   })
 })
 
+test('settings telegram keeps configured proxy password when left empty', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      telegram: {
+        enabled: true,
+        token_configured: true,
+        chat_id: '-1001',
+        proxy_type: 'socks5',
+        proxy_url: '',
+        proxy_ip: '127.0.0.1',
+        proxy_port: '1080',
+        proxy_user: 'proxy-user',
+        proxy_password_configured: true,
+      },
+    },
+  }
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const passwordField = page.getByLabel('代理密码 · 已配置')
+  await expect(passwordField).toBeVisible()
+  await expect(passwordField).toHaveAttribute('placeholder', '留空保持不变')
+  await expect(passwordField).toHaveValue('')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    proxy_type: 'socks5',
+    proxy_password_configured: true,
+  })
+  expect(savedTelegram).not.toHaveProperty('proxy_pass')
+  expect(JSON.stringify(savedTelegram)).not.toContain('__clear__')
+})
+
+test('settings telegram clears configured proxy password with the live sentinel', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      telegram: {
+        enabled: true,
+        token_configured: true,
+        chat_id: '-1001',
+        proxy_type: 'socks5',
+        proxy_url: '',
+        proxy_ip: '127.0.0.1',
+        proxy_port: '1080',
+        proxy_user: 'proxy-user',
+        proxy_password_configured: true,
+      },
+    },
+  }
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const passwordField = page.getByLabel('代理密码 · 已配置')
+  await expect(passwordField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByText('清除已配置的代理密码', { exact: true }).click()
+  await expect(passwordField).toHaveAttribute('placeholder', '保存后清除')
+  await expect(passwordField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    proxy_type: 'socks5',
+    proxy_pass: '__clear__',
+    proxy_password_configured: true,
+  })
+})
+
 test('settings telegram custom proxy posts the live notify contract', async ({ page }) => {
   let savedTelegram: Record<string, unknown> | undefined
   await mockInitStatus(page, true)
