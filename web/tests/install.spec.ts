@@ -4438,3 +4438,25 @@ test('instance stop disables power controls while the job is in flight', async (
   await expect(page.getByText('已发送关机指令')).toBeVisible()
   expect(stopCalls).toBe(1)
 })
+
+test('instance start surfaces the enqueue_failed envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
