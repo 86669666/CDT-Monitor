@@ -1,16 +1,52 @@
+# Local-only Compose for the 86669666/CDT-Monitor fork.
+# Tags cdt-monitor:local after a local build. Do not use a GHCR/Hub
+# image name here: `docker compose push` must have no registry target.
+name: cdt-monitor
+
 services:
   cdt-monitor:
-    image: ghcr.io/wang4386/cdt-monitor:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Override with VERSION=local COMMIT="$(git rev-parse --short HEAD)"
+        # BUILT_AT="$(date -u +%Y-%m-%dT%H:%MZ)" docker compose build.
+        VERSION: "${VERSION:-local}"
+        COMMIT: "${COMMIT:-unknown}"
+        BUILT_AT: "${BUILT_AT:-local}"
+        IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor
+    image: cdt-monitor:local
+    pull_policy: build
     container_name: cdt-monitor
-    restart: unless-stopped
+    restart: on-failure:3
     init: true
+    stop_grace_period: 15s
+    stop_signal: SIGTERM
+    security_opt:
+      - no-new-privileges:true
+    privileged: false
+    cap_drop:
+      - ALL
+    user: "65532:65532"
+    pids_limit: 256
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
-      - "43210:8080"
+      - "127.0.0.1:43210:8080"
     environment:
       CDT_DATA_DIR: /data
       CDT_LISTEN: :8080
-      CDT_WORKERS: 4
-      TZ: Asia/Shanghai
+      CDT_WORKERS: 2
+      TZ: Asia/Taipei
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
     volumes:
       - cdt-data:/data
     healthcheck:

@@ -20,22 +20,35 @@ Authorization: Bearer <API Key>
 
 ## 本地构建
 
-需要 JDK 17、Android SDK 35 和 Gradle 8.10.2：
+需要 JDK 17、Android SDK 35。Gradle 由仓库内 Wrapper 固定为 8.10.2，不要依赖宿主机 `gradle`：
 
 ```bash
 cd android-widget
-gradle assembleRelease bundleRelease
+./gradlew assembleRelease bundleRelease
 ```
+
+### 本机工具链（ops writer host）
+
+检查时间：2026-09-09 02:55 Asia/Taipei（`2026-09-08T18:55Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。
+
+| 依赖 | 本机状态 |
+| --- | --- |
+| JDK 17 / `java` / `javac` | 不存在，`JAVA_HOME` 为空 |
+| Android SDK 35 / `sdkmanager` / `adb` | 不在 PATH |
+| Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 8.10.2，checksum 已钉死，`networkTimeout=120000`，`android.builder.sdkDownload=false`，`org.gradle.daemon=false`，`org.gradle.workers.max=2`，`org.gradle.parallel=false`，`org.gradle.caching=false`，`org.gradle.configuration-cache=false`，`org.gradle.vfs.watch=false`） |
+| Gradle Wrapper | 已加入 `gradlew` / `gradle-wrapper.jar`；本机 `sha256sum gradle/wrapper/gradle-wrapper.jar` = `2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046`，与 `gradle/actions` wrapper-validation 中 Gradle **8.10.2** 条目一致。本机仍缺 JDK，所以 **没有** 跑过 `./gradlew` |
+
+因此本机出包仍是 blocker（缺 JDK/SDK），不要把 Wrapper 入库写成 APK 已验证。支持的构建路径仍是手动触发 `.github/workflows/android-widget.yml`（现改为 `./gradlew`）。签名密钥只通过 Actions secrets 注入，keystore 不要进 git。
 
 产物位于 `app/build/outputs/`：
 
-- `apk/debug/*universal*.apk`：可直接安装的通用 debug APK。
-- `apk/release/*universal*.apk`、`*arm64-v8a*.apk`、`*armeabi-v7a*.apk`、`*x86*.apk`：通用与常见 ABI 分包（未签名时文件名会带 `-unsigned`）。
+- `apk/debug/*.apk`：可直接安装的 debug APK（含各 ABI，不再打 ABI 分包）。
+- `apk/release/*.apk`：release APK（未签名时文件名会带 `-unsigned`）。
 - `bundle/release/app-release.aab`：Google Play 或其他支持 AAB 的发行渠道使用。
 
 ## GitHub Actions
 
-`.github/workflows/android-widget.yml` 仅支持手动触发。它会在 Ubuntu runner 上安装 SDK 35，构建可直接安装的 debug APK、release APK、四种 ABI 分包以及 AAB，并将它们作为 workflow artifact 上传。构建不依赖 API Key，也不会把任何站点凭据写入仓库。
+`.github/workflows/android-widget.yml` 仅支持手动触发，同一 ref 上新的 run 会取消未完成的旧 run。checkout 之后会用与 `setup-gradle` 同一 SHA 的 `gradle/actions/wrapper-validation` 核对 Wrapper jar，然后非交互接受 SDK 许可并安装 SDK 35（避免 `sdkmanager` 卡在许可证提示上耗尽 20 分钟），再用带 `gradle-home-cache-cleanup: true` 的 `setup-gradle` 构建可直接安装的 debug APK、release APK 以及 AAB（不再打 ABI 分包），并将它们作为 workflow artifact 上传（保留 7 天）。构建不依赖 API Key，也不会把任何站点凭据写入仓库。Dependabot 每周只扫 `android-widget/` 的 Gradle 生态，不会打开生产发布变量。这仍不是本机 APK，也不等于远端 Actions 已经跑过。
 
 未配置签名密钥时，debug APK 使用 Android 调试签名，可以直接安装；release APK/AAB 是未签名发行产物。正式分发和后续覆盖升级需要在仓库 Actions Secrets 中配置：
 
@@ -44,4 +57,4 @@ gradle assembleRelease bundleRelease
 - `ANDROID_KEY_ALIAS`：签名 Key 的 alias。
 - `ANDROID_KEY_PASSWORD`：签名 Key 密码。
 
-配置后，Actions 会使用同一份 keystore 签署 release APK 和 AAB。不要把 keystore 或密码提交到仓库。
+配置后，Actions 会使用同一份 keystore 签署 release APK 和 AAB。解码后的 JKS 只写在 runner 的 `$RUNNER_TEMP`（`umask 077` / `chmod 600`），job 结束前（含失败）会 `shred`/`rm`，不会随 artifact 上传。不要把 keystore 或密码提交到仓库。

@@ -1,8 +1,8 @@
 name: Release Binaries
 
+# This fork does not auto-run on v-tags. Keep workflow_dispatch and the
+# Automatic Release workflow_call path. Jobs still require ENABLE_PRODUCTION_PUBLISH.
 on:
-  push:
-    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       tag:
@@ -17,16 +17,24 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
+# Binary GitHub Releases stay opt-in. Leave ENABLE_PRODUCTION_PUBLISH unset on this fork.
+# Even if that var is set, the GitHub Release stays draft, is not
+# marked latest, and does not auto-write notes from this fork's
+# commits. Do not flip those without an explicit publish authorization.
 jobs:
   frontend:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.x'
           cache: npm
@@ -34,36 +42,39 @@ jobs:
       - name: Build frontend
         working-directory: web
         run: npm ci --ignore-scripts && npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: embedded-web
           path: internal/web/dist
           if-no-files-found: error
+          retention-days: 7
 
   build:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: frontend
     name: ${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
+          # This fork does not ship a full multi-platform GitHub Release.
+          # A mistaken ENABLE_PRODUCTION_PUBLISH dispatch must not burn
+          # seven 20-minute builders. Restore the matrix only with publish
+          # authorization.
           - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: linux, goarch: arm, goarm: '7' }
-          - { goos: windows, goarch: amd64 }
-          - { goos: windows, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/setup-go@v5
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.24.x'
           cache: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: embedded-web
           path: internal/web/dist
@@ -93,17 +104,22 @@ jobs:
             tar -C release -czf "release/${name}.tar.gz" "${name}${ext}"
           fi
           rm "release/${name}${ext}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm || 'default' }}
           path: release/*
           if-no-files-found: error
+          retention-days: 7
 
   publish:
+    if: ${{ vars.ENABLE_PRODUCTION_PUBLISH == 'true' }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: release
           pattern: release-*
@@ -111,8 +127,10 @@ jobs:
       - name: Generate checksums
         working-directory: release
         run: sha256sum * > SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          generate_release_notes: true
+          generate_release_notes: false
+          draft: true
+          make_latest: false
           files: release/*
