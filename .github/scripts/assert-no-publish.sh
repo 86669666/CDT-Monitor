@@ -167,6 +167,30 @@ scan_job_limits() {
   done
 }
 
+scan_action_pins() {
+  local f body line ref sha
+  shopt -s nullglob
+  for f in .github/workflows/*.yml; do
+    body="$(strip_comments "$f")"
+    if grep -q 'actions/checkout@' <<<"$body" && ! grep -Eq 'fetch-depth:[[:space:]]*1' <<<"$body"; then
+      bad "$f: checkout must set fetch-depth: 1"
+    fi
+    while IFS= read -r line; do
+      ref="${line#*uses:}"
+      ref="${ref#"${ref%%[![:space:]]*}"}"
+      ref="${ref%"${ref##*[![:space:]]}"}"
+      case "$ref" in
+        ./*) continue ;;
+        '') continue ;;
+      esac
+      sha="${ref##*@}"
+      if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+        bad "$f: third-party action must be SHA-pinned: $ref"
+      fi
+    done < <(grep -E 'uses:' <<<"$body" || true)
+  done
+}
+
 scan_dockerfile() {
   local f="Dockerfile"
   require_file "$f" || return
@@ -238,6 +262,7 @@ scan_dockerfile
 scan_compose
 scan_checkout_credentials
 scan_job_limits
+scan_action_pins
 
 if [ "$fail" -ne 0 ]; then
   note "publish-guard failed; do not set publish vars or restore GHCR/Hub login"

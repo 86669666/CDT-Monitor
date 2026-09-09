@@ -26,7 +26,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 
 本 fork 的 Container / Automatic Release 都不申请 `packages: write`。即使误开 `ENABLE_PRODUCTION_PUBLISH`，`GITHUB_TOKEN` 也推不了 GHCR。
 
-第三方 Actions 已按当前 major tag 解析并钉到 commit SHA（注释里保留 `v4`/`v5` 等标签名）。这不开启发布，也不等于远端 CI 已经跑过。
+第三方 Actions 已按当前 major tag 解析并钉到 commit SHA（注释里保留 `v4`/`v5` 等标签名）。Publish Guard 会拒绝 `uses: ...@v4` 这种浮动标签（本地 `./.github/workflows/*` 除外），并要求 checkout `fetch-depth: 1`。这不开启发布，也不等于远端 CI 已经跑过。
 各 job 加了 `timeout-minutes`（verify 20、widget 20、container amd64 verify 20、release 分段 15/20/10），避免一旦 Actions 能跑时挂死占用分钟。Reusable caller 不能设 `timeout-minutes`（GitHub 会把 workflow 判成无效）；超时仍在被调用的 job 上。Publish Guard 要求每个 `runs-on` job 都有超时，且 `contents: write` / `id-token: write` 不能出现在 CI / widget / container verify / Publish Guard 里。
 
 ## 镜像名
@@ -155,3 +155,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求每个 `runs-on` job 都有 `timeout-minutes`，并禁止在 CI / widget / container verify 上使用 `contents: write` 或 `id-token: write`
 - GitHub 拒绝在 `uses:` caller 上写 `timeout-minutes`（run 34397202388 无 job 即失败）；已撤回 caller 超时，只保留 `runs-on` job 的超时扫描。这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-09T19:50Z` / 2026-09-10 03:50 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `8c7805a` 再加 action SHA pin / fetch-depth 扫描：
+
+- Publish Guard 现要求第三方 `uses:` 钉死 40 位 SHA，checkout 必须 `fetch-depth: 1`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
