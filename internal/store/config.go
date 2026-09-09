@@ -118,15 +118,16 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				ProxyConfigured: settings["notify_tg_proxy_pass"] != "",
 			},
 			Webhook: domain.WebhookConfig{
-				Enabled:          boolSetting(settings, "notify_wh_enabled", false),
-				URL:              valueOr(settings, "notify_wh_url", ""),
-				Method:           valueOr(settings, "notify_wh_method", "GET"),
-				Type:             valueOr(settings, "notify_wh_request_type", "JSON"),
-				Headers:          valueOr(settings, "notify_wh_headers", ""),
-				Body:             valueOr(settings, "notify_wh_body", ""),
-				Provider:         valueOr(settings, "notify_wh_provider", "generic"),
-				Secret:           valueOr(settings, "notify_wh_secret", ""),
-				SecretConfigured: settings["notify_wh_secret"] != "",
+				Enabled:           boolSetting(settings, "notify_wh_enabled", false),
+				URL:               valueOr(settings, "notify_wh_url", ""),
+				Method:            valueOr(settings, "notify_wh_method", "GET"),
+				Type:              valueOr(settings, "notify_wh_request_type", "JSON"),
+				Headers:           valueOr(settings, "notify_wh_headers", ""),
+				Body:              valueOr(settings, "notify_wh_body", ""),
+				Provider:          valueOr(settings, "notify_wh_provider", "generic"),
+				Secret:            valueOr(settings, "notify_wh_secret", ""),
+				SecretConfigured:  settings["notify_wh_secret"] != "",
+				HeadersConfigured: settings["notify_wh_headers"] != "",
 			},
 		},
 	}
@@ -241,14 +242,7 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_wh_headers":    config.Notifications.Webhook.Headers,
 			"notify_wh_secret":     config.Notifications.Webhook.Secret,
 		} {
-			if value == "" {
-				continue
-			}
-			encrypted, err := s.Encrypt(value)
-			if err != nil {
-				return err
-			}
-			if err = putSettingTx(ctx, tx, key, encrypted); err != nil {
+			if err := s.saveSensitiveSetting(ctx, tx, key, value); err != nil {
 				return err
 			}
 		}
@@ -258,6 +252,20 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 		}
 		return nil
 	})
+}
+
+func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value string) error {
+	if value == domain.ClearSecretSentinel {
+		return putSettingTx(ctx, tx, key, "")
+	}
+	if value == "" {
+		return nil
+	}
+	encrypted, err := s.Encrypt(value)
+	if err != nil {
+		return err
+	}
+	return putSettingTx(ctx, tx, key, encrypted)
 }
 
 func hashOrKeepPassword(password string) (string, error) {
