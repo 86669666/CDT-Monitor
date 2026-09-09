@@ -3,6 +3,9 @@ name: Android Widget
 # Manual-only prototype build. Keystore secrets are optional GitHub secrets.
 # Do not assume a local JDK/SDK/Gradle toolchain; this workflow is the
 # supported package path for the 86669666 fork.
+# GitHub has not registered this file yet (not on origin/main). Dispatch
+# returns 404. Do not merge ungated auto-release to main just to register it.
+# Artifacts are APK/AAB only: no Play upload, no GHCR, no ENABLE_PRODUCTION_PUBLISH.
 
 on:
   workflow_dispatch:
@@ -16,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android widget packages
+    name: Build widget packages (artifact only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
