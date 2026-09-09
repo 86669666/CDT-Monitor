@@ -2,7 +2,8 @@
 # Local + CI tripwire for 86669666/CDT-Monitor.
 # Fail if fork workflows regain GHCR/Hub publish surfaces, if
 # ENABLE_PRODUCTION_PUBLISH / ENABLE_DOCKERHUB_PUBLISH are set true,
-# or if Compose drops the loopback bind / grows secret env keys.
+# or if Compose drops the loopback bind / grows secret env keys,
+# or if the Dockerfile defaults IMAGE_SOURCE back to upstream.
 # This script does not publish, log in, or set those variables.
 set -euo pipefail
 
@@ -112,6 +113,28 @@ scan_container() {
   if ! grep -Eq 'cdt-monitor:verify-amd64' <<<"$body"; then
     bad "$f: container verify must keep the local tag cdt-monitor:verify-amd64"
   fi
+  if grep -Eq '^  push:' <<<"$body"; then
+    bad "$f: do not restore on.push (dev/tag); keep workflow_dispatch / workflow_call"
+  fi
+  if grep -Eq "tags:[[:space:]]*\['v" <<<"$body"; then
+    bad "$f: do not restore v-tag push triggers"
+  fi
+}
+
+scan_dockerfile() {
+  local f="Dockerfile"
+  require_file "$f" || return
+  local body
+  body="$(strip_comments "$f")"
+  if ! grep -Fq 'ARG IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor' <<<"$body"; then
+    bad "$f: default IMAGE_SOURCE must stay https://github.com/86669666/CDT-Monitor"
+  fi
+  if grep -Eq 'wang4386' <<<"$body"; then
+    bad "$f: do not default image source to upstream wang4386"
+  fi
+  if grep -Eq '(^|[[:space:]])--push([[:space:]]|$)' <<<"$body"; then
+    bad "$f: --push is forbidden in the Dockerfile"
+  fi
 }
 
 scan_compose() {
@@ -165,6 +188,7 @@ scan_workflows
 scan_auto_release
 scan_release_binaries
 scan_container
+scan_dockerfile
 scan_compose
 
 if [ "$fail" -ne 0 ]; then

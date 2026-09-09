@@ -51,7 +51,7 @@ Verify / widget / container / release 的 `actions/checkout` 设置 `persist-cre
 | `CI` | `dev`/`main`/PR | 增加 `work/**` 与 `workflow_dispatch`；concurrency 取消同 ref 旧 run；纯 docs/widget/README/compose/dockerignore、Dependabot、`android-widget.yml` 或其它发布 workflow YAML 变更跳过 verify。仍不发布 |
 | `Automatic Release` | `main` push 自动打 tag 并发布 | 不再因 `main` push 自动跑。仅 `workflow_dispatch`，且需要 `ENABLE_PRODUCTION_PUBLISH=true`。不把仓库 secrets inherit 进 reusable workflows。默认 token 只读；同 ref 并发不取消进行中的 tag/release；不申请 `packages: write` |
 | `Release Binaries` | 仅手动或被 auto-release `workflow_call` | 不再因 `v*.*.*` tag push 自动跑。仍要 `ENABLE_PRODUCTION_PUBLISH`；本 fork 只编 linux/amd64；artifact 保留 7 天；只有 `publish` job 拿 `contents: write`，且 `draft: true`、`make_latest: false`、`generate_release_notes: false` |
-| `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；Buildx `driver: docker`；只 load 校验 linux/amd64，`push: false`，`provenance: false`，`sbom: false`，无 `type=gha` cache；`version` 检查用 `--network none --read-only --user 65532`；没有 `packages: write` |
+| `Container Images` | 仅手动或被 auto-release `workflow_call` | 不再因 `dev`/tag push 自动跑。文件里已删除 login / GHCR·Hub metadata / QEMU / arm64 / multi-arch；Buildx `driver: docker`；只 load 校验 linux/amd64，`push: false`，`provenance: false`，`sbom: false`，无 `type=gha` cache；`version` 检查用 `--network none --read-only --user 65532`；没有 `packages: write`。Publish Guard 禁止把 `on.push` / `v*.*.*` tag 触发加回来，并要求 Dockerfile 默认 `IMAGE_SOURCE` 仍是本 fork |
 | `Android Widget` | 仅 `workflow_dispatch` | 保持手动；产物是 artifact 不是 registry |
 | `Publish Guard` | 无（本 fork 新增） | `dev`/`main`/`work/**` push、PR、手动。只跑 `.github/scripts/assert-no-publish.sh`：发布变量不能为 true；workflow YAML 不能恢复 `packages: write` / login / Hub 名 / `secrets: inherit` / `push: true`；Compose `image:` 必须是无仓库前缀的 `cdt-monitor:local`，端口必须是 `127.0.0.1:43210:8080`，环境里不能有 AK/通知密钥/`CDT_TRUSTED_PROXIES`。不 login、不 push |
 
@@ -140,3 +140,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 - Publish Guard 现检查 `docker-compose.yml` 必须发布 `127.0.0.1:43210:8080`，且环境里不能出现 `CDT_MASTER_KEY` / `CDT_TRUSTED_PROXIES` / AK 或通知密钥。这锁的是本机绑定，不是 `CDT_TRUSTED_PROXIES` 已经实现
 - `origin/main` 仍是未加开关的 Automatic Release。不要把这次扫描写成 PR#2 可以合进 `main`
 - 仓库 Actions variables 仍应保持未设置；本轮没有打开 `ENABLE_PRODUCTION_PUBLISH`
+
+续推证据（`2026-09-09T18:46Z` / 2026-09-10 02:46 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `5d86323` 再加 Dockerfile/source 与 container `on.push` 扫描：
+
+- Publish Guard 现要求 Dockerfile 默认 `IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor`，且 Container Images YAML 不能恢复 `on.push` / `v*.*.*` tag 触发
+- 这仍只是 load-verify，不是 GHCR 发布，也不是把 PR#2 合进未加开关 `main` 的许可

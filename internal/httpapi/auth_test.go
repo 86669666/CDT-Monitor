@@ -164,8 +164,75 @@ func TestLoginCookiesAndConfigRedaction(t *testing.T) {
 	if !config.Notifications.Telegram.TokenConfigured || config.Notifications.Telegram.Token != "" {
 		t.Fatalf("telegram secret flags = %#v", config.Notifications.Telegram)
 	}
-	if !config.Notifications.Webhook.SecretConfigured || config.Notifications.Webhook.Secret != "" || config.Notifications.Webhook.Headers != "" {
+	if !config.Notifications.Webhook.SecretConfigured || !config.Notifications.Webhook.HeadersConfigured || config.Notifications.Webhook.Secret != "" || config.Notifications.Webhook.Headers != "" {
 		t.Fatalf("webhook secret flags = %#v", config.Notifications.Webhook)
+	}
+}
+
+func TestWebhookHeadersStayUntilClearedOverHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	if !config.Notifications.Webhook.HeadersConfigured || !config.Notifications.Webhook.SecretConfigured {
+		t.Fatalf("expected headers and secret to be configured: %#v", config.Notifications.Webhook)
+	}
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if kept.Code != http.StatusOK {
+		t.Fatalf("scrubbed save status = %d body = %s", kept.Code, kept.Body.String())
+	}
+	loaded, err := st.GetConfig(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Notifications.Webhook.Headers != "X-Auth: leak-me" || loaded.Notifications.Webhook.Secret != "webhook-secret-value" {
+		t.Fatalf("empty scrubbed PUT must keep webhook secrets: %#v", loaded.Notifications.Webhook)
+	}
+
+	config.Notifications.Webhook.Headers = domain.ClearSecretSentinel
+	config.Notifications.Webhook.Secret = domain.ClearSecretSentinel
+	raw, err = json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if cleared.Code != http.StatusOK {
+		t.Fatalf("clear save status = %d body = %s", cleared.Code, cleared.Body.String())
+	}
+	reload := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if reload.Code != http.StatusOK {
+		t.Fatalf("reload status = %d body = %s", reload.Code, reload.Body.String())
+	}
+	var clearedConfig domain.Config
+	if err = json.Unmarshal(reload.Body.Bytes(), &clearedConfig); err != nil {
+		t.Fatal(err)
+	}
+	if clearedConfig.Notifications.Webhook.HeadersConfigured || clearedConfig.Notifications.Webhook.SecretConfigured || clearedConfig.Notifications.Webhook.Headers != "" || clearedConfig.Notifications.Webhook.Secret != "" {
+		t.Fatalf("cleared webhook flags = %#v", clearedConfig.Notifications.Webhook)
+	}
+	if strings.Contains(reload.Body.String(), "leak-me") || strings.Contains(reload.Body.String(), "webhook-secret-value") || strings.Contains(reload.Body.String(), domain.ClearSecretSentinel) {
+		t.Fatalf("cleared config leaked secret material: %s", reload.Body.String())
+	}
+	loaded, err = st.GetConfig(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Notifications.Webhook.Headers != "" || loaded.Notifications.Webhook.Secret != "" {
+		t.Fatalf("store still has webhook secrets: %#v", loaded.Notifications.Webhook)
 	}
 }
 

@@ -126,6 +126,62 @@ func TestAccountIDsRemainStable(t *testing.T) {
 	}
 }
 
+func TestWebhookHeadersStayUntilCleared(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts:      []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{URL: "https://example.test/hook", Headers: `{"X-Auth":"leak-me"}`, Secret: "webhook-secret-value"}},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Notifications.Webhook.HeadersConfigured || !loaded.Notifications.Webhook.SecretConfigured {
+		t.Fatalf("configured flags = %#v", loaded.Notifications.Webhook)
+	}
+	if loaded.Notifications.Webhook.Headers != `{"X-Auth":"leak-me"}` || loaded.Notifications.Webhook.Secret != "webhook-secret-value" {
+		t.Fatalf("loaded webhook = %#v", loaded.Notifications.Webhook)
+	}
+	loaded.AdminPassword = ""
+	loaded.Accounts[0].AccessKeySecret = ""
+	loaded.Notifications.Webhook.Headers = ""
+	loaded.Notifications.Webhook.Secret = ""
+	if err = st.SaveConfig(ctx, loaded); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept.Notifications.Webhook.Headers != `{"X-Auth":"leak-me"}` || kept.Notifications.Webhook.Secret != "webhook-secret-value" {
+		t.Fatalf("empty save must keep webhook secrets: %#v", kept.Notifications.Webhook)
+	}
+	kept.AdminPassword = ""
+	kept.Accounts[0].AccessKeySecret = ""
+	kept.Notifications.Webhook.Headers = domain.ClearSecretSentinel
+	kept.Notifications.Webhook.Secret = domain.ClearSecretSentinel
+	if err = st.SaveConfig(ctx, kept); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Notifications.Webhook.HeadersConfigured || cleared.Notifications.Webhook.SecretConfigured || cleared.Notifications.Webhook.Headers != "" || cleared.Notifications.Webhook.Secret != "" {
+		t.Fatalf("cleared webhook = %#v", cleared.Notifications.Webhook)
+	}
+}
+
 func TestInvalidTimezoneIsRejected(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
