@@ -150,10 +150,14 @@ func hashPassword(password string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(hash)), nil
 }
 
+func IsArgon2id(encoded string) bool {
+	return strings.HasPrefix(encoded, "$argon2id$")
+}
+
 func VerifyPassword(encoded, password string) bool {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
-		return subtle.ConstantTimeCompare([]byte(encoded), []byte(password)) == 1
+		return false
 	}
 	var memory, iterations uint32
 	var parallelism uint8

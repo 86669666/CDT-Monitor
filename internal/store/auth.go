@@ -22,15 +22,6 @@ func (s *Store) VerifyAdminPassword(ctx context.Context, password string) (bool,
 	if !security.VerifyPassword(encoded, password) {
 		return false, nil
 	}
-	if !strings.HasPrefix(encoded, "$argon2id$") {
-		hash, err := security.HashLegacyPassword(password)
-		if err != nil {
-			return false, err
-		}
-		if _, err = s.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash); err != nil {
-			return false, err
-		}
-	}
 	return true, nil
 }
 

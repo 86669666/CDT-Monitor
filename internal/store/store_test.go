@@ -61,14 +61,39 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	if err != nil || storedSecret != "legacy-secret" {
 		t.Fatalf("account secret = %q err=%v", storedSecret, err)
 	}
+	var hash string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='admin_password'`).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	if !security.IsArgon2id(hash) || hash == "legacy-password" {
+		t.Fatalf("legacy password was not upgraded during migrate: %q", hash)
+	}
 	valid, err := st.VerifyAdminPassword(context.Background(), "legacy-password")
 	if err != nil || !valid {
 		t.Fatalf("legacy password failed: %v", err)
 	}
-	var hash string
-	_ = st.db.QueryRow(`SELECT value FROM settings WHERE key='admin_password'`).Scan(&hash)
-	if hash == "legacy-password" {
-		t.Fatal("legacy password was not upgraded")
+}
+
+func TestCorruptAdminPasswordHashIsRejected(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(context.Background(), config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.Exec(`UPDATE settings SET value='not-argon2id' WHERE key='admin_password'`); err != nil {
+		t.Fatal(err)
+	}
+	valid, err := st.VerifyAdminPassword(context.Background(), "not-argon2id")
+	if err != nil || valid {
+		t.Fatalf("corrupt hash must fail closed, valid=%v err=%v", valid, err)
+	}
+	valid, err = st.VerifyAdminPassword(context.Background(), "Strong-Password-42!")
+	if err != nil || valid {
+		t.Fatalf("original password must not verify a corrupt hash, valid=%v err=%v", valid, err)
 	}
 }
 

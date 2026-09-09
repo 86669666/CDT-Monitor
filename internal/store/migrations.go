@@ -291,6 +291,19 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 				return err
 			}
 		}
-		return nil
+		var password string
+		err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='admin_password'`).Scan(&password)
+		if err == sql.ErrNoRows || password == "" || security.IsArgon2id(password) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		hash, err := security.HashLegacyPassword(password)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash)
+		return err
 	})
 }
