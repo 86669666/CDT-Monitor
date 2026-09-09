@@ -12,7 +12,7 @@ const config = {
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
     telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '' },
+    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '', secret_configured: false },
   },
   accounts: [{
     id: 1,
@@ -155,13 +155,13 @@ test('top refresh forces every configured instance and reports completion', asyn
   await page.route('**/api/v1/accounts/refresh', (route) => {
     refreshAllCalls += 1
     expect(route.request().method()).toBe('POST')
-    return route.fulfill({ status: 202, json: { jobs: [{ id: 'refresh-1', status: 'pending' }, { id: 'refresh-2', status: 'pending' }] } })
+    return route.fulfill({ status: 202, json: { jobs: [{ id: 'refresh-1', status: 'queued', type: 'refresh_account', account_id: 1, attempts: 0, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { id: 'refresh-2', status: 'queued', type: 'refresh_account', account_id: 2, attempts: 0, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } })
   })
   await page.route('**/api/v1/jobs/**', (route) => {
     const id = route.request().url().split('/').pop() || ''
     const count = (jobPolls.get(id) || 0) + 1
     jobPolls.set(id, count)
-    return route.fulfill({ json: { id, status: count > 1 ? 'completed' : 'running' } })
+    return route.fulfill({ json: { id, type: 'refresh_account', status: count > 1 ? 'completed' : 'running', attempts: count, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() } })
   })
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -228,7 +228,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
   const longToken = 'cdt_' + 'A1b2C3d4'.repeat(12)
   await page.route('**/api/v1/api-keys', (route) => {
     if (route.request().method() === 'POST') {
-      return route.fulfill({ status: 201, json: { token: longToken } })
+      return route.fulfill({ status: 201, json: { key: { id: 3, name: '桌面小组件', scopes: ['widget:read'], created_at: new Date().toISOString() }, token: longToken } })
     }
     return route.fulfill({ json: {
       keys: [
