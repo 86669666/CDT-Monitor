@@ -4360,3 +4360,122 @@ test('settings email test surfaces the job_failed envelope', async ({ page }) =>
   await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings telegram test surfaces the job_failed envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/telegram', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-telegram-job', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'job_failed', message: '任务查询失败' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
+test('instance start disables power controls while the job is in flight', async ({ page }) => {
+  let startCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-busy', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    return route.fulfill({ json: jobFixture('start-busy', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.getByRole('button', { name: '开机' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeDisabled()
+  releaseJob()
+  await expect(page.getByText('已发送开机指令')).toBeVisible()
+  expect(startCalls).toBe(1)
+})
+
+test('instance stop disables power controls while the job is in flight', async ({ page }) => {
+  let stopCalls = 0
+  let releaseJob!: (value?: unknown) => void
+  const jobReady = new Promise((resolve) => { releaseJob = resolve })
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-busy', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', async (route) => {
+    await jobReady
+    return route.fulfill({ json: jobFixture('stop-busy', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.getByRole('button', { name: '关机' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '刷新实例' })).toBeDisabled()
+  releaseJob()
+  await expect(page.getByText('已发送关机指令')).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
+
+test('instance start surfaces the enqueue_failed envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
+
+test('instance stop surfaces the enqueue_failed envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
