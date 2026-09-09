@@ -3288,6 +3288,56 @@ test('settings webhook keeps configured headers when left empty', async ({ page 
   expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
 })
 
+test('settings webhook clears configured headers with the live sentinel', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: {
+        enabled: true,
+        url: 'https://example.invalid/hook',
+        method: 'POST',
+        request_type: 'JSON',
+        body: '',
+        secret_configured: false,
+        headers_configured: true,
+      },
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const headersField = page.getByLabel('自定义 Headers · 已配置')
+  await expect(headersField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByText('清除已配置的 Headers', { exact: true }).click()
+  await expect(headersField).toHaveAttribute('placeholder', '保存后清除')
+  await expect(headersField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    url: 'https://example.invalid/hook',
+    headers: '__clear__',
+    headers_configured: true,
+  })
+})
+
 test('settings email omits empty password from the live notify contract', async ({ page }) => {
   let savedEmail: Record<string, unknown> | undefined
   await mockInitStatus(page, true)

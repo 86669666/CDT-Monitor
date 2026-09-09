@@ -4,6 +4,8 @@ export type ThresholdAction = 'stop_and_notify' | 'notify_only'
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed'
 export type APIKeyScope = 'widget:read' | 'instance:control' | 'cron:run'
 
+export const CLEAR_SECRET_SENTINEL = '__clear__'
+
 export type Account = {
   id: number
   access_key_id: string
