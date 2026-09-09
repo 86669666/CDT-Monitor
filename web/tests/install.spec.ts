@@ -4539,3 +4539,23 @@ test('settings API key create posts optional expires_at', async ({ page }) => {
   await expect(page.locator('.key-row')).toContainText('过期')
   expect(createCalls).toBe(1)
 })
+
+test('failed stop job surfaces a generic failure toast', async ({ page }) => {
+  const leaked = 'FIXTURE-SECRET-TOKEN'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-fail', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('stop-fail', 'failed', 1)
+    failed.error = `aliyun HTTP 403: AccessKeyId=${leaked}`
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
