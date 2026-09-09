@@ -967,6 +967,7 @@ test('refresh-all surfaces the enqueue_failed envelope after login', async ({ pa
 
 
 test('failed start job surfaces a generic failure toast', async ({ page }) => {
+  const leaked = 'FIXTURE-SECRET-TOKEN'
   await mockInitStatus(page, true)
   await mockDashboardReads(page, {
     ...dashboardStatus,
@@ -978,13 +979,14 @@ test('failed start job surfaces a generic failure toast', async ({ page }) => {
   })
   await page.route('**/api/v1/jobs/**', (route) => {
     const failed = jobFixture('start-fail', 'failed', 1)
-    failed.error = '开机失败'
+    failed.error = `aliyun HTTP 403: AccessKeyId=${leaked}`
     return route.fulfill({ json: failed })
   })
 
   await page.goto('/')
   await page.getByRole('button', { name: '开机' }).click()
   await expect(page.getByText(JOB_FAILED_USER_MESSAGE)).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
 
 test('instance refresh surfaces the job_not_found envelope after login', async ({ page }) => {
@@ -1535,6 +1537,32 @@ test('settings webhook test surfaces a failed notification job', async ({ page }
   await page.getByRole('button', { name: '发送测试' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   expect(testCalls).toBe(1)
+})
+
+test('failed webhook notify job toast omits transport secrets', async ({ page }) => {
+  const leaked = 'FIXTURE-SECRET-TOKEN'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-secret', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-webhook-secret', 'failed')
+    failed.type = 'test_notification'
+    failed.error = `webhook HTTP 401: Authorization Bearer ${leaked}`
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
 
 test('settings API key create posts the live key contract', async ({ page }) => {
@@ -2471,6 +2499,31 @@ test('settings email test surfaces a failed notification job', async ({ page }) 
   await page.getByRole('button', { name: '发送测试' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   expect(testCalls).toBe(1)
+})
+
+test('failed email notify job toast omits transport secrets', async ({ page }) => {
+  const leaked = 'FIXTURE-SECRET-TOKEN'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email-secret', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-email-secret', 'failed')
+    failed.type = 'test_notification'
+    failed.error = `smtp auth failed: password=${leaked}`
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
 
 test('settings telegram test surfaces a failed notification job', async ({ page }) => {
@@ -3966,16 +4019,18 @@ test('refresh-all surfaces all-failed instance refresh', async ({ page }) => {
     expect(route.request().method()).toBe('POST')
     return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-a', 'queued'), jobFixture('refresh-b', 'queued')] } })
   })
+  const leaked = 'FIXTURE-SECRET-TOKEN'
   await page.route('**/api/v1/jobs/**', (route) => {
     const id = route.request().url().split('/').pop() || 'refresh-a'
     const failed = jobFixture(id, 'failed')
-    failed.error = '任务执行失败'
+    failed.error = `aliyun HTTP 403: AccessKeyId=${leaked}`
     return route.fulfill({ json: failed })
   })
 
   await page.goto('/')
   await page.getByRole('button', { name: '强制刷新全部实例' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: '全部实例刷新失败，请查看运行日志' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
   expect(refreshCalls).toBe(1)
 })
 
