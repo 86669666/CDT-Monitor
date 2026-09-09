@@ -229,6 +229,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 | Workflow | 触发条件 | 输出 |
 | --- | --- | --- |
 | `CI` | `dev`/`main`/`work/**` push、PR、手动 | 前端构建、Go race test、vet、Linux build（不发布镜像） |
+| `Publish Guard` | `dev`/`main`/`work/**` push、PR、手动 | 检查发布变量未打开，并扫描 workflow YAML / Compose 是否回到 GHCR/Hub login、`packages: write` 或带仓库前缀的镜像名（不发布） |
 | `Automatic Release` | 仅手动，且需 `ENABLE_PRODUCTION_PUBLISH` | 按输入版本打 tag，再调用 Release Binaries / Container Images |
 | `Release Binaries` | 手动或 Automatic Release `workflow_call`，且需 `ENABLE_PRODUCTION_PUBLISH` | 本 fork 只编 linux/amd64；SHA-256 校验和及 **draft** GitHub Release（不标 latest） |
 | `Container Images` | 手动或 Automatic Release `workflow_call` | runner 上 load 校验 linux/amd64 本地标签 `cdt-monitor:verify-amd64`；无 registry login / 镜像名 / push |
