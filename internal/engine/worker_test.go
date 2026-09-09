@@ -243,3 +243,32 @@ func TestProcessJobsControlErrorRedactsAccessKeyMaterial(t *testing.T) {
 		t.Fatalf("job error was not redacted: %q", jobErr)
 	}
 }
+
+func TestProcessJobsNotifyErrorRedactsTelegramToken(t *testing.T) {
+	const token = "123456:AA-secret-token-value"
+	st, _ := setupAccount(t, func(config *domain.Config) {
+		config.Notifications.Telegram.Enabled = true
+		config.Notifications.Telegram.Token = token
+		config.Notifications.Telegram.ChatID = "42"
+		config.Notifications.Telegram.ProxyType = "custom"
+		config.Notifications.Telegram.ProxyURL = "http://127.0.0.1:1"
+	})
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobTestNotify, 0, ParseNotifyPayload("telegram"), "notify-telegram")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var status, jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || jobErr == "" {
+		t.Fatalf("failed notify status=%q error=%q", status, jobErr)
+	}
+	if strings.Contains(jobErr, token) || strings.Contains(jobErr, "AA-secret-token-value") {
+		t.Fatalf("job error leaked telegram token: %q", jobErr)
+	}
+}

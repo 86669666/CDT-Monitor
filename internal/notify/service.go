@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -50,16 +51,59 @@ func EnabledChannels(config domain.Config) []string {
 }
 
 func (s *Service) Send(ctx context.Context, channel string, event domain.NotificationEvent, config domain.Config) error {
+	var err error
 	switch channel {
 	case "email":
-		return sendEmail(ctx, config.Notifications.Email, event)
+		err = sendEmail(ctx, config.Notifications.Email, event)
 	case "telegram":
-		return s.sendTelegram(ctx, config.Notifications.Telegram, event)
+		err = s.sendTelegram(ctx, config.Notifications.Telegram, event)
 	case "webhook":
-		return s.sendWebhook(ctx, config.Notifications.Webhook, event)
+		err = s.sendWebhook(ctx, config.Notifications.Webhook, event)
 	default:
 		return fmt.Errorf("unsupported notification channel %q", channel)
 	}
+	return sanitizeNotificationError(err, config)
+}
+
+func sanitizeNotificationError(err error, config domain.Config) error {
+	if err == nil {
+		return nil
+	}
+	secrets := notificationSecrets(config)
+	if len(secrets) == 0 {
+		return err
+	}
+	msg := err.Error()
+	redacted := msg
+	for _, secret := range secrets {
+		redacted = strings.ReplaceAll(redacted, secret, "[redacted]")
+	}
+	if redacted == msg {
+		return err
+	}
+	return errors.New(redacted)
+}
+
+func notificationSecrets(config domain.Config) []string {
+	n := config.Notifications
+	candidates := []string{
+		n.Webhook.URL,
+		n.Webhook.Headers,
+		n.Webhook.Secret,
+		n.Telegram.ProxyURL,
+		n.Telegram.Token,
+		n.Telegram.ProxyPass,
+		n.Email.Password,
+	}
+	secrets := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if len(candidate) < 4 {
+			continue
+		}
+		secrets = append(secrets, candidate)
+	}
+	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
+	return secrets
 }
 
 func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.NotificationEvent) error {

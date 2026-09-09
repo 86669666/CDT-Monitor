@@ -5,9 +5,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,5 +85,55 @@ func TestReplaceTemplateJSONAndForm(t *testing.T) {
 	}
 	if got := replaceTemplate(`{"message":"#MSG#"}`, replacements, false); got != `{"message":"hello world"}` {
 		t.Fatalf("json replacement = %q", got)
+	}
+}
+
+func TestSanitizeNotificationErrorRedactsTelegramToken(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	err := sanitizeNotificationError(errors.New(`Post "https://api.telegram.org/bot123456:AA-secret-token-value/sendMessage": connection refused`), config)
+	if err == nil {
+		t.Fatal("expected redacted error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "AA-secret-token-value") || strings.Contains(msg, "123456:AA") {
+		t.Fatalf("telegram token leaked: %q", msg)
+	}
+	if !strings.Contains(msg, "[redacted]") {
+		t.Fatalf("expected redaction marker in %q", msg)
+	}
+}
+
+func TestSanitizeNotificationErrorRedactsWebhookURLAndSecret(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Webhook.URL = "http://127.0.0.1:1/hooks/super-webhook-secret"
+	config.Notifications.Webhook.Secret = "ding-secret-value"
+	err := sanitizeNotificationError(errors.New(`Post "http://127.0.0.1:1/hooks/super-webhook-secret?sign=ding-secret-value": connection refused`), config)
+	if err == nil {
+		t.Fatal("expected redacted error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "super-webhook-secret") || strings.Contains(msg, "ding-secret-value") {
+		t.Fatalf("webhook secret leaked: %q", msg)
+	}
+	if !strings.Contains(msg, "[redacted]") {
+		t.Fatalf("expected redaction marker in %q", msg)
+	}
+}
+
+func TestSendTelegramRedactsTokenFromTransportError(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "custom"
+	config.Notifications.Telegram.ProxyURL = "http://127.0.0.1:1"
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if err == nil {
+		t.Fatal("expected telegram transport error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "AA-secret-token-value") {
+		t.Fatalf("telegram token leaked from Send: %q", msg)
 	}
 }
