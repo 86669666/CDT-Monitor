@@ -4274,3 +4274,22 @@ test('logout sends the CSRF header from the cdt_csrf cookie', async ({ page }) =
   expect(logoutCalls).toBe(1)
   expect(logoutCsrf).toBe(csrf)
 })
+
+test('logout returns to login when CSRF check fails', async ({ page }) => {
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+})
