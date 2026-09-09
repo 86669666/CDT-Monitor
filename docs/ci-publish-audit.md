@@ -12,7 +12,7 @@
 | Aliyun AK / SMTP / Telegram | 无 workflow 引用 | 无 | 禁止写入 YAML、Compose 或文档示例 |
 
 引用形式一律是 `${{ secrets.NAME }}` 或 `GITHUB_TOKEN`。不要把 keystore、Docker Hub 密码或云账号写进仓库。
-Verify / widget / container / release 的 `actions/checkout` 设置 `persist-credentials: false` 和 `fetch-depth: 1`，避免后续步骤拿到可推送的 `GITHUB_TOKEN`。`Automatic Release` 的 tag job 仍保留凭据，因为它在开启发布时需要 `git push` tag；本 fork 默认不开启。
+Verify / widget / container / release 的 `actions/checkout` 设置 `persist-credentials: false` 和 `fetch-depth: 1`，避免后续步骤拿到可推送的 `GITHUB_TOKEN`。`Automatic Release` 的 tag job 仍保留凭据，因为它在开启发布时需要 `git push` tag；本 fork 默认不开启。Publish Guard 会拒绝在其它 workflow 里把 `persist-credentials: true` 加回来。
 
 `GITHUB_TOKEN` 默认只有 `contents: read`。`contents: write` 只给实际打 tag / 写 GitHub Release 的 job，且仍受 `ENABLE_PRODUCTION_PUBLISH` 门闩：
 
@@ -145,3 +145,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Dockerfile 默认 `IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor`，且 Container Images YAML 不能恢复 `on.push` / `v*.*.*` tag 触发
 - 这仍只是 load-verify，不是 GHCR 发布，也不是把 PR#2 合进未加开关 `main` 的许可
+
+续推证据（`2026-09-09T19:06Z` / 2026-09-10 03:06 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `d5f9913` 再加 checkout 凭据扫描与 gated job 名称：
+
+- Automatic Release / Release Binaries 的 job 名称标明 gated；Publish Guard 禁止在 tag job 以外使用 `persist-credentials: true`
+- 这仍不是已经打 tag 或写 GitHub Release，也不是 PR#2 可以合进未加开关 `main`
