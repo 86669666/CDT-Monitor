@@ -23,7 +23,7 @@ func TestMigratesLegacySecretsAndPassword(t *testing.T) {
 	_, err = db.Exec(`
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, access_key_id TEXT, access_key_secret TEXT, region_id TEXT, instance_id TEXT, max_traffic REAL, schedule_enabled INTEGER DEFAULT 0, start_time TEXT, stop_time TEXT, traffic_used REAL DEFAULT 0, instance_status TEXT DEFAULT 'Unknown', updated_at INTEGER DEFAULT 0, last_keep_alive_at INTEGER DEFAULT 0);
-INSERT INTO settings(key,value) VALUES('admin_password','legacy-password'),('notify_tg_token','legacy-token'),('notify_wh_secret','legacy-webhook-secret');
+INSERT INTO settings(key,value) VALUES('admin_password','legacy-password'),('notify_tg_token','legacy-token'),('notify_wh_secret','legacy-webhook-secret'),('notify_wh_url','https://example.test/hook?access_token=legacy-url-token');
 INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_traffic) VALUES('LTAIlegacy','legacy-secret','cn-hongkong','i-legacy',200);
 `)
 	if err != nil {
@@ -43,11 +43,18 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_secret'`).Scan(&webhook); err != nil {
 		t.Fatal(err)
 	}
+	var webhookURL string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_url'`).Scan(&webhookURL); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.db.QueryRow(`SELECT access_key_secret FROM accounts WHERE id=1`).Scan(&secret); err != nil {
 		t.Fatal(err)
 	}
-	if !security.IsEncrypted(token) || !security.IsEncrypted(webhook) || !security.IsEncrypted(secret) {
+	if !security.IsEncrypted(token) || !security.IsEncrypted(webhook) || !security.IsEncrypted(webhookURL) || !security.IsEncrypted(secret) {
 		t.Fatal("legacy secrets were not encrypted")
+	}
+	if strings.Contains(webhookURL, "legacy-url-token") {
+		t.Fatalf("webhook URL stored in plaintext: %q", webhookURL)
 	}
 	telegram, err := st.Decrypt(token)
 	if err != nil || telegram != "legacy-token" {
@@ -56,6 +63,10 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	webhookPlain, err := st.Decrypt(webhook)
 	if err != nil || webhookPlain != "legacy-webhook-secret" {
 		t.Fatalf("webhook secret = %q err=%v", webhookPlain, err)
+	}
+	urlPlain, err := st.Decrypt(webhookURL)
+	if err != nil || urlPlain != "https://example.test/hook?access_token=legacy-url-token" {
+		t.Fatalf("webhook url = %q err=%v", urlPlain, err)
 	}
 	storedSecret, err := st.AccountSecret(context.Background(), 1)
 	if err != nil || storedSecret != "legacy-secret" {
@@ -179,6 +190,46 @@ func TestWebhookHeadersStayUntilCleared(t *testing.T) {
 	}
 	if cleared.Notifications.Webhook.HeadersConfigured || cleared.Notifications.Webhook.SecretConfigured || cleared.Notifications.Webhook.Headers != "" || cleared.Notifications.Webhook.Secret != "" {
 		t.Fatalf("cleared webhook = %#v", cleared.Notifications.Webhook)
+	}
+}
+
+func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	endpoint := "https://example.test/hook?access_token=url-token-value"
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts:      []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{URL: endpoint}},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_url'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !security.IsEncrypted(stored) || strings.Contains(stored, "url-token-value") {
+		t.Fatalf("webhook URL must be encrypted at rest: %q", stored)
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil || loaded.Notifications.Webhook.URL != endpoint {
+		t.Fatalf("decrypted webhook URL = %q err=%v", loaded.Notifications.Webhook.URL, err)
+	}
+	loaded.AdminPassword = ""
+	loaded.Accounts[0].AccessKeySecret = ""
+	loaded.Notifications.Webhook.URL = ""
+	if err = st.SaveConfig(ctx, loaded); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := st.GetConfig(ctx)
+	if err != nil || cleared.Notifications.Webhook.URL != "" {
+		t.Fatalf("empty URL must clear stored endpoint: %#v err=%v", cleared.Notifications.Webhook, err)
 	}
 }
 

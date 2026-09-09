@@ -22,6 +22,7 @@ var sensitiveSettings = map[string]bool{
 	"notify_tg_proxy_pass": true,
 	"notify_wh_headers":    true,
 	"notify_wh_secret":     true,
+	"notify_wh_url":        true,
 }
 
 func boolSetting(settings map[string]string, key string, fallback bool) bool {
@@ -224,7 +225,6 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_tg_proxy_port":   config.Notifications.Telegram.ProxyPort,
 			"notify_tg_proxy_user":   config.Notifications.Telegram.ProxyUser,
 			"notify_wh_enabled":      strconv.FormatBool(config.Notifications.Webhook.Enabled),
-			"notify_wh_url":          config.Notifications.Webhook.URL,
 			"notify_wh_method":       config.Notifications.Webhook.Method,
 			"notify_wh_request_type": config.Notifications.Webhook.Type,
 			"notify_wh_body":         config.Notifications.Webhook.Body,
@@ -246,12 +246,29 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 				return err
 			}
 		}
+		if err := s.saveWebhookURL(ctx, tx, config.Notifications.Webhook.URL); err != nil {
+			return err
+		}
 
 		if err := saveAccountsTx(ctx, tx, s, config.Accounts); err != nil {
 			return err
 		}
 		return nil
 	})
+}
+
+func (s *Store) saveWebhookURL(ctx context.Context, tx *sql.Tx, endpoint string) error {
+	if endpoint == domain.ClearSecretSentinel {
+		endpoint = ""
+	}
+	if endpoint == "" {
+		return putSettingTx(ctx, tx, "notify_wh_url", "")
+	}
+	encrypted, err := s.Encrypt(endpoint)
+	if err != nil {
+		return err
+	}
+	return putSettingTx(ctx, tx, "notify_wh_url", encrypted)
 }
 
 func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value string) error {
