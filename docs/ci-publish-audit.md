@@ -186,3 +186,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Compose 保持 `privileged: false`、`cap_drop: ALL`、`no-new-privileges`、`read_only`、`user 65532:65532`、`restart: on-failure`（禁止 `unless-stopped`）
 - 这锁的是本机容器权限面，不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T22:52Z` / 2026-09-16 06:52 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `10ed635` 再加 dockerignore / 非 root USER 扫描：
+
+- Publish Guard 现要求 Dockerfile `USER 65532:65532`，且 `.dockerignore` 必须排除 `.github`、`android-widget`、`.env`、keystore、`master.key`、SQLite 和 `docs`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
