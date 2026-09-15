@@ -661,7 +661,7 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 				Message string `json:"message"`
 			}
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "error", "", 7*24*time.Hour, &billingError); ok {
-				item.BillingError = strings.TrimSpace(billingError.Message)
+				item.BillingError = notify.RedactSecrets(strings.TrimSpace(billingError.Message), config)
 			}
 			var balance aliyun.BillingBalance
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 7*24*time.Hour, &balance); ok {
