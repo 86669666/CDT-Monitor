@@ -715,6 +715,30 @@ test('setup posts custom api_interval', async ({ page }) => {
   expect(interval).toBe(45)
 })
 
+test('setup clamps custom api_interval to the live minimum', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let interval: number | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { api_interval?: number }
+    interval = body.api_interval
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('combobox', { name: '状态刷新频率' }).click()
+  await page.getByRole('option', { name: '自定义' }).click()
+  await page.getByLabel('自定义间隔').fill('1')
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(interval).toBe(30)
+})
 
 test('wizard surfaces the setup rate_limited envelope and stays on install', async ({ page }) => {
   await mockInitStatus(page, false)
@@ -3044,6 +3068,33 @@ test('settings save clamps custom api_interval to the live minimum', async ({ pa
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(saveCalls).toBe(1)
   expect(interval).toBe(30)
+})
+
+test('settings save clamps custom api_interval to the live maximum', async ({ page }) => {
+  let saveCalls = 0
+  let interval: number | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>
+      expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+      interval = Number(body.api_interval)
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('combobox', { name: 'API 刷新间隔' }).click()
+  await page.getByRole('option', { name: '自定义' }).click()
+  await page.getByLabel('自定义间隔').fill('99999')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(interval).toBe(86400)
 })
 
 test('settings save posts keep_alive enabled', async ({ page }) => {
