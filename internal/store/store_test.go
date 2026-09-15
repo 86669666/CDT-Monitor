@@ -299,6 +299,16 @@ func TestAccountSecretCannotBeSwappedBetweenAccounts(t *testing.T) {
 	if _, err = st.db.Exec(`UPDATE accounts SET access_key_secret=? WHERE id=?`, oneBlob, accounts[1].ID); err != nil {
 		t.Fatal(err)
 	}
+	listed, err := st.ListAccounts(ctx)
+	if err != nil || len(listed) != 2 {
+		t.Fatalf("list after swap accounts=%v err=%v", listed, err)
+	}
+	if !listed[0].SecretConfigured || !listed[1].SecretConfigured {
+		t.Fatalf("list must not decrypt secrets to report configured: %#v", listed)
+	}
+	if listed[0].AccessKeySecret != "" || listed[1].AccessKeySecret != "" {
+		t.Fatalf("list leaked decrypted secrets: %#v", listed)
+	}
 	if _, err = st.AccountSecret(ctx, accounts[1].ID); err == nil {
 		t.Fatal("copied account ciphertext must not decrypt under a different access key")
 	}
