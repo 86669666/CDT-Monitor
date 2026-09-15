@@ -107,17 +107,18 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				Security:           valueOr(settings, "notify_secure", "ssl"),
 			},
 			Telegram: domain.TelegramConfig{
-				Enabled:         boolSetting(settings, "notify_tg_enabled", false),
-				Token:           valueOr(settings, "notify_tg_token", ""),
-				TokenConfigured: settings["notify_tg_token"] != "",
-				ChatID:          valueOr(settings, "notify_tg_chat_id", ""),
-				ProxyType:       valueOr(settings, "notify_tg_proxy_type", "none"),
-				ProxyURL:        valueOr(settings, "notify_tg_proxy_url", ""),
-				ProxyIP:         valueOr(settings, "notify_tg_proxy_ip", ""),
-				ProxyPort:       valueOr(settings, "notify_tg_proxy_port", ""),
-				ProxyUser:       valueOr(settings, "notify_tg_proxy_user", ""),
-				ProxyPass:       valueOr(settings, "notify_tg_proxy_pass", ""),
-				ProxyConfigured: settings["notify_tg_proxy_pass"] != "",
+				Enabled:            boolSetting(settings, "notify_tg_enabled", false),
+				Token:              valueOr(settings, "notify_tg_token", ""),
+				TokenConfigured:    settings["notify_tg_token"] != "",
+				ChatID:             valueOr(settings, "notify_tg_chat_id", ""),
+				ProxyType:          valueOr(settings, "notify_tg_proxy_type", "none"),
+				ProxyURL:           valueOr(settings, "notify_tg_proxy_url", ""),
+				ProxyURLConfigured: settings["notify_tg_proxy_url"] != "",
+				ProxyIP:            valueOr(settings, "notify_tg_proxy_ip", ""),
+				ProxyPort:          valueOr(settings, "notify_tg_proxy_port", ""),
+				ProxyUser:          valueOr(settings, "notify_tg_proxy_user", ""),
+				ProxyPass:          valueOr(settings, "notify_tg_proxy_pass", ""),
+				ProxyConfigured:    settings["notify_tg_proxy_pass"] != "",
 			},
 			Webhook: domain.WebhookConfig{
 				Enabled:           boolSetting(settings, "notify_wh_enabled", false),
@@ -250,7 +251,7 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 		if err := s.saveClearableEncrypted(ctx, tx, "notify_wh_url", config.Notifications.Webhook.URL); err != nil {
 			return err
 		}
-		if err := s.saveClearableEncrypted(ctx, tx, "notify_tg_proxy_url", config.Notifications.Telegram.ProxyURL); err != nil {
+		if err := s.saveSensitiveSetting(ctx, tx, "notify_tg_proxy_url", config.Notifications.Telegram.ProxyURL); err != nil {
 			return err
 		}
 
