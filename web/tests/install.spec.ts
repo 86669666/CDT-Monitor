@@ -1771,6 +1771,26 @@ test('instance refresh surfaces the job_failed envelope', async ({ page }) => {
   expect(refreshCalls).toBe(1)
 })
 
+test('failed refresh job surfaces a generic failure toast', async ({ page }) => {
+  const leaked = 'FIXTURE-SECRET-TOKEN'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-secret-fail', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('refresh-secret-fail', 'failed', 1)
+    failed.error = `aliyun HTTP 403: AccessKeyId=${leaked}`
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
+
 test('settings API key create posts all live scopes', async ({ page }) => {
   const created = {
     id: 5,
@@ -4043,11 +4063,12 @@ test('refresh-all surfaces partial instance refresh failure', async ({ page }) =
     expect(route.request().method()).toBe('POST')
     return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-ok', 'queued'), jobFixture('refresh-bad', 'queued')] } })
   })
+  const leaked = 'FIXTURE-SECRET-TOKEN'
   await page.route('**/api/v1/jobs/**', (route) => {
     const id = route.request().url().split('/').pop() || 'refresh-ok'
     if (id === 'refresh-bad') {
       const failed = jobFixture(id, 'failed')
-      failed.error = '任务执行失败'
+      failed.error = `aliyun HTTP 403: AccessKeyId=${leaked}`
       return route.fulfill({ json: failed })
     }
     return route.fulfill({ json: jobFixture(id, 'completed') })
@@ -4056,6 +4077,7 @@ test('refresh-all surfaces partial instance refresh failure', async ({ page }) =
   await page.goto('/')
   await page.getByRole('button', { name: '强制刷新全部实例' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: '已刷新 1/2 个实例，其余实例刷新失败' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
   expect(refreshCalls).toBe(1)
 })
 
