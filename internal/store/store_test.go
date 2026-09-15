@@ -258,7 +258,7 @@ func TestTelegramProxyURLIsEncryptedAtRestAndClearable(t *testing.T) {
 		t.Fatalf("telegram proxy URL must be encrypted at rest: %q", stored)
 	}
 	loaded, err := st.GetConfig(ctx)
-	if err != nil || loaded.Notifications.Telegram.ProxyURL != endpoint {
+	if err != nil || loaded.Notifications.Telegram.ProxyURL != endpoint || !loaded.Notifications.Telegram.ProxyURLConfigured {
 		t.Fatalf("decrypted proxy URL = %#v err=%v", loaded.Notifications.Telegram, err)
 	}
 	loaded.AdminPassword = ""
@@ -267,9 +267,19 @@ func TestTelegramProxyURLIsEncryptedAtRestAndClearable(t *testing.T) {
 	if err = st.SaveConfig(ctx, loaded); err != nil {
 		t.Fatal(err)
 	}
+	kept, err := st.GetConfig(ctx)
+	if err != nil || kept.Notifications.Telegram.ProxyURL != endpoint || !kept.Notifications.Telegram.ProxyURLConfigured {
+		t.Fatalf("empty proxy URL must keep stored endpoint: %#v err=%v", kept.Notifications.Telegram, err)
+	}
+	kept.AdminPassword = ""
+	kept.Accounts[0].AccessKeySecret = ""
+	kept.Notifications.Telegram.ProxyURL = domain.ClearSecretSentinel
+	if err = st.SaveConfig(ctx, kept); err != nil {
+		t.Fatal(err)
+	}
 	cleared, err := st.GetConfig(ctx)
-	if err != nil || cleared.Notifications.Telegram.ProxyURL != "" {
-		t.Fatalf("empty proxy URL must clear stored endpoint: %#v err=%v", cleared.Notifications.Telegram, err)
+	if err != nil || cleared.Notifications.Telegram.ProxyURL != "" || cleared.Notifications.Telegram.ProxyURLConfigured {
+		t.Fatalf("sentinel must clear proxy URL: %#v err=%v", cleared.Notifications.Telegram, err)
 	}
 }
 

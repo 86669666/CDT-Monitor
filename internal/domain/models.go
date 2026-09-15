@@ -48,17 +48,18 @@ type EmailConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled         bool   `json:"enabled"`
-	Token           string `json:"token,omitempty"`
-	TokenConfigured bool   `json:"token_configured"`
-	ChatID          string `json:"chat_id"`
-	ProxyType       string `json:"proxy_type"`
-	ProxyURL        string `json:"proxy_url"`
-	ProxyIP         string `json:"proxy_ip"`
-	ProxyPort       string `json:"proxy_port"`
-	ProxyUser       string `json:"proxy_user"`
-	ProxyPass       string `json:"proxy_pass,omitempty"`
-	ProxyConfigured bool   `json:"proxy_password_configured"`
+	Enabled            bool   `json:"enabled"`
+	Token              string `json:"token,omitempty"`
+	TokenConfigured    bool   `json:"token_configured"`
+	ChatID             string `json:"chat_id"`
+	ProxyType          string `json:"proxy_type"`
+	ProxyURL           string `json:"proxy_url,omitempty"`
+	ProxyURLConfigured bool   `json:"proxy_url_configured"`
+	ProxyIP            string `json:"proxy_ip"`
+	ProxyPort          string `json:"proxy_port"`
+	ProxyUser          string `json:"proxy_user"`
+	ProxyPass          string `json:"proxy_pass,omitempty"`
+	ProxyConfigured    bool   `json:"proxy_password_configured"`
 }
 
 type WebhookConfig struct {

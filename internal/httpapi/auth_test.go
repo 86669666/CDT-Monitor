@@ -279,6 +279,39 @@ func TestWebhookURLIsReturnedButNotStoredPlain(t *testing.T) {
 	}
 }
 
+func TestTelegramProxyURLIsScrubbedOnConfigGET(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "socks5://user:proxy-pass-value@127.0.0.1:1080"
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Telegram.ProxyURL = endpoint
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "proxy-pass-value") || strings.Contains(body, endpoint) {
+		t.Fatalf("GET config leaked telegram proxy URL: %s", body)
+	}
+	var payload domain.Config
+	if err = json.Unmarshal(got.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Notifications.Telegram.ProxyURLConfigured || payload.Notifications.Telegram.ProxyURL != "" {
+		t.Fatalf("proxy url flags = %#v", payload.Notifications.Telegram)
+	}
+}
+
 func TestAdminMutationRequiresMatchingCSRF(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
