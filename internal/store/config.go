@@ -335,7 +335,7 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		}
 		secret := account.AccessKeySecret
 		if secret == "" && found {
-			secret, err = s.DecryptAAD(row.secret, security.AccountSecretAAD)
+			secret, err = s.DecryptAAD(row.secret, security.AccountBoundAAD(row.key))
 			if err != nil {
 				return err
 			}
@@ -343,7 +343,7 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		if secret == "" {
 			return fmt.Errorf("account %s is missing access key secret", account.AccessKeyID)
 		}
-		encryptedSecret, err := s.EncryptAAD(secret, security.AccountSecretAAD)
+		encryptedSecret, err := s.EncryptAAD(secret, security.AccountBoundAAD(account.AccessKeyID))
 		if err != nil {
 			return err
 		}
@@ -407,7 +407,7 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if err = rows.Scan(&a.ID, &a.AccessKeyID, &secret, &a.RegionID, &a.InstanceID, &a.MaxTraffic, &schedule, &a.StartTime, &a.StopTime, &a.TrafficUsed, &a.InstanceStatus, &updated, &keepAlive, &a.Remark, &a.SiteType); err != nil {
 			return nil, err
 		}
-		secret, err = s.DecryptAAD(secret, security.AccountSecretAAD)
+		secret, err = s.DecryptAAD(secret, security.AccountBoundAAD(a.AccessKeyID))
 		if err != nil {
 			return nil, err
 		}
@@ -438,12 +438,12 @@ func (s *Store) GetAccount(ctx context.Context, id int64) (domain.Account, error
 }
 
 func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
-	var encrypted string
-	err := s.db.QueryRowContext(ctx, `SELECT access_key_secret FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&encrypted)
+	var encrypted, accessKeyID string
+	err := s.db.QueryRowContext(ctx, `SELECT access_key_secret, access_key_id FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&encrypted, &accessKeyID)
 	if err != nil {
 		return "", err
 	}
-	return s.DecryptAAD(encrypted, security.AccountSecretAAD)
+	return s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
 }
 
 func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {

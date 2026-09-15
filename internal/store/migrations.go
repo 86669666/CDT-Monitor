@@ -268,18 +268,19 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 				return err
 			}
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id, access_key_secret FROM accounts WHERE access_key_secret != ''`)
+		rows, err := tx.QueryContext(ctx, `SELECT id, access_key_id, access_key_secret FROM accounts WHERE access_key_secret != ''`)
 		if err != nil {
 			return err
 		}
 		type item struct {
-			id     int64
-			secret string
+			id          int64
+			accessKeyID string
+			secret      string
 		}
 		var items []item
 		for rows.Next() {
 			var it item
-			if err = rows.Scan(&it.id, &it.secret); err != nil {
+			if err = rows.Scan(&it.id, &it.accessKeyID, &it.secret); err != nil {
 				rows.Close()
 				return err
 			}
@@ -287,20 +288,16 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 		}
 		rows.Close()
 		for _, it := range items {
-			if security.IsBoundCiphertext(it.secret) {
-				continue
-			}
-			plain := it.secret
-			if security.IsEncrypted(plain) {
-				var err error
-				plain, err = s.Decrypt(plain)
-				if err != nil {
-					return err
-				}
-			}
-			encrypted, err := s.EncryptAAD(plain, security.AccountSecretAAD)
+			plain, err := s.decryptAccountSecretLegacy(it.secret, it.accessKeyID)
 			if err != nil {
 				return err
+			}
+			encrypted, err := s.EncryptAAD(plain, security.AccountBoundAAD(it.accessKeyID))
+			if err != nil {
+				return err
+			}
+			if encrypted == it.secret {
+				continue
 			}
 			if _, err = tx.ExecContext(ctx, `UPDATE accounts SET access_key_secret=? WHERE id=?`, encrypted, it.id); err != nil {
 				return err
@@ -321,4 +318,17 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 		_, err = tx.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash)
 		return err
 	})
+}
+
+func (s *Store) decryptAccountSecretLegacy(encrypted, accessKeyID string) (string, error) {
+	if encrypted == "" {
+		return "", nil
+	}
+	if plain, err := s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID)); err == nil {
+		return plain, nil
+	}
+	if plain, err := s.DecryptAAD(encrypted, security.AccountSecretAAD); err == nil {
+		return plain, nil
+	}
+	return s.Decrypt(encrypted)
 }

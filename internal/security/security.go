@@ -22,6 +22,10 @@ const (
 	AccountSecretAAD  = "account_secret"
 )
 
+func AccountBoundAAD(accessKeyID string) string {
+	return AccountSecretAAD + ":" + accessKeyID
+}
+
 type Cipher struct {
 	aead cipher.AEAD
 }
