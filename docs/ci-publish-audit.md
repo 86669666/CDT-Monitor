@@ -181,3 +181,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求每个 workflow 顶层 `permissions.contents` 为 `read`，禁止顶层 `contents: write` / `packages:`
 - `origin/main` 的 Automatic Release 仍是顶层 `contents: write` + `packages: write`。不要为了登记 workflow 把那份 YAML 合进 `main`
+
+续推证据（`2026-09-15T22:36Z` / 2026-09-16 06:36 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `870269b` 再加 Compose 权限面扫描：
+
+- Publish Guard 现要求 Compose 保持 `privileged: false`、`cap_drop: ALL`、`no-new-privileges`、`read_only`、`user 65532:65532`、`restart: on-failure`（禁止 `unless-stopped`）
+- 这锁的是本机容器权限面，不是已经发布，也不是 PR#2 可以合进未加开关 `main`
