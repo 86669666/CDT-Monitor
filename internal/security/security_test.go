@@ -199,3 +199,45 @@ func TestTokenHashDoesNotContainToken(t *testing.T) {
 		t.Fatal("distinct tokens must not share a hash")
 	}
 }
+
+func TestEncryptAADRejectsFieldSwap(t *testing.T) {
+	cipher, err := LoadOrCreateCipher(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := cipher.EncryptAAD("telegram-token-value", "notify_tg_token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsBoundCiphertext(encrypted) {
+		t.Fatalf("AAD ciphertext must use enc:v2: %q", encrypted)
+	}
+	plain, err := cipher.DecryptAAD(encrypted, "notify_tg_token")
+	if err != nil || plain != "telegram-token-value" {
+		t.Fatalf("roundtrip = %q err=%v", plain, err)
+	}
+	if _, err = cipher.DecryptAAD(encrypted, "notify_wh_secret"); err == nil {
+		t.Fatal("ciphertext bound to telegram must not decrypt as webhook secret")
+	}
+	if _, err = cipher.Decrypt(encrypted); err == nil {
+		t.Fatal("v2 ciphertext must not decrypt without AAD")
+	}
+}
+
+func TestLegacyV1CiphertextStillDecrypts(t *testing.T) {
+	cipher, err := LoadOrCreateCipher(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := cipher.Encrypt("legacy-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if IsBoundCiphertext(encrypted) || !IsEncrypted(encrypted) {
+		t.Fatalf("unbound encrypt must stay enc:v1: %q", encrypted)
+	}
+	plain, err := cipher.DecryptAAD(encrypted, "notify_tg_token")
+	if err != nil || plain != "legacy-secret" {
+		t.Fatalf("legacy v1 must still decrypt during migrate, got %q err=%v", plain, err)
+	}
+}

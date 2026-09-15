@@ -58,7 +58,7 @@ func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
 			return nil, err
 		}
 		if sensitiveSettings[key] {
-			value, err = s.Decrypt(value)
+			value, err = s.DecryptAAD(value, key)
 			if err != nil {
 				return nil, fmt.Errorf("decrypt setting %s: %w", key, err)
 			}
@@ -264,7 +264,7 @@ func (s *Store) saveWebhookURL(ctx context.Context, tx *sql.Tx, endpoint string)
 	if endpoint == "" {
 		return putSettingTx(ctx, tx, "notify_wh_url", "")
 	}
-	encrypted, err := s.Encrypt(endpoint)
+	encrypted, err := s.EncryptAAD(endpoint, "notify_wh_url")
 	if err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value
 	if value == "" {
 		return nil
 	}
-	encrypted, err := s.Encrypt(value)
+	encrypted, err := s.EncryptAAD(value, key)
 	if err != nil {
 		return err
 	}
@@ -335,7 +335,7 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		}
 		secret := account.AccessKeySecret
 		if secret == "" && found {
-			secret, err = s.Decrypt(row.secret)
+			secret, err = s.DecryptAAD(row.secret, security.AccountSecretAAD)
 			if err != nil {
 				return err
 			}
@@ -343,7 +343,7 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		if secret == "" {
 			return fmt.Errorf("account %s is missing access key secret", account.AccessKeyID)
 		}
-		encryptedSecret, err := s.Encrypt(secret)
+		encryptedSecret, err := s.EncryptAAD(secret, security.AccountSecretAAD)
 		if err != nil {
 			return err
 		}
@@ -407,7 +407,7 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if err = rows.Scan(&a.ID, &a.AccessKeyID, &secret, &a.RegionID, &a.InstanceID, &a.MaxTraffic, &schedule, &a.StartTime, &a.StopTime, &a.TrafficUsed, &a.InstanceStatus, &updated, &keepAlive, &a.Remark, &a.SiteType); err != nil {
 			return nil, err
 		}
-		secret, err = s.Decrypt(secret)
+		secret, err = s.DecryptAAD(secret, security.AccountSecretAAD)
 		if err != nil {
 			return nil, err
 		}
@@ -443,7 +443,7 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.Decrypt(encrypted)
+	return s.DecryptAAD(encrypted, security.AccountSecretAAD)
 }
 
 func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {

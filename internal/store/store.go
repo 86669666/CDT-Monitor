@@ -94,6 +94,12 @@ func (s *Store) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 
 func (s *Store) Encrypt(value string) (string, error) { return s.cipher.Encrypt(value) }
 func (s *Store) Decrypt(value string) (string, error) { return s.cipher.Decrypt(value) }
+func (s *Store) EncryptAAD(value, aad string) (string, error) {
+	return s.cipher.EncryptAAD(value, aad)
+}
+func (s *Store) DecryptAAD(value, aad string) (string, error) {
+	return s.cipher.DecryptAAD(value, aad)
+}
 
 func nullTime(unix sql.NullInt64) *time.Time {
 	if !unix.Valid || unix.Int64 <= 0 {
