@@ -152,6 +152,31 @@ scan_container() {
   if ! grep -Eq -- '--user 65532:65532' <<<"$body"; then
     bad "$f: version check must run as 65532:65532"
   fi
+  if grep -Eq 'type=gha|cache-to:' <<<"$body"; then
+    bad "$f: GHA/registry cache-to is forbidden on this fork"
+  fi
+}
+
+scan_widget() {
+  local f=".github/workflows/android-widget.yml"
+  require_file "$f" || return
+  local body
+  body="$(strip_comments "$f")"
+  if grep -Eq '^  push:' <<<"$body"; then
+    bad "$f: widget CI must stay workflow_dispatch only"
+  fi
+  if ! grep -Fq 'name: Build widget packages (artifact only)' "$f"; then
+    bad "$f: job must stay named Build widget packages (artifact only)"
+  fi
+  if ! grep -Eq "java-version:[[:space:]]*'17'" <<<"$body"; then
+    bad "$f: widget CI must stay on JDK 17"
+  fi
+  if ! grep -Eq 'timeout-minutes:[[:space:]]*20' <<<"$body"; then
+    bad "$f: widget CI must keep timeout-minutes: 20"
+  fi
+  if grep -Eiq 'gradle-play-publisher|upload-google-play|play-console' <<<"$body"; then
+    bad "$f: Play Store upload is forbidden on this fork"
+  fi
 }
 
 scan_checkout_credentials() {
@@ -448,6 +473,7 @@ scan_workflows
 scan_auto_release
 scan_release_binaries
 scan_container
+scan_widget
 scan_dockerfile
 scan_dockerignore
 scan_dependabot

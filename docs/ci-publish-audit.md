@@ -211,3 +211,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Container Images 保持 `driver: docker`、`load: true`、`push: false`、无 QEMU、`linux/amd64`，以及 `docker run --network none --read-only --user 65532`
 - 这仍不是 GHCR 发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T23:50Z` / 2026-09-16 07:50 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `8233562` 再加 widget dispatch-only 扫描：
+
+- Publish Guard 现要求 Android Widget 仅 `workflow_dispatch`、JDK 17、20 分钟超时、job 名 artifact only，禁止 Play 上传；Container Images 禁止 `type=gha` / `cache-to`
+- 这仍不是 widget 已跑或已经发布，也不是 PR#2 可以合进未加开关 `main`
