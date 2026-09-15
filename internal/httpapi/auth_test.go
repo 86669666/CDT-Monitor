@@ -978,6 +978,26 @@ func TestPublicEndpointsHideDatabaseErrors(t *testing.T) {
 	}
 }
 
+func TestLogsGETRedactsTelegramToken(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	if err := st.AddLog(t.Context(), "error", `Post "https://api.telegram.org/bottelegram-token-value/sendMessage": connection refused`); err != nil {
+		t.Fatal(err)
+	}
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("logs status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "telegram-token-value") {
+		t.Fatalf("logs GET leaked telegram token: %s", body)
+	}
+	if !strings.Contains(body, "[redacted]") {
+		t.Fatalf("logs GET missing redaction: %s", body)
+	}
+}
+
 func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

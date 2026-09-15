@@ -650,6 +650,11 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
+	if config, cfgErr := s.store.GetConfig(r.Context()); cfgErr == nil {
+		for i := range entries {
+			entries[i].Message = notify.RedactSecrets(entries[i].Message, config)
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": entries})
 }
 
