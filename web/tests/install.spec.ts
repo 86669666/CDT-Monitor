@@ -1757,6 +1757,31 @@ test('settings save surfaces the config_failed envelope', async ({ page }) => {
   expect(saveCalls).toBe(1)
 })
 
+test('settings save surfaces the live invalid timezone envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { timezone?: string }
+      expect(body.timezone).toBe('Not/AZone')
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'invalid timezone' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByLabel('系统时区').fill('Not/AZone')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'invalid timezone' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
 test('settings bark webhook template posts the live webhook contract', async ({ page }) => {
   let savedWebhook: Record<string, unknown> | undefined
   await mockInitStatus(page, true)
