@@ -591,7 +591,7 @@ function LogSettings({ notify, timeZone }: { notify: (message: string, tone?: To
       setLogs(Array.isArray(value.logs) ? value.logs : [])
     } catch (cause) {
       setLogs([])
-      notify(cause instanceof Error ? cause.message : '日志加载失败', 'error')
+      notify(cause instanceof Error ? cause.message : '日志操作失败', 'error')
     }
   }, [notify, tab])
   useEffect(() => { void load() }, [load])
@@ -703,7 +703,7 @@ function HistoryModal({ account, timeZone, onClose }: { account: AccountSummary;
     setError('')
     void api<History>(`/api/v1/accounts/${account.id}/history`)
       .then(setHistory)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : '历史流量加载失败'))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : '历史记录加载失败'))
   }, [account.id])
   const data = (history?.[range] || []).map((point) => ({ at: new Date(point.at).getTime(), traffic: Math.round(point.traffic * 1000) / 1000 }))
   return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal-scrim" onClick={onClose} /><section className="chart-modal glass-card"><header><div><p className="eyebrow">TRAFFIC HISTORY</p><h2>{account.remark || account.account}</h2></div><IconButton label="关闭" onClick={onClose}><X /></IconButton></header><Segmented value={range} options={[['hourly', '24 小时'], ['daily', '30 天']]} onChange={(value) => setRange(value as typeof range)} /><div className="chart-area" aria-label="流量历史图表">{error ? <div className="subtle-empty" role="alert"><AlertTriangle />{error}</div> : !history ? <LoaderCircle className="spin chart-loader" /> : data.length === 0 ? <div className="subtle-empty"><HistoryIcon />等待采样数据</div> : <Suspense fallback={<LoaderCircle className="spin chart-loader" />}><HistoryChart data={data} range={range} timeZone={timeZone} /></Suspense>}</div></section></div>

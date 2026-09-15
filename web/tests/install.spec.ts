@@ -869,6 +869,21 @@ test('login failure surfaces the live login_failed envelope', async ({ page }) =
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
 
+test('login surfaces the live internal_error envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockUnauthorizedSession(page)
+  await page.route('**/api/v1/auth/login', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.getByText('服务暂时不可用')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
+
 
 test('keep-alive disables stop without posting an action', async ({ page }) => {
   let stopCalls = 0
