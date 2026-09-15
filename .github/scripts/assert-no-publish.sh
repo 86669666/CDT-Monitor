@@ -257,6 +257,31 @@ scan_dockerfile() {
   fi
 }
 
+scan_dependabot() {
+  local f=".github/dependabot.yml"
+  require_file "$f" || return
+  local body targets
+  body="$(strip_comments "$f")"
+  if grep -Eq 'target-branch:[[:space:]]*main' <<<"$body"; then
+    bad "$f: target-branch must not be main while origin/main has ungated auto-release"
+  fi
+  targets="$(grep -c 'target-branch:[[:space:]]*work/ops' <<<"$body" || true)"
+  if [ "$targets" -lt 3 ]; then
+    bad "$f: each update ecosystem must target work/ops (found $targets)"
+  fi
+}
+
+scan_npm_ci() {
+  local f body
+  shopt -s nullglob
+  for f in .github/workflows/*.yml; do
+    body="$(strip_comments "$f")"
+    if grep -Eq 'npm[[:space:]]+ci' <<<"$body" && ! grep -Eq 'npm[[:space:]]+ci[[:space:]]+--ignore-scripts' <<<"$body"; then
+      bad "$f: npm ci must use --ignore-scripts"
+    fi
+  done
+}
+
 scan_dockerignore() {
   local f=".dockerignore"
   require_file "$f" || return
@@ -349,6 +374,8 @@ scan_release_binaries
 scan_container
 scan_dockerfile
 scan_dockerignore
+scan_dependabot
+scan_npm_ci
 scan_compose
 scan_checkout_credentials
 scan_job_limits
