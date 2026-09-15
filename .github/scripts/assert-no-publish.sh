@@ -292,6 +292,31 @@ scan_dependabot() {
   fi
 }
 
+scan_ci_verify() {
+  local f=".github/workflows/ci.yml"
+  require_file "$f" || return
+  local body
+  body="$(strip_comments "$f")"
+  if ! grep -Fq "name: Verify (no publish)" "$f"; then
+    bad "$f: verify job must stay named Verify (no publish)"
+  fi
+  if ! grep -Eq "go-version:[[:space:]]*'1\.24" <<<"$body"; then
+    bad "$f: setup-go must stay on Go 1.24.x"
+  fi
+  if ! grep -Eq "node-version:[[:space:]]*'22" <<<"$body"; then
+    bad "$f: setup-node must stay on Node 22.x"
+  fi
+  if ! grep -Eq 'go test -race' <<<"$body"; then
+    bad "$f: verify must keep go test -race"
+  fi
+  if ! grep -Eq 'go vet' <<<"$body"; then
+    bad "$f: verify must keep go vet"
+  fi
+  if ! grep -Eq 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64' <<<"$body"; then
+    bad "$f: Linux build must stay CGO_ENABLED=0 linux/amd64"
+  fi
+}
+
 scan_npm_ci() {
   local f body
   shopt -s nullglob
@@ -397,6 +422,7 @@ scan_dockerfile
 scan_dockerignore
 scan_dependabot
 scan_npm_ci
+scan_ci_verify
 scan_compose
 scan_checkout_credentials
 scan_job_limits
