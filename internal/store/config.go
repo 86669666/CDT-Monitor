@@ -23,6 +23,7 @@ var sensitiveSettings = map[string]bool{
 	"notify_wh_headers":    true,
 	"notify_wh_secret":     true,
 	"notify_wh_url":        true,
+	"notify_tg_proxy_url":  true,
 }
 
 func boolSetting(settings map[string]string, key string, fallback bool) bool {
@@ -221,7 +222,6 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_tg_enabled":      strconv.FormatBool(config.Notifications.Telegram.Enabled),
 			"notify_tg_chat_id":      config.Notifications.Telegram.ChatID,
 			"notify_tg_proxy_type":   config.Notifications.Telegram.ProxyType,
-			"notify_tg_proxy_url":    config.Notifications.Telegram.ProxyURL,
 			"notify_tg_proxy_ip":     config.Notifications.Telegram.ProxyIP,
 			"notify_tg_proxy_port":   config.Notifications.Telegram.ProxyPort,
 			"notify_tg_proxy_user":   config.Notifications.Telegram.ProxyUser,
@@ -247,7 +247,10 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 				return err
 			}
 		}
-		if err := s.saveWebhookURL(ctx, tx, config.Notifications.Webhook.URL); err != nil {
+		if err := s.saveClearableEncrypted(ctx, tx, "notify_wh_url", config.Notifications.Webhook.URL); err != nil {
+			return err
+		}
+		if err := s.saveClearableEncrypted(ctx, tx, "notify_tg_proxy_url", config.Notifications.Telegram.ProxyURL); err != nil {
 			return err
 		}
 
@@ -258,18 +261,18 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	})
 }
 
-func (s *Store) saveWebhookURL(ctx context.Context, tx *sql.Tx, endpoint string) error {
-	if endpoint == domain.ClearSecretSentinel {
-		endpoint = ""
+func (s *Store) saveClearableEncrypted(ctx context.Context, tx *sql.Tx, key, value string) error {
+	if value == domain.ClearSecretSentinel {
+		value = ""
 	}
-	if endpoint == "" {
-		return putSettingTx(ctx, tx, "notify_wh_url", "")
+	if value == "" {
+		return putSettingTx(ctx, tx, key, "")
 	}
-	encrypted, err := s.EncryptAAD(endpoint, "notify_wh_url")
+	encrypted, err := s.EncryptAAD(value, key)
 	if err != nil {
 		return err
 	}
-	return putSettingTx(ctx, tx, "notify_wh_url", encrypted)
+	return putSettingTx(ctx, tx, key, encrypted)
 }
 
 func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value string) error {
