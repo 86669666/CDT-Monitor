@@ -248,7 +248,7 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 				return err
 			}
 		}
-		if err := s.saveClearableEncrypted(ctx, tx, "notify_wh_url", config.Notifications.Webhook.URL); err != nil {
+		if err := s.saveSensitiveSetting(ctx, tx, "notify_wh_url", config.Notifications.Webhook.URL); err != nil {
 			return err
 		}
 		if err := s.saveSensitiveSetting(ctx, tx, "notify_tg_proxy_url", config.Notifications.Telegram.ProxyURL); err != nil {
@@ -260,20 +260,6 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 		}
 		return nil
 	})
-}
-
-func (s *Store) saveClearableEncrypted(ctx context.Context, tx *sql.Tx, key, value string) error {
-	if value == domain.ClearSecretSentinel {
-		value = ""
-	}
-	if value == "" {
-		return putSettingTx(ctx, tx, key, "")
-	}
-	encrypted, err := s.EncryptAAD(value, key)
-	if err != nil {
-		return err
-	}
-	return putSettingTx(ctx, tx, key, encrypted)
 }
 
 func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value string) error {

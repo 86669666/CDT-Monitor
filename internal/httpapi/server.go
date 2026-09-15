@@ -1072,6 +1072,7 @@ func scrubConfig(config *domain.Config) {
 	config.Notifications.Telegram.ProxyURL = ""
 	config.Notifications.Webhook.Headers = ""
 	config.Notifications.Webhook.Secret = ""
+	config.Notifications.Webhook.URL = ""
 	for index := range config.Accounts {
 		config.Accounts[index].AccessKeySecret = ""
 	}

@@ -64,7 +64,7 @@ type TelegramConfig struct {
 
 type WebhookConfig struct {
 	Enabled           bool   `json:"enabled"`
-	URL               string `json:"url"`
+	URL               string `json:"url,omitempty"`
 	Method            string `json:"method"`
 	Type              string `json:"request_type"`
 	Headers           string `json:"headers,omitempty"`

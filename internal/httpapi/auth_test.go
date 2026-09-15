@@ -236,7 +236,7 @@ func TestWebhookHeadersStayUntilClearedOverHTTP(t *testing.T) {
 	}
 }
 
-func TestWebhookURLIsReturnedButNotStoredPlain(t *testing.T) {
+func TestWebhookURLIsScrubbedOnConfigGET(t *testing.T) {
 	st := initializedAuthStore(t)
 	ctx := t.Context()
 	config, err := st.GetConfig(ctx)
@@ -257,8 +257,8 @@ func TestWebhookURLIsReturnedButNotStoredPlain(t *testing.T) {
 		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
 	}
 	body := got.Body.String()
-	if !strings.Contains(body, endpoint) {
-		t.Fatalf("admin GET must return webhook URL for editing: %s", body)
+	if strings.Contains(body, endpoint) || strings.Contains(body, "url-token-value") {
+		t.Fatalf("GET config leaked webhook URL: %s", body)
 	}
 	if strings.Contains(body, "enc:v1:") || strings.Contains(body, "enc:v2:") {
 		t.Fatalf("GET config leaked ciphertext: %s", body)
@@ -267,7 +267,7 @@ func TestWebhookURLIsReturnedButNotStoredPlain(t *testing.T) {
 	if err = json.Unmarshal(got.Body.Bytes(), &gotConfig); err != nil {
 		t.Fatal(err)
 	}
-	if !gotConfig.Notifications.Webhook.URLConfigured || gotConfig.Notifications.Webhook.URL != endpoint {
+	if !gotConfig.Notifications.Webhook.URLConfigured || gotConfig.Notifications.Webhook.URL != "" {
 		t.Fatalf("url_configured flags = %#v", gotConfig.Notifications.Webhook)
 	}
 	var stored string
