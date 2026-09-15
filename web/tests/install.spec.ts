@@ -2065,6 +2065,27 @@ test('failed refresh job surfaces a generic failure toast', async ({ page }) => 
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
 
+test('instance refresh timeout surfaces the in-progress job message', async ({ page }) => {
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-timeout', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('refresh-timeout', 'queued', 1)
+    queued.error = 'FIXTURE-SECRET-TOKEN'
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('FIXTURE-SECRET-TOKEN')
+})
+
 test('settings API key create posts all live scopes', async ({ page }) => {
   const created = {
     id: 5,
