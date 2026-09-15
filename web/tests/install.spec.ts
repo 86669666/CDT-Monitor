@@ -1788,6 +1788,35 @@ test('failed webhook notify job toast omits transport secrets', async ({ page })
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
 
+test('webhook notify timeout surfaces the in-progress job message', async ({ page }) => {
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-timeout', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('notify-webhook-timeout', 'queued')
+    queued.type = 'test_notification'
+    queued.error = 'FIXTURE-SECRET-TOKEN'
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const jobPolled = page.waitForRequest('**/api/v1/jobs/**')
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await jobPolled
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('FIXTURE-SECRET-TOKEN')
+})
+
 test('settings API key create posts the live key contract', async ({ page }) => {
   const created = {
     id: 3,
