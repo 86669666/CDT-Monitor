@@ -843,6 +843,17 @@ test('init-status failure surfaces the live init_status_failed envelope', async 
   await expect(page.getByText('无法读取初始化状态')).toBeVisible()
 })
 
+test('init-status failure surfaces the live database_not_ready envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 503,
+    json: { error: { code: 'database_not_ready', message: '数据库暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('数据库暂时不可用')).toBeVisible()
+})
+
 test('login failure surfaces the live login_failed envelope', async ({ page }) => {
   await mockInitStatus(page, true)
   await mockUnauthorizedSession(page)
@@ -1604,13 +1615,13 @@ test('settings API keys surface the api_keys_failed envelope', async ({ page }) 
   await mockDashboardReads(page)
   await page.route('**/api/v1/api-keys', (route) => route.fulfill({
     status: 500,
-    json: { error: { code: 'api_keys_failed', message: 'API Key 列表加载失败' } },
+    json: { error: { code: 'api_keys_failed', message: 'API Key 加载失败' } },
   }))
 
   await page.goto('/')
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: 'API Key' }).click()
-  await expect(page.locator('.inline-error')).toContainText('API Key 列表加载失败')
+  await expect(page.locator('.inline-error')).toContainText('API Key 加载失败')
   await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
 })
 
@@ -1653,7 +1664,7 @@ test('settings API key create surfaces the api_key_failed envelope', async ({ pa
       createCalls += 1
       return route.fulfill({
         status: 400,
-        json: { error: { code: 'api_key_failed', message: '无法创建 API Key' } },
+        json: { error: { code: 'api_key_failed', message: 'API Key 创建失败' } },
       })
     }
     return route.fulfill({ json: { keys: [] } })
@@ -1663,7 +1674,7 @@ test('settings API key create surfaces the api_key_failed envelope', async ({ pa
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: 'API Key' }).click()
   await page.getByRole('button', { name: '创建 Key' }).click()
-  await expect(page.locator('.toast--error').filter({ hasText: '无法创建 API Key' }).first()).toBeVisible()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 创建失败' }).first()).toBeVisible()
   await expect(page.getByText('仅显示一次')).toHaveCount(0)
   expect(createCalls).toBe(1)
 })
@@ -2095,7 +2106,7 @@ test('settings API key revoke surfaces the api_key_failed envelope', async ({ pa
     expect(route.request().method()).toBe('DELETE')
     return route.fulfill({
       status: 500,
-      json: { error: { code: 'api_key_failed', message: '无法撤销 API Key' } },
+      json: { error: { code: 'api_key_failed', message: 'API Key 操作失败' } },
     })
   })
 
@@ -2103,7 +2114,7 @@ test('settings API key revoke surfaces the api_key_failed envelope', async ({ pa
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: 'API Key' }).click()
   await page.getByRole('button', { name: '撤销' }).click()
-  await expect(page.locator('.toast--error').filter({ hasText: '无法撤销 API Key' }).first()).toBeVisible()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 操作失败' }).first()).toBeVisible()
   await expect(page.locator('.key-row')).toContainText('桌面小组件')
   expect(revokeCalls).toBe(1)
 })
@@ -4437,7 +4448,7 @@ test('settings API keys retry reloads the live key list', async ({ page }) => {
     if (!allowSuccess) {
       return route.fulfill({
         status: 500,
-        json: { error: { code: 'api_keys_failed', message: 'API Key 列表加载失败' } },
+        json: { error: { code: 'api_keys_failed', message: 'API Key 加载失败' } },
       })
     }
     return route.fulfill({ json: { keys: [existing] } })
@@ -4446,7 +4457,7 @@ test('settings API keys retry reloads the live key list', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: 'API Key' }).click()
-  await expect(page.locator('.inline-error')).toContainText('API Key 列表加载失败')
+  await expect(page.locator('.inline-error')).toContainText('API Key 加载失败')
   allowSuccess = true
   await page.getByRole('button', { name: '重试' }).click()
   await expect(page.locator('.key-row')).toContainText('桌面小组件')

@@ -553,7 +553,7 @@ function APIKeySettings({ notify, timeZone }: { notify: (message: string, tone?:
       const value = await api<APIKeysResponse>('/api/v1/api-keys')
       setKeys(Array.isArray(value.keys) ? value.keys.filter((key) => !key.revoked_at) : [])
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'API Key 列表加载失败')
+      setError(cause instanceof Error ? cause.message : 'API Key 加载失败')
     } finally {
       setLoading(false)
     }
