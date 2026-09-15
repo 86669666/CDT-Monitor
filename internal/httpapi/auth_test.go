@@ -920,6 +920,35 @@ func TestControlJobPayloadIsNotExposedOverHTTP(t *testing.T) {
 	}
 }
 
+func TestJobGETRedactsTelegramToken(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ctx := t.Context()
+	job, err := st.EnqueueJob(ctx, "test_notify", 0, `{"channel":"telegram"}`, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.Attempts = 1
+	if err = st.FailJob(ctx, job, errors.New(`Post "https://api.telegram.org/bottelegram-token-value/sendMessage": connection refused`)); err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+job.ID, "", nil, map[string]string{"X-API-Key": token})
+	if got.Code != http.StatusOK {
+		t.Fatalf("job status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "telegram-token-value") {
+		t.Fatalf("job GET leaked telegram token: %s", body)
+	}
+	if !strings.Contains(body, "[redacted]") {
+		t.Fatalf("job GET missing redaction: %s", body)
+	}
+}
+
 func TestPublicEndpointsHideDatabaseErrors(t *testing.T) {
 	dir := t.TempDir()
 	st, err := store.Open(dir)
