@@ -195,16 +195,29 @@ scan_action_pins() {
 }
 
 scan_workflow_hygiene() {
-  local f body
+  local f body base
   shopt -s nullglob
   for f in .github/workflows/*.yml; do
     body="$(strip_comments "$f")"
+    base="$(basename "$f")"
     if ! grep -Eq '^concurrency:' <<<"$body"; then
       bad "$f: missing top-level concurrency group"
     fi
     if ! grep -Eq '^permissions:' <<<"$body"; then
       bad "$f: missing top-level permissions"
     fi
+    case "$base" in
+      auto-release.yml|release.yml)
+        if ! grep -Eq 'cancel-in-progress:[[:space:]]*false' <<<"$body"; then
+          bad "$f: gated release workflows must keep cancel-in-progress: false"
+        fi
+        ;;
+      *)
+        if ! grep -Eq 'cancel-in-progress:[[:space:]]*true' <<<"$body"; then
+          bad "$f: verify workflows must set cancel-in-progress: true"
+        fi
+        ;;
+    esac
     if grep -q 'actions/upload-artifact@' <<<"$body"; then
       if ! grep -Eq 'retention-days:[[:space:]]*7' <<<"$body"; then
         bad "$f: upload-artifact must set retention-days: 7"
