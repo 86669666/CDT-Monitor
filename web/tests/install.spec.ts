@@ -1188,6 +1188,30 @@ test('failed start job surfaces a generic failure toast', async ({ page }) => {
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
 
+test('instance start timeout surfaces the in-progress job message', async ({ page }) => {
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-timeout', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('start-timeout', 'queued', 1)
+    queued.error = 'FIXTURE-SECRET-TOKEN'
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('FIXTURE-SECRET-TOKEN')
+})
+
 test('instance refresh surfaces the job_not_found envelope after login', async ({ page }) => {
   await mockInitStatus(page, true)
   let authed = false
@@ -5541,6 +5565,27 @@ test('failed stop job surfaces a generic failure toast', async ({ page }) => {
   await page.getByRole('button', { name: '关机' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
+
+test('instance stop timeout surfaces the in-progress job message', async ({ page }) => {
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-timeout', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('stop-timeout', 'queued', 1)
+    queued.error = 'FIXTURE-SECRET-TOKEN'
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('FIXTURE-SECRET-TOKEN')
 })
 
 test('instance start surfaces the job_failed envelope', async ({ page }) => {
