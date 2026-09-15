@@ -1156,6 +1156,52 @@ func TestWidgetSummaryOmitsSecretsAndStatusSupportsETag(t *testing.T) {
 	}
 }
 
+func TestStatusRedactsBillingErrorSecrets(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.EnableBilling = true
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	if err = st.SetBillingCache(ctx, accounts[0].ID, "error", "", map[string]string{"message": "bss denied telegram-token-value"}); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	_, token, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := map[string]string{"X-API-Key": token}
+	status := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, headers)
+	if status.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", status.Code, status.Body.String())
+	}
+	body := status.Body.String()
+	if strings.Contains(body, "telegram-token-value") {
+		t.Fatalf("status leaked telegram token: %s", body)
+	}
+	if !strings.Contains(body, "[redacted]") {
+		t.Fatalf("status missing redaction: %s", body)
+	}
+	summary := doRequest(t, handler, http.MethodGet, "/api/v1/widget/summary", "", nil, headers)
+	if summary.Code != http.StatusOK {
+		t.Fatalf("widget summary status = %d body = %s", summary.Code, summary.Body.String())
+	}
+	if strings.Contains(summary.Body.String(), "telegram-token-value") || strings.Contains(summary.Body.String(), "billing_error") {
+		t.Fatalf("widget summary leaked billing error: %s", summary.Body.String())
+	}
+}
+
 func TestTestNotificationRequiresAdminAndValidChannel(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
