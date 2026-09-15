@@ -201,3 +201,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求最终 `FROM scratch`、digest-pinned 基础镜像、`HEALTHCHECK`、`EXPOSE 8080`，禁止 `:latest`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T23:31Z` / 2026-09-16 07:31 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `f927018` 再加 CI verify 命令扫描：
+
+- Publish Guard 现要求 CI job 名 `Verify (no publish)`，Go 1.24 / Node 22，`go test -race`、`go vet`、`CGO_ENABLED=0 linux/amd64`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
