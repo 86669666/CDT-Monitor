@@ -350,6 +350,34 @@ test('wizard surfaces the live traffic threshold setup_failed envelope', async (
   expect(setupCalls).toBe(1)
 })
 
+test('wizard surfaces the live missing account secret setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let setupCalls = 0
+  await page.route('**/api/v1/setup', (route) => {
+    setupCalls += 1
+    const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+    expect(body.accounts).toHaveLength(1)
+    expect(body.accounts?.[0]).toMatchObject({ access_key_id: 'LTAI5added', secret_configured: false })
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'setup_failed', message: 'account LTAI5added is missing access key secret' } },
+    })
+  })
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('AccessKey ID').fill('LTAI5added')
+  await page.getByLabel('实例 ID').fill('i-added')
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('account LTAI5added is missing access key secret')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+  expect(setupCalls).toBe(1)
+})
+
 
 test('history chart labels follow config timezone', async ({ page }) => {
   const hourStart = Math.floor(Date.now() / 3_600_000) * 3_600_000
