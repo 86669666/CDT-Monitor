@@ -3194,6 +3194,36 @@ test('settings save posts a newly added account with documented fields', async (
   })
 })
 
+test('settings save surfaces the live missing account secret envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expect(body.accounts).toHaveLength(2)
+      expect(body.accounts?.[1]).toMatchObject({ access_key_id: 'LTAI5added', secret_configured: false })
+      expect(body.accounts?.[1]?.access_key_secret === undefined || body.accounts?.[1]?.access_key_secret === '').toBeTruthy()
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'account LTAI5added is missing access key secret' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('button', { name: '添加实例' }).click()
+  await page.getByLabel('AccessKey ID').nth(1).fill('LTAI5added')
+  await page.getByLabel('实例 ID').nth(1).fill('i-added')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'account LTAI5added is missing access key secret' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
 test('settings save posts an empty accounts list after delete', async ({ page }) => {
   let saveCalls = 0
   let accounts: unknown
