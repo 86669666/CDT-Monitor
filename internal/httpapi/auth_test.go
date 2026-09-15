@@ -164,7 +164,7 @@ func TestLoginCookiesAndConfigRedaction(t *testing.T) {
 	if !config.Notifications.Telegram.TokenConfigured || config.Notifications.Telegram.Token != "" {
 		t.Fatalf("telegram secret flags = %#v", config.Notifications.Telegram)
 	}
-	if !config.Notifications.Webhook.SecretConfigured || !config.Notifications.Webhook.HeadersConfigured || config.Notifications.Webhook.Secret != "" || config.Notifications.Webhook.Headers != "" {
+	if !config.Notifications.Webhook.SecretConfigured || !config.Notifications.Webhook.HeadersConfigured || config.Notifications.Webhook.URLConfigured || config.Notifications.Webhook.Secret != "" || config.Notifications.Webhook.Headers != "" {
 		t.Fatalf("webhook secret flags = %#v", config.Notifications.Webhook)
 	}
 }
@@ -260,8 +260,15 @@ func TestWebhookURLIsReturnedButNotStoredPlain(t *testing.T) {
 	if !strings.Contains(body, endpoint) {
 		t.Fatalf("admin GET must return webhook URL for editing: %s", body)
 	}
-	if strings.Contains(body, "enc:v1:") {
+	if strings.Contains(body, "enc:v1:") || strings.Contains(body, "enc:v2:") {
 		t.Fatalf("GET config leaked ciphertext: %s", body)
+	}
+	var gotConfig domain.Config
+	if err = json.Unmarshal(got.Body.Bytes(), &gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if !gotConfig.Notifications.Webhook.URLConfigured || gotConfig.Notifications.Webhook.URL != endpoint {
+		t.Fatalf("url_configured flags = %#v", gotConfig.Notifications.Webhook)
 	}
 	var stored string
 	if err = st.DB().QueryRow(`SELECT value FROM settings WHERE key='notify_wh_url'`).Scan(&stored); err != nil {

@@ -218,8 +218,8 @@ func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
 		t.Fatalf("webhook URL must be encrypted at rest: %q", stored)
 	}
 	loaded, err := st.GetConfig(ctx)
-	if err != nil || loaded.Notifications.Webhook.URL != endpoint {
-		t.Fatalf("decrypted webhook URL = %q err=%v", loaded.Notifications.Webhook.URL, err)
+	if err != nil || loaded.Notifications.Webhook.URL != endpoint || !loaded.Notifications.Webhook.URLConfigured {
+		t.Fatalf("decrypted webhook URL = %#v err=%v", loaded.Notifications.Webhook, err)
 	}
 	loaded.AdminPassword = ""
 	loaded.Accounts[0].AccessKeySecret = ""
@@ -228,7 +228,7 @@ func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleared, err := st.GetConfig(ctx)
-	if err != nil || cleared.Notifications.Webhook.URL != "" {
+	if err != nil || cleared.Notifications.Webhook.URL != "" || cleared.Notifications.Webhook.URLConfigured {
 		t.Fatalf("empty URL must clear stored endpoint: %#v err=%v", cleared.Notifications.Webhook, err)
 	}
 }

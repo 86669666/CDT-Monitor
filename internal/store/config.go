@@ -129,6 +129,7 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				Secret:            valueOr(settings, "notify_wh_secret", ""),
 				SecretConfigured:  settings["notify_wh_secret"] != "",
 				HeadersConfigured: settings["notify_wh_headers"] != "",
+				URLConfigured:     settings["notify_wh_url"] != "",
 			},
 		},
 	}
