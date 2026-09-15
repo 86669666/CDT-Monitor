@@ -1782,6 +1782,31 @@ test('settings save surfaces the live invalid timezone envelope', async ({ page 
   expect(saveCalls).toBe(1)
 })
 
+test('settings save surfaces the live traffic threshold envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { traffic_threshold?: number }
+      expect(body.traffic_threshold).toBe(0)
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'traffic threshold must be between 1 and 100' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByLabel('告警阈值').fill('')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'traffic threshold must be between 1 and 100' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
 test('settings bark webhook template posts the live webhook contract', async ({ page }) => {
   let savedWebhook: Record<string, unknown> | undefined
   await mockInitStatus(page, true)
