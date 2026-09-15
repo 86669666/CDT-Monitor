@@ -166,3 +166,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 - Release Binaries 补了 top-level `concurrency`（`cancel-in-progress: false`，避免误 dispatch 取消进行中的 gated build）
 - Publish Guard 现要求每个 workflow 都有 `concurrency` 与 top-level `permissions`，且 `upload-artifact` 必须 `retention-days: 7`
 - `origin/main` 仍是未加开关的 Automatic Release。这仍不是已经发布，也不是 PR#2 可以合进 `main`
+
+续推证据（`2026-09-15T21:50Z` / 2026-09-16 05:50 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `83fb0ca` 再加 Compose `pull_policy: build` 与 `docker push` 扫描：
+
+- Publish Guard 现要求 Compose 保持 `pull_policy: build`，workflow `run` 里不能出现 `docker push` / `compose push`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

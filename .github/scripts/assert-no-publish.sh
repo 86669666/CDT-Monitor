@@ -62,6 +62,9 @@ scan_workflows() {
     if grep -Eq 'push:[[:space:]]*true' <<<"$body"; then
       bad "$f: push: true is forbidden on this fork"
     fi
+    if grep -Eq 'docker[[:space:]]+push|docker[[:space:]]+compose[[:space:]]+push|[[:space:]]compose[[:space:]]+push' <<<"$body"; then
+      bad "$f: docker push / compose push is forbidden on this fork"
+    fi
   done
 }
 
@@ -259,6 +262,9 @@ scan_compose() {
   fi
   if grep -Eiq '^[[:space:]]+([A-Z0-9_]*ACCESS_KEY[A-Z0-9_]*|[A-Z0-9_]*SECRET[A-Z0-9_]*|SMTP_PASSWORD|TELEGRAM_TOKEN|BOT_TOKEN):' <<<"$body"; then
     bad "$f: do not put Aliyun/notify secrets in Compose env"
+  fi
+  if ! grep -Eq '^[[:space:]]+pull_policy:[[:space:]]*build$' <<<"$body"; then
+    bad "$f: pull_policy must stay build so Compose cannot pull/push a registry tag"
   fi
 }
 
