@@ -206,6 +206,15 @@ scan_workflow_hygiene() {
     if ! grep -Eq '^permissions:' <<<"$body"; then
       bad "$f: missing top-level permissions"
     fi
+    if ! grep -Eq '^  contents:[[:space:]]*read$' <<<"$body"; then
+      bad "$f: workflow-level permissions must be contents: read"
+    fi
+    if grep -Eq '^  contents:[[:space:]]*write' <<<"$body"; then
+      bad "$f: workflow-level contents: write is forbidden; only gated jobs may elevate"
+    fi
+    if grep -Eq '^  packages:' <<<"$body"; then
+      bad "$f: workflow-level packages permission is forbidden on this fork"
+    fi
     case "$base" in
       auto-release.yml|release.yml)
         if ! grep -Eq 'cancel-in-progress:[[:space:]]*false' <<<"$body"; then
