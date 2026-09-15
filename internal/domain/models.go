@@ -72,6 +72,7 @@ type WebhookConfig struct {
 	Secret            string `json:"secret,omitempty"`
 	SecretConfigured  bool   `json:"secret_configured"`
 	HeadersConfigured bool   `json:"headers_configured"`
+	URLConfigured     bool   `json:"url_configured"`
 }
 
 type NotificationConfig struct {
