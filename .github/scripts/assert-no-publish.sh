@@ -288,6 +288,30 @@ scan_compose() {
   if ! grep -Eq '^[[:space:]]+pull_policy:[[:space:]]*build$' <<<"$body"; then
     bad "$f: pull_policy must stay build so Compose cannot pull/push a registry tag"
   fi
+  if grep -Eq 'privileged:[[:space:]]*true' <<<"$body"; then
+    bad "$f: privileged: true is forbidden on this fork"
+  fi
+  if ! grep -Eq 'privileged:[[:space:]]*false' <<<"$body"; then
+    bad "$f: privileged must stay false"
+  fi
+  if ! grep -Eq 'no-new-privileges:true' <<<"$body"; then
+    bad "$f: no-new-privileges:true is required"
+  fi
+  if ! grep -Eq '^[[:space:]]+-[[:space:]]*ALL$' <<<"$body"; then
+    bad "$f: cap_drop must include ALL"
+  fi
+  if ! grep -Eq 'read_only:[[:space:]]*true' <<<"$body"; then
+    bad "$f: read_only must stay true"
+  fi
+  if ! grep -Eq 'user:[[:space:]]*"65532:65532"' <<<"$body"; then
+    bad "$f: container user must stay 65532:65532"
+  fi
+  if grep -Eq 'unless-stopped' <<<"$body"; then
+    bad "$f: unless-stopped is forbidden on this local-only Compose"
+  fi
+  if ! grep -Eq 'restart:[[:space:]]*on-failure' <<<"$body"; then
+    bad "$f: restart must stay on-failure"
+  fi
 }
 
 scan_vars() {
