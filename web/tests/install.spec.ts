@@ -715,6 +715,30 @@ test('setup posts custom api_interval', async ({ page }) => {
   expect(interval).toBe(45)
 })
 
+test('setup clamps custom api_interval to the live minimum', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let interval: number | undefined
+  await page.route('**/api/v1/setup', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}') as { api_interval?: number }
+    interval = body.api_interval
+    expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+    await route.fulfill({ status: 201, json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await mockDashboardReads(page)
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('combobox', { name: '状态刷新频率' }).click()
+  await page.getByRole('option', { name: '自定义' }).click()
+  await page.getByLabel('自定义间隔').fill('1')
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible({ timeout: 30_000 })
+  expect(interval).toBe(30)
+})
 
 test('wizard surfaces the setup rate_limited envelope and stays on install', async ({ page }) => {
   await mockInitStatus(page, false)
