@@ -255,6 +255,27 @@ scan_dockerfile() {
   if ! grep -Eq '^USER 65532:65532$' <<<"$body"; then
     bad "$f: final image must stay USER 65532:65532"
   fi
+  if ! grep -Eq '^FROM scratch$' <<<"$body"; then
+    bad "$f: final stage must stay FROM scratch"
+  fi
+  if ! grep -Eq '^HEALTHCHECK ' <<<"$body"; then
+    bad "$f: HEALTHCHECK is required"
+  fi
+  if ! grep -Eq '^EXPOSE 8080$' <<<"$body"; then
+    bad "$f: EXPOSE must stay 8080"
+  fi
+  if grep -Eq 'FROM[[:space:]].*:latest' <<<"$body"; then
+    bad "$f: :latest base tags are forbidden"
+  fi
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      FROM\ scratch|FROM\ scratch*) continue ;;
+    esac
+    if [[ "$line" == FROM* && "$line" != *@sha256:* ]]; then
+      bad "$f: non-scratch FROM must be digest-pinned: $line"
+    fi
+  done < <(grep -E '^FROM ' <<<"$body" || true)
 }
 
 scan_dependabot() {
