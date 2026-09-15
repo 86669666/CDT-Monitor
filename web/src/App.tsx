@@ -182,7 +182,7 @@ function SetupWizard({ onComplete, notify }: { onComplete: () => Promise<void>; 
       notify('系统初始化完成', 'success')
       await onComplete()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '初始化失败')
+      setError(cause instanceof Error ? cause.message : '系统初始化失败')
     } finally { setBusy(false) }
   }
 
@@ -407,7 +407,7 @@ function SettingsPanel({ initial, onClose, onSaved, notify }: { initial: Config;
         notify('配置已安全保存', 'success')
       }
       onSaved(config)
-    } catch (error) { notify(error instanceof Error ? error.message : '保存失败', 'error') }
+    } catch (error) { notify(error instanceof Error ? error.message : '配置保存失败', 'error') }
     finally { setBusy(false) }
   }
   const tabs = [
@@ -570,10 +570,10 @@ function APIKeySettings({ notify, timeZone }: { notify: (message: string, tone?:
       const result = await api<CreateAPIKeyResponse>('/api/v1/api-keys', { method: 'POST', body: JSON.stringify(payload) })
       setToken(result.token)
       await load()
-    } catch (error) { notify(error instanceof Error ? error.message : '创建失败', 'error') }
+    } catch (error) { notify(error instanceof Error ? error.message : 'API Key 创建失败', 'error') }
   }
   const toggle = (scope: APIKeyScope) => setScopes((current) => current.includes(scope) ? current.filter((value) => value !== scope) : [...current, scope])
-  const revoke = async (id: number) => { try { await api(`/api/v1/api-keys/${id}`, { method: 'DELETE', body: '{}' }); await load(); notify('API Key 已撤销', 'success') } catch (cause) { notify(cause instanceof Error ? cause.message : '撤销失败', 'error') } }
+  const revoke = async (id: number) => { try { await api(`/api/v1/api-keys/${id}`, { method: 'DELETE', body: '{}' }); await load(); notify('API Key 已撤销', 'success') } catch (cause) { notify(cause instanceof Error ? cause.message : 'API Key 操作失败', 'error') } }
   return <div className="settings-section"><SectionTitle icon={<KeyRound />} title="API Key" subtitle="MOBILE & WIDGET ACCESS" />
     <div className="key-create"><Field label="名称"><input value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="过期时间（可选）"><input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></Field><div className="scope-row">{([['widget:read', '读取状态'], ['instance:control', '控制实例'], ['cron:run', '触发任务']] as const).map(([scope, label]) => <label key={scope} className={scopes.includes(scope) ? 'scope-chip active' : 'scope-chip'}><input type="checkbox" checked={scopes.includes(scope)} onChange={() => toggle(scope)} />{label}</label>)}</div><button className="button button--primary" disabled={!name || scopes.length === 0} onClick={() => void create()}><Plus />创建 Key</button></div>
     {token && <div className="token-reveal"><ShieldCheck /><div className="token-reveal__body"><b>仅显示一次</b><code>{token}</code></div><IconButton label="复制" onClick={() => { void navigator.clipboard.writeText(token); notify('已复制到剪贴板', 'success') }}><Copy /></IconButton></div>}
@@ -620,7 +620,7 @@ function AdminSettingsPanel({ onClose, notify, timeZone }: { onClose: () => void
     try {
       await api('/api/v1/admin/password', { method: 'PUT', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) })
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); notify('管理员密码已更新', 'success')
-    } catch (cause) { notify(cause instanceof Error ? cause.message : '密码更新失败', 'error') }
+    } catch (cause) { notify(cause instanceof Error ? cause.message : '管理员密码更新失败', 'error') }
     finally { setPasswordBusy(false) }
   }
   const createPasskey = async () => {
