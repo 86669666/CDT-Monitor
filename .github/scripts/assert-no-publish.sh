@@ -252,6 +252,21 @@ scan_dockerfile() {
   if grep -Eq '(^|[[:space:]])--push([[:space:]]|$)' <<<"$body"; then
     bad "$f: --push is forbidden in the Dockerfile"
   fi
+  if ! grep -Eq '^USER 65532:65532$' <<<"$body"; then
+    bad "$f: final image must stay USER 65532:65532"
+  fi
+}
+
+scan_dockerignore() {
+  local f=".dockerignore"
+  require_file "$f" || return
+  local required missing
+  required=(.github android-widget .env '*.jks' '*.keystore' master.key '*.sqlite' docs)
+  for missing in "${required[@]}"; do
+    if ! grep -Fxq "$missing" "$f"; then
+      bad "$f: missing required exclude $missing"
+    fi
+  done
 }
 
 scan_compose() {
@@ -333,6 +348,7 @@ scan_auto_release
 scan_release_binaries
 scan_container
 scan_dockerfile
+scan_dockerignore
 scan_compose
 scan_checkout_credentials
 scan_job_limits
