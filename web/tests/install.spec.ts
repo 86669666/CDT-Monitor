@@ -324,6 +324,32 @@ test('wizard surfaces the live invalid timezone setup_failed envelope', async ({
   expect(setupCalls).toBe(1)
 })
 
+test('wizard surfaces the live traffic threshold setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let setupCalls = 0
+  await page.route('**/api/v1/setup', (route) => {
+    setupCalls += 1
+    const body = JSON.parse(route.request().postData() || '{}') as { traffic_threshold?: number }
+    expect(body.traffic_threshold).toBe(0)
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'setup_failed', message: 'traffic threshold must be between 1 and 100' } },
+    })
+  })
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('流量告警阈值').fill('')
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('traffic threshold must be between 1 and 100')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+  expect(setupCalls).toBe(1)
+})
+
 
 test('history chart labels follow config timezone', async ({ page }) => {
   const hourStart = Math.floor(Date.now() / 3_600_000) * 3_600_000
