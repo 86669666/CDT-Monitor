@@ -233,6 +233,46 @@ func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
 	}
 }
 
+func TestTelegramProxyURLIsEncryptedAtRestAndClearable(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	endpoint := "socks5://user:proxy-pass-value@127.0.0.1:1080"
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts:      []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{Telegram: domain.TelegramConfig{ProxyType: "socks5", ProxyURL: endpoint}},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_tg_proxy_url'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !security.IsBoundCiphertext(stored) || strings.Contains(stored, "proxy-pass-value") {
+		t.Fatalf("telegram proxy URL must be encrypted at rest: %q", stored)
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil || loaded.Notifications.Telegram.ProxyURL != endpoint {
+		t.Fatalf("decrypted proxy URL = %#v err=%v", loaded.Notifications.Telegram, err)
+	}
+	loaded.AdminPassword = ""
+	loaded.Accounts[0].AccessKeySecret = ""
+	loaded.Notifications.Telegram.ProxyURL = ""
+	if err = st.SaveConfig(ctx, loaded); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := st.GetConfig(ctx)
+	if err != nil || cleared.Notifications.Telegram.ProxyURL != "" {
+		t.Fatalf("empty proxy URL must clear stored endpoint: %#v err=%v", cleared.Notifications.Telegram, err)
+	}
+}
+
 func TestCiphertextCannotBeSwappedBetweenSettings(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
