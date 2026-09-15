@@ -122,6 +122,36 @@ scan_container() {
   if grep -Eq "tags:[[:space:]]*\['v" <<<"$body"; then
     bad "$f: do not restore v-tag push triggers"
   fi
+  if ! grep -Fq 'name: Load-verify linux/amd64 (no push)' "$f"; then
+    bad "$f: job must stay named Load-verify linux/amd64 (no push)"
+  fi
+  if ! grep -Eq 'driver:[[:space:]]*docker$' <<<"$body"; then
+    bad "$f: Buildx must keep driver: docker"
+  fi
+  if grep -Eq 'setup-qemu-action' <<<"$body"; then
+    bad "$f: QEMU is forbidden on this fork"
+  fi
+  if ! grep -Eq 'load:[[:space:]]*true' <<<"$body"; then
+    bad "$f: container verify must keep load: true"
+  fi
+  if ! grep -Eq 'provenance:[[:space:]]*false' <<<"$body"; then
+    bad "$f: provenance must stay false"
+  fi
+  if ! grep -Eq 'sbom:[[:space:]]*false' <<<"$body"; then
+    bad "$f: sbom must stay false"
+  fi
+  if ! grep -Eq 'platforms:[[:space:]]*linux/amd64' <<<"$body"; then
+    bad "$f: platforms must stay linux/amd64"
+  fi
+  if ! grep -Eq -- '--network none' <<<"$body"; then
+    bad "$f: version check must use --network none"
+  fi
+  if ! grep -Eq -- '--read-only' <<<"$body"; then
+    bad "$f: version check must use --read-only"
+  fi
+  if ! grep -Eq -- '--user 65532:65532' <<<"$body"; then
+    bad "$f: version check must run as 65532:65532"
+  fi
 }
 
 scan_checkout_credentials() {

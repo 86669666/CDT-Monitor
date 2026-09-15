@@ -206,3 +206,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 CI job 名 `Verify (no publish)`，Go 1.24 / Node 22，`go test -race`、`go vet`、`CGO_ENABLED=0 linux/amd64`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T23:45Z` / 2026-09-16 07:45 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `944e1ef` 再加 container load-verify 扫描：
+
+- Publish Guard 现要求 Container Images 保持 `driver: docker`、`load: true`、`push: false`、无 QEMU、`linux/amd64`，以及 `docker run --network none --read-only --user 65532`
+- 这仍不是 GHCR 发布，也不是 PR#2 可以合进未加开关 `main`
