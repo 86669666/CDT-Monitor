@@ -267,6 +267,48 @@ func TestCiphertextCannotBeSwappedBetweenSettings(t *testing.T) {
 	}
 }
 
+func TestAccountSecretCannotBeSwappedBetweenAccounts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAIone", AccessKeySecret: "secret-one", RegionID: "cn-hongkong", InstanceID: "i-one", MaxTraffic: 200, SiteType: "china"},
+			{AccessKeyID: "LTAItwo", AccessKeySecret: "secret-two", RegionID: "cn-hongkong", InstanceID: "i-two", MaxTraffic: 200, SiteType: "china"},
+		},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 2 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	var oneBlob, twoBlob string
+	if err = st.db.QueryRow(`SELECT access_key_secret FROM accounts WHERE id=?`, accounts[0].ID).Scan(&oneBlob); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT access_key_secret FROM accounts WHERE id=?`, accounts[1].ID).Scan(&twoBlob); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.Exec(`UPDATE accounts SET access_key_secret=? WHERE id=?`, oneBlob, accounts[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.AccountSecret(ctx, accounts[1].ID); err == nil {
+		t.Fatal("copied account ciphertext must not decrypt under a different access key")
+	}
+	got, err := st.AccountSecret(ctx, accounts[0].ID)
+	if err != nil || got != "secret-one" {
+		t.Fatalf("original account secret = %q err=%v", got, err)
+	}
+	_ = twoBlob
+}
+
 func TestInvalidTimezoneIsRejected(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
