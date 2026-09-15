@@ -227,9 +227,19 @@ func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
 	if err = st.SaveConfig(ctx, loaded); err != nil {
 		t.Fatal(err)
 	}
+	kept, err := st.GetConfig(ctx)
+	if err != nil || kept.Notifications.Webhook.URL != endpoint || !kept.Notifications.Webhook.URLConfigured {
+		t.Fatalf("empty URL must keep stored endpoint: %#v err=%v", kept.Notifications.Webhook, err)
+	}
+	kept.AdminPassword = ""
+	kept.Accounts[0].AccessKeySecret = ""
+	kept.Notifications.Webhook.URL = domain.ClearSecretSentinel
+	if err = st.SaveConfig(ctx, kept); err != nil {
+		t.Fatal(err)
+	}
 	cleared, err := st.GetConfig(ctx)
 	if err != nil || cleared.Notifications.Webhook.URL != "" || cleared.Notifications.Webhook.URLConfigured {
-		t.Fatalf("empty URL must clear stored endpoint: %#v err=%v", cleared.Notifications.Webhook, err)
+		t.Fatalf("sentinel must clear stored endpoint: %#v err=%v", cleared.Notifications.Webhook, err)
 	}
 }
 
