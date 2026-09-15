@@ -350,6 +350,32 @@ test('wizard surfaces the live traffic threshold setup_failed envelope', async (
   expect(setupCalls).toBe(1)
 })
 
+test('wizard surfaces the live over-max traffic threshold setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  let setupCalls = 0
+  await page.route('**/api/v1/setup', (route) => {
+    setupCalls += 1
+    const body = JSON.parse(route.request().postData() || '{}') as { traffic_threshold?: number }
+    expect(body.traffic_threshold).toBe(101)
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'setup_failed', message: 'traffic threshold must be between 1 and 100' } },
+    })
+  })
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByLabel('流量告警阈值').fill('101')
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('traffic threshold must be between 1 and 100')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+  expect(setupCalls).toBe(1)
+})
+
 test('wizard surfaces the live missing account secret setup_failed envelope', async ({ page }) => {
   await mockInitStatus(page, false)
   let setupCalls = 0
@@ -2037,6 +2063,27 @@ test('failed refresh job surfaces a generic failure toast', async ({ page }) => 
   await page.getByRole('button', { name: '刷新实例' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
+
+test('instance refresh timeout surfaces the in-progress job message', async ({ page }) => {
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-timeout', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('refresh-timeout', 'queued', 1)
+    queued.error = 'FIXTURE-SECRET-TOKEN'
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('FIXTURE-SECRET-TOKEN')
 })
 
 test('settings API key create posts all live scopes', async ({ page }) => {
