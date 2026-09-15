@@ -3224,6 +3224,33 @@ test('settings save surfaces the live missing account secret envelope', async ({
   expect(saveCalls).toBe(1)
 })
 
+test('settings save surfaces the live missing account identity envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
+      expect(body.accounts).toHaveLength(2)
+      expect(body.accounts?.[1]).toMatchObject({ access_key_id: '', region_id: 'cn-hongkong' })
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'account access_key_id and region_id are required' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await page.getByRole('button', { name: '添加实例' }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'account access_key_id and region_id are required' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
 test('settings save posts an empty accounts list after delete', async ({ page }) => {
   let saveCalls = 0
   let accounts: unknown
