@@ -137,3 +137,19 @@ func TestSendTelegramRedactsTokenFromTransportError(t *testing.T) {
 		t.Fatalf("telegram token leaked from Send: %q", msg)
 	}
 }
+
+func TestRedactSecretsLeavesEmptyAndUnknownText(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	if got := RedactSecrets("", config); got != "" {
+		t.Fatalf("empty = %q", got)
+	}
+	msg := `Post "https://api.telegram.org/bot123456:AA-secret-token-value/sendMessage": connection refused`
+	got := RedactSecrets(msg, config)
+	if strings.Contains(got, "AA-secret-token-value") {
+		t.Fatalf("token leaked: %q", got)
+	}
+	if !strings.Contains(got, "[redacted]") {
+		t.Fatalf("expected redaction in %q", got)
+	}
+}

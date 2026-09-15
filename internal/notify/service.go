@@ -65,6 +65,17 @@ func (s *Service) Send(ctx context.Context, channel string, event domain.Notific
 	return sanitizeNotificationError(err, config)
 }
 
+func RedactSecrets(message string, config domain.Config) string {
+	if message == "" {
+		return ""
+	}
+	err := sanitizeNotificationError(errors.New(message), config)
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 func sanitizeNotificationError(err error, config domain.Config) error {
 	if err == nil {
 		return nil

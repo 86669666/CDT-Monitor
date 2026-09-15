@@ -26,6 +26,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/engine"
+	"github.com/wang4386/CDT-Monitor/internal/notify"
 	"github.com/wang4386/CDT-Monitor/internal/security"
 	"github.com/wang4386/CDT-Monitor/internal/store"
 )
@@ -635,6 +636,10 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "job_failed", "任务查询失败")
 		return
+	}
+	if config, cfgErr := s.store.GetConfig(r.Context()); cfgErr == nil {
+		job.Error = notify.RedactSecrets(job.Error, config)
+		job.Result = notify.RedactSecrets(job.Result, config)
 	}
 	writeJSON(w, http.StatusOK, job)
 }
