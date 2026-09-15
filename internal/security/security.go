@@ -16,7 +16,11 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const encryptedPrefix = "enc:v1:"
+const (
+	encryptedPrefix   = "enc:v1:"
+	encryptedPrefixV2 = "enc:v2:"
+	AccountSecretAAD  = "account_secret"
+)
 
 type Cipher struct {
 	aead cipher.AEAD
@@ -84,27 +88,57 @@ func newCipher(key []byte) (*Cipher, error) {
 }
 
 func (c *Cipher) Encrypt(plaintext string) (string, error) {
-	if plaintext == "" || strings.HasPrefix(plaintext, encryptedPrefix) {
+	return c.encrypt(plaintext, nil)
+}
+
+func (c *Cipher) EncryptAAD(plaintext, aad string) (string, error) {
+	return c.encrypt(plaintext, []byte(aad))
+}
+
+func (c *Cipher) encrypt(plaintext string, aad []byte) (string, error) {
+	if plaintext == "" || IsEncrypted(plaintext) {
 		return plaintext, nil
 	}
 	nonce := make([]byte, c.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	sealed := c.aead.Seal(nonce, nonce, []byte(plaintext), nil)
-	return encryptedPrefix + base64.RawURLEncoding.EncodeToString(sealed), nil
+	sealed := c.aead.Seal(nonce, nonce, []byte(plaintext), aad)
+	prefix := encryptedPrefix
+	if len(aad) > 0 {
+		prefix = encryptedPrefixV2
+	}
+	return prefix + base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
 func (c *Cipher) Decrypt(value string) (string, error) {
-	if value == "" || !strings.HasPrefix(value, encryptedPrefix) {
-		return value, nil
+	return c.decrypt(value, nil)
+}
+
+func (c *Cipher) DecryptAAD(value, aad string) (string, error) {
+	return c.decrypt(value, []byte(aad))
+}
+
+func (c *Cipher) decrypt(value string, aad []byte) (string, error) {
+	if value == "" {
+		return "", nil
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, encryptedPrefix))
+	if strings.HasPrefix(value, encryptedPrefixV2) {
+		return c.open(value, encryptedPrefixV2, aad)
+	}
+	if strings.HasPrefix(value, encryptedPrefix) {
+		return c.open(value, encryptedPrefix, nil)
+	}
+	return value, nil
+}
+
+func (c *Cipher) open(value, prefix string, aad []byte) (string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, prefix))
 	if err != nil || len(raw) < c.aead.NonceSize() {
 		return "", errors.New("invalid encrypted value")
 	}
 	nonce, ciphertext := raw[:c.aead.NonceSize()], raw[c.aead.NonceSize():]
-	plain, err := c.aead.Open(nil, nonce, ciphertext, nil)
+	plain, err := c.aead.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		return "", errors.New("unable to decrypt value with current master key")
 	}
@@ -112,7 +146,11 @@ func (c *Cipher) Decrypt(value string) (string, error) {
 }
 
 func IsEncrypted(value string) bool {
-	return strings.HasPrefix(value, encryptedPrefix)
+	return strings.HasPrefix(value, encryptedPrefix) || strings.HasPrefix(value, encryptedPrefixV2)
+}
+
+func IsBoundCiphertext(value string) bool {
+	return strings.HasPrefix(value, encryptedPrefixV2)
 }
 
 func NewToken(bytes int) (string, error) {

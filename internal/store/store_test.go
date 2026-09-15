@@ -50,21 +50,21 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	if err = st.db.QueryRow(`SELECT access_key_secret FROM accounts WHERE id=1`).Scan(&secret); err != nil {
 		t.Fatal(err)
 	}
-	if !security.IsEncrypted(token) || !security.IsEncrypted(webhook) || !security.IsEncrypted(webhookURL) || !security.IsEncrypted(secret) {
-		t.Fatal("legacy secrets were not encrypted")
+	if !security.IsBoundCiphertext(token) || !security.IsBoundCiphertext(webhook) || !security.IsBoundCiphertext(webhookURL) || !security.IsBoundCiphertext(secret) {
+		t.Fatal("legacy secrets were not bound to field AAD")
 	}
 	if strings.Contains(webhookURL, "legacy-url-token") {
 		t.Fatalf("webhook URL stored in plaintext: %q", webhookURL)
 	}
-	telegram, err := st.Decrypt(token)
+	telegram, err := st.DecryptAAD(token, "notify_tg_token")
 	if err != nil || telegram != "legacy-token" {
 		t.Fatalf("telegram token = %q err=%v", telegram, err)
 	}
-	webhookPlain, err := st.Decrypt(webhook)
+	webhookPlain, err := st.DecryptAAD(webhook, "notify_wh_secret")
 	if err != nil || webhookPlain != "legacy-webhook-secret" {
 		t.Fatalf("webhook secret = %q err=%v", webhookPlain, err)
 	}
-	urlPlain, err := st.Decrypt(webhookURL)
+	urlPlain, err := st.DecryptAAD(webhookURL, "notify_wh_url")
 	if err != nil || urlPlain != "https://example.test/hook?access_token=legacy-url-token" {
 		t.Fatalf("webhook url = %q err=%v", urlPlain, err)
 	}
@@ -230,6 +230,40 @@ func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
 	cleared, err := st.GetConfig(ctx)
 	if err != nil || cleared.Notifications.Webhook.URL != "" {
 		t.Fatalf("empty URL must clear stored endpoint: %#v err=%v", cleared.Notifications.Webhook, err)
+	}
+}
+
+func TestCiphertextCannotBeSwappedBetweenSettings(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{
+			Telegram: domain.TelegramConfig{Token: "telegram-token-value"},
+			Webhook:  domain.WebhookConfig{Secret: "webhook-secret-value"},
+		},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	var token, secret string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_tg_token'`).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_secret'`).Scan(&secret); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.Exec(`UPDATE settings SET value=? WHERE key='notify_tg_token'`, secret); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.GetConfig(ctx); err == nil {
+		t.Fatal("swapped webhook ciphertext must not decrypt as telegram token")
 	}
 }
 

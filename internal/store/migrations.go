@@ -247,13 +247,20 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 		for _, key := range keys {
 			var value string
 			err := tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&value)
-			if err == sql.ErrNoRows || value == "" || security.IsEncrypted(value) {
+			if err == sql.ErrNoRows || value == "" || security.IsBoundCiphertext(value) {
 				continue
 			}
 			if err != nil {
 				return err
 			}
-			encrypted, err := s.Encrypt(value)
+			plain := value
+			if security.IsEncrypted(value) {
+				plain, err = s.Decrypt(value)
+				if err != nil {
+					return err
+				}
+			}
+			encrypted, err := s.EncryptAAD(plain, key)
 			if err != nil {
 				return err
 			}
@@ -280,10 +287,18 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 		}
 		rows.Close()
 		for _, it := range items {
-			if security.IsEncrypted(it.secret) {
+			if security.IsBoundCiphertext(it.secret) {
 				continue
 			}
-			encrypted, err := s.Encrypt(it.secret)
+			plain := it.secret
+			if security.IsEncrypted(plain) {
+				var err error
+				plain, err = s.Decrypt(plain)
+				if err != nil {
+					return err
+				}
+			}
+			encrypted, err := s.EncryptAAD(plain, security.AccountSecretAAD)
 			if err != nil {
 				return err
 			}
