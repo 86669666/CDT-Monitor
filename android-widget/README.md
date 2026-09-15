@@ -29,7 +29,7 @@ cd android-widget
 
 ### 本机工具链（ops writer host）
 
-检查时间：2026-09-10 02:42 Asia/Taipei（`2026-09-09T18:42Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。`./gradlew --version` 输出 `ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.`
+检查时间：2026-09-16 06:30 Asia/Taipei（`2026-09-15T22:30Z`）。这台 ops 工作区 **不能** 本地出包，不要把本机未构建写成 APK 已验证。`java` / `javac` 仍不存在，`JAVA_HOME` 为空。`./gradlew --version` 仍输出 `ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.`
 
 | 依赖 | 本机状态 |
 | --- | --- |
@@ -38,7 +38,7 @@ cd android-widget
 | Gradle 8.10.2 | 不在 PATH；改用仓库 `./gradlew`（Wrapper 8.10.2，checksum 已钉死，`networkTimeout=120000`，`android.builder.sdkDownload=false`，`org.gradle.daemon=false`，`org.gradle.workers.max=2`，`org.gradle.parallel=false`，`org.gradle.caching=false`，`org.gradle.configuration-cache=false`，`org.gradle.vfs.watch=false`） |
 | Gradle Wrapper | 已加入 `gradlew` / `gradle-wrapper.jar`；本机 `sha256sum gradle/wrapper/gradle-wrapper.jar` = `2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046`，与 `gradle/actions` wrapper-validation 中 Gradle **8.10.2** 条目一致。本机仍缺 JDK，所以 **没有** 跑过 assemble |
 
-因此本机出包仍是 blocker（缺 JDK/SDK），不要把 Wrapper 入库写成 APK 已验证。YAML 里的支持路径是手动触发 `.github/workflows/android-widget.yml`，但该 workflow **尚未在本 fork 登记**：`gh workflow list --repo 86669666/CDT-Monitor` 只有 `CI` 和 `Publish Guard`；`gh workflow run android-widget.yml --ref work/ops` 返回 **HTTP 404**。不要为了登记小组件 workflow 去合仍带未加开关 `auto-release.yml` 的 `origin/main`。签名密钥只通过 Actions secrets 注入；当前 `gh secret list` 为空，keystore 不要进 git。
+因此本机出包仍是 blocker（缺 JDK/SDK），不要把 Wrapper 入库写成 APK 已验证。YAML 里的支持路径是手动触发 `.github/workflows/android-widget.yml`，但该 workflow **仍未登记**：`gh workflow list --repo 86669666/CDT-Monitor --all` 现为 `CI`、`Publish Guard`，以及名为 `.github/workflows/auto-release.yml` 的条目（来自 `work/ops` 上一次 YAML 解析失败 run `34397202388`，不是一次成功的发布）。`gh workflow run android-widget.yml --ref work/ops` 仍返回 **HTTP 404**。不要为了登记小组件 workflow 去合仍带未加开关 `auto-release.yml` 的 `origin/main`。签名密钥只通过 Actions secrets 注入；当前 `gh secret list` 为空，keystore 不要进 git。
 
 产物位于 `app/build/outputs/`（CI 成功后才有，本机没有）：
 
@@ -50,7 +50,7 @@ cd android-widget
 
 `.github/workflows/android-widget.yml` 仅支持手动触发，同一 ref 上新的 run 会取消未完成的旧 run。checkout 之后会用与 `setup-gradle` 同一 SHA 的 `gradle/actions/wrapper-validation` 核对 Wrapper jar，然后非交互接受 SDK 许可并安装 SDK 35（避免 `sdkmanager` 卡在许可证提示上耗尽 20 分钟），再用带 `gradle-home-cache-cleanup: true` 的 `setup-gradle` 构建一份 debug APK、一份 release APK 以及 AAB（不再打 ABI 分包），并将它们作为 workflow artifact 上传（保留 7 天）。构建不依赖 API Key，也不会把任何站点凭据写入仓库。Dependabot 每周只扫 `android-widget/` 的 Gradle 生态，不会打开生产发布变量。
 
-截至 `2026-09-09T18:42Z`，该 workflow **没有** 出现在 fork 的 Actions 列表里，因此也 **没有** 跑过。这仍不是本机 APK，不是 Play 上架，更不是把 PR#2 合进未加开关 `main` 的理由。
+截至 `2026-09-15T22:30Z`，`Android Widget` 仍 **没有** 出现在 fork 的 Actions 列表里，因此也 **没有** 跑过。这仍不是本机 APK，不是 Play 上架，更不是把 PR#2 合进未加开关 `main` 的理由。
 
 未配置签名密钥时，debug APK 使用 Android 调试签名，可以直接安装；release APK/AAB 是未签名发行产物。正式分发和后续覆盖升级需要在仓库 Actions Secrets 中配置：
 
