@@ -191,3 +191,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Dockerfile `USER 65532:65532`，且 `.dockerignore` 必须排除 `.github`、`android-widget`、`.env`、keystore、`master.key`、SQLite 和 `docs`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T22:58Z` / 2026-09-16 06:58 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c640231` 再加 Dependabot target-branch 扫描：
+
+- Publish Guard 现要求三个 ecosystem 都 `target-branch: work/ops`，禁止指向 `main`；workflow 里的 `npm ci` 必须带 `--ignore-scripts`
+- GitHub 只从默认分支读 Dependabot；不要为了启用它去合未加开关的 `main`
