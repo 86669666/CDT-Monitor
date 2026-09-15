@@ -272,3 +272,30 @@ func TestProcessJobsNotifyErrorRedactsTelegramToken(t *testing.T) {
 		t.Fatalf("job error leaked telegram token: %q", jobErr)
 	}
 }
+
+func TestProcessJobsPersistsRedactedNotifySecrets(t *testing.T) {
+	const token = "123456:AA-secret-token-value"
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.Notifications.Telegram.Token = token
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.controlErr = errors.New("ecs denied " + token)
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobControlInstance, account.ID, ParseControlPayload("start", "手动"), JobUniqueKey(JobControlInstance, account.ID, "persist-redact"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT error FROM jobs WHERE id=?`, job.ID).Scan(&jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(jobErr, token) {
+		t.Fatalf("persisted job error leaked telegram token: %q", jobErr)
+	}
+	if !strings.Contains(jobErr, "[redacted]") {
+		t.Fatalf("persisted job error missing redaction: %q", jobErr)
+	}
+}

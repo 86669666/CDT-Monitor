@@ -160,11 +160,12 @@ func (e *Engine) processJobs(ctx context.Context, index int) {
 		}
 		result, runErr := e.runJobGuarded(ctx, job)
 		if runErr != nil {
+			runErr = e.persistRedactedErr(ctx, runErr)
 			e.logger.Warn("job failed", "job_id", job.ID, "type", job.Type, "error", runErr)
 			_ = e.store.FailJob(ctx, job, runErr)
 			continue
 		}
-		_ = e.store.CompleteJob(ctx, job.ID, result)
+		_ = e.store.CompleteJob(ctx, job.ID, e.persistRedacted(ctx, result))
 	}
 }
 
@@ -556,7 +557,7 @@ func (e *Engine) flushOutbox(ctx context.Context) {
 			return e.notify.Send(sendCtx, item.Channel, event, config)
 		}()
 		if sendErr != nil {
-			_ = e.store.FailOutbox(ctx, item, sendErr)
+			_ = e.store.FailOutbox(ctx, item, e.persistRedactedErr(ctx, sendErr))
 			continue
 		}
 		_ = e.store.CompleteOutbox(ctx, item.ID)
@@ -610,6 +611,24 @@ func masked(accessKeyID string) string {
 		return accessKeyID + "***"
 	}
 	return accessKeyID[:7] + "***"
+}
+
+func (e *Engine) persistRedacted(ctx context.Context, message string) string {
+	if message == "" {
+		return ""
+	}
+	config, err := e.store.GetConfig(ctx)
+	if err != nil {
+		return message
+	}
+	return notify.RedactSecrets(message, config)
+}
+
+func (e *Engine) persistRedactedErr(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(e.persistRedacted(ctx, err.Error()))
 }
 
 func sanitizeProviderError(err error, accessKeyID, secret string) string {
