@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-binaries-${{ github.ref }}
+  cancel-in-progress: false
+
 # Binary GitHub Releases stay opt-in. Leave ENABLE_PRODUCTION_PUBLISH unset on this fork.
 # Even if that var is set, the GitHub Release stays draft, is not
 # marked latest, and does not auto-write notes from this fork's

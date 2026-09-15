@@ -160,3 +160,9 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求第三方 `uses:` 钉死 40 位 SHA，checkout 必须 `fetch-depth: 1`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T21:36Z` / 2026-09-16 05:36 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `3d82962` 再加 Release Binaries concurrency / artifact 7 天扫描：
+
+- Release Binaries 补了 top-level `concurrency`（`cancel-in-progress: false`，避免误 dispatch 取消进行中的 gated build）
+- Publish Guard 现要求每个 workflow 都有 `concurrency` 与 top-level `permissions`，且 `upload-artifact` 必须 `retention-days: 7`
+- `origin/main` 仍是未加开关的 Automatic Release。这仍不是已经发布，也不是 PR#2 可以合进 `main`
