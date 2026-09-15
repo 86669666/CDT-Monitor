@@ -191,6 +191,28 @@ scan_action_pins() {
   done
 }
 
+scan_workflow_hygiene() {
+  local f body
+  shopt -s nullglob
+  for f in .github/workflows/*.yml; do
+    body="$(strip_comments "$f")"
+    if ! grep -Eq '^concurrency:' <<<"$body"; then
+      bad "$f: missing top-level concurrency group"
+    fi
+    if ! grep -Eq '^permissions:' <<<"$body"; then
+      bad "$f: missing top-level permissions"
+    fi
+    if grep -q 'actions/upload-artifact@' <<<"$body"; then
+      if ! grep -Eq 'retention-days:[[:space:]]*7' <<<"$body"; then
+        bad "$f: upload-artifact must set retention-days: 7"
+      fi
+      if grep -Eq 'retention-days:[[:space:]]*([8-9]|[1-9][0-9]+)' <<<"$body"; then
+        bad "$f: artifact retention longer than 7 days is forbidden on this fork"
+      fi
+    fi
+  done
+}
+
 scan_dockerfile() {
   local f="Dockerfile"
   require_file "$f" || return
@@ -263,6 +285,7 @@ scan_compose
 scan_checkout_credentials
 scan_job_limits
 scan_action_pins
+scan_workflow_hygiene
 
 if [ "$fail" -ne 0 ]; then
   note "publish-guard failed; do not set publish vars or restore GHCR/Hub login"
