@@ -601,3 +601,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 `android-widget.yml` 使用 `setup-java` / `setup-android` / `setup-gradle` / wrapper-validation。其它 workflow 不要起 Android 构建面
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T22:28Z` / 2026-09-17 06:28 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `d1de3c2` 再加 Compose security_opt 白名单扫描：
+
+- Publish Guard 现只允许 `security_opt: no-new-privileges:true`。不要再加 systempaths/unconfined 等项
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
