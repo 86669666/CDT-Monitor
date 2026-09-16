@@ -1351,6 +1351,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 		t.Fatalf("remark status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account access_key_secret is too long"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account access_key_secret is too long") {
+		t.Fatalf("secret status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account region_id is invalid"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account region_id is invalid") {
 		t.Fatalf("region status = %d body = %s", rec.Code, rec.Body.String())
@@ -1394,6 +1399,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification payload is too long"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification payload is too long") {
 		t.Fatalf("payload status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("password is too long"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "password is too long") {
+		t.Fatalf("password status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1577,6 +1587,10 @@ func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
 	if short.Code != http.StatusBadRequest || !strings.Contains(short.Body.String(), "invalid_password") {
 		t.Fatalf("short password status = %d body = %s", short.Code, short.Body.String())
 	}
+	long := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"`+strings.Repeat("A", security.MaxPasswordRunes+1)+`"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if long.Code != http.StatusBadRequest || !strings.Contains(long.Body.String(), "invalid_password") {
+		t.Fatalf("long password status = %d body = %s", long.Code, long.Body.String())
+	}
 
 	ok := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"Replacement-Password-84!"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if ok.Code != http.StatusOK {
@@ -1690,6 +1704,49 @@ func TestTrustedProxyAllowlistParsesCIDRsAndBareIPs(t *testing.T) {
 	}
 	if !trustedProxy("127.0.0.1") {
 		t.Fatal("loopback must stay trusted when an allowlist is set")
+	}
+}
+
+func TestTrustedProxyAllowlistIgnoresOversizedEnv(t *testing.T) {
+	t.Setenv("CDT_TRUSTED_PROXIES", strings.Repeat("10.0.0.1,", (maxTrustedProxyEnvBytes/9)+2)+"10.0.0.0/8")
+	if trustedProxy("10.1.2.3") || trustedProxy("10.0.0.1") {
+		t.Fatal("oversized allowlist must not trust proxies")
+	}
+	if !trustedProxy("127.0.0.1") {
+		t.Fatal("loopback must stay trusted")
+	}
+}
+
+func TestTrustedProxyAllowlistCapsEntryCount(t *testing.T) {
+	entries := make([]string, 0, maxTrustedProxyNetworks+8)
+	for i := 0; i < maxTrustedProxyNetworks; i++ {
+		entries = append(entries, "11.0.0."+strconv.Itoa(i))
+	}
+	entries = append(entries, "10.0.0.0/8")
+	t.Setenv("CDT_TRUSTED_PROXIES", strings.Join(entries, ","))
+	if !trustedProxy("11.0.0.0") || !trustedProxy("11.0.0.31") {
+		t.Fatal("capped allowlist should keep the first entries")
+	}
+	if trustedProxy("10.1.2.3") {
+		t.Fatal("entries beyond cap must be ignored")
+	}
+}
+
+func TestClientIPTakesFirstForwardedHopAndClips(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/", nil)
+	req.RemoteAddr = "127.0.0.1:8080"
+	req.Header.Set("X-Forwarded-For", "198.51.100.20, 10.0.0.2, 192.168.1.1")
+	if got := clientIP(req); got != "198.51.100.20" {
+		t.Fatalf("first hop = %q", got)
+	}
+	req.Header.Set("X-Forwarded-For", strings.Repeat("9", maxClientIPRunes+8)+", 10.0.0.2")
+	if got := clientIP(req); got != strings.Repeat("9", maxClientIPRunes) {
+		t.Fatalf("clipped hop = %q", got)
+	}
+	req.RemoteAddr = "203.0.113.10:443"
+	req.Header.Set("X-Forwarded-For", "198.51.100.20")
+	if got := clientIP(req); got != "203.0.113.10" {
+		t.Fatalf("untrusted proxy hop = %q", got)
 	}
 }
 

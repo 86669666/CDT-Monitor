@@ -431,3 +431,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `env_file`、`command`、`entrypoint`。不要用宿主机 `.env` 把 AK 绕过 YAML 扫描，也不要覆盖镜像 `/cdt-monitor serve`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T07:47Z` / 2026-09-16 15:47 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `db28949` 再加 ubuntu-latest / 禁止 self-hosted 扫描：
+
+- Publish Guard 现要求每个 `runs-on` 仍是 GitHub-hosted `ubuntu-latest`，禁止 `self-hosted`。不要把 fork 的 CI 放到自建 runner 上
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

@@ -170,9 +170,14 @@ func TokenHash(token string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+const MaxPasswordRunes = 128
+
 func HashPassword(password string) (string, error) {
 	if len(password) < 10 {
 		return "", errors.New("password must be at least 10 characters")
+	}
+	if len([]rune(password)) > MaxPasswordRunes {
+		return "", errors.New("password is too long")
 	}
 	return hashPassword(password)
 }
@@ -191,6 +196,9 @@ const (
 )
 
 func hashPassword(password string) (string, error) {
+	if len([]rune(password)) > MaxPasswordRunes {
+		return "", errors.New("password is too long")
+	}
 	salt := make([]byte, argon2SaltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
@@ -246,6 +254,9 @@ func IsCurrentPasswordHash(encoded string) bool {
 }
 
 func VerifyPassword(encoded, password string) bool {
+	if len([]rune(password)) > MaxPasswordRunes {
+		return false
+	}
 	parsed, ok := parseArgon2id(encoded)
 	if !ok || parsed.memory != argon2Memory || parsed.iterations != argon2Iterations || parsed.parallelism != argon2Parallelism {
 		return false

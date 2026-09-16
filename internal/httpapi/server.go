@@ -246,6 +246,10 @@ func (s *Server) updateAdminPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_password", "新密码至少需要 10 个字符")
 		return
 	}
+	if len([]rune(request.NewPassword)) > security.MaxPasswordRunes {
+		writeError(w, http.StatusBadRequest, "invalid_password", "新密码过长")
+		return
+	}
 	currentToken := ""
 	if cookie, cookieErr := r.Cookie("cdt_session"); cookieErr == nil {
 		currentToken = cookie.Value
@@ -1012,12 +1016,28 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 	return true
 }
 
+const maxClientIPRunes = 64
+
 func clientIP(r *http.Request) string {
 	host := remoteIP(r)
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" && trustedProxy(host) {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		if len(forwarded) > 256 {
+			forwarded = forwarded[:256]
+		}
+		if i := strings.IndexByte(forwarded, ','); i >= 0 {
+			forwarded = forwarded[:i]
+		}
+		host = strings.TrimSpace(forwarded)
 	}
-	return host
+	return clipClientIP(host)
+}
+
+func clipClientIP(value string) string {
+	runes := []rune(value)
+	if len(runes) > maxClientIPRunes {
+		return string(runes[:maxClientIPRunes])
+	}
+	return value
 }
 
 func remoteIP(r *http.Request) string {
@@ -1048,13 +1068,21 @@ func trustedProxyAllowlistContains(ip net.IP) bool {
 	return false
 }
 
+const (
+	maxTrustedProxyEnvBytes = 4096
+	maxTrustedProxyNetworks = 32
+)
+
 func trustedProxyNetworks() []*net.IPNet {
 	raw := strings.TrimSpace(os.Getenv("CDT_TRUSTED_PROXIES"))
-	if raw == "" {
+	if raw == "" || len(raw) > maxTrustedProxyEnvBytes {
 		return nil
 	}
 	networks := make([]*net.IPNet, 0, 4)
 	for _, part := range strings.Split(raw, ",") {
+		if len(networks) >= maxTrustedProxyNetworks {
+			break
+		}
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -1114,11 +1142,13 @@ func safeStoreValidationMessage(msg string) bool {
 		"invalid timezone",
 		"administrator password must be at least 10 characters",
 		"administrator password is required",
+		"password is too long",
 		"account access_key_id and region_id are required",
 		"account access_key_id is invalid",
 		"account region_id is invalid",
 		"account instance_id is invalid",
 		"account remark is too long",
+		"account access_key_secret is too long",
 		"notification header fields must not contain line breaks",
 		"account schedule time is invalid",
 		"notification port is invalid",
