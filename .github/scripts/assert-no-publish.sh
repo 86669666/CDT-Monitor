@@ -845,6 +845,18 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+entrypoint:' <<<"$body"; then
     bad "$f: entrypoint: overrides are forbidden; keep /cdt-monitor"
   fi
+  if grep -Eq '^[[:space:]]*networks:' <<<"$body"; then
+    bad "$f: extra Compose networks are forbidden; keep the default bridge and loopback publish"
+  fi
+  if grep -Eq '^[[:space:]]+expose:' <<<"$body"; then
+    bad "$f: expose: is forbidden; TLS stays at an external reverse proxy"
+  fi
+  if grep -Eq '^[[:space:]]+depends_on:' <<<"$body"; then
+    bad "$f: depends_on is forbidden; this Compose has no sidecars"
+  fi
+  if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
+    bad "$f: external: true is forbidden; keep the named cdt-data volume local"
+  fi
   svc_keys="$(awk '
     $0 ~ /^services:[[:space:]]*$/ { in_svc=1; next }
     in_svc && $0 ~ /^[^[:space:]]/ { in_svc=0 }
