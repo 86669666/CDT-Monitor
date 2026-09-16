@@ -1286,6 +1286,31 @@ func TestGetJobRejectsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestClaimJobFailsOversizedPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-claim-oversized-payload"
+	blob := strings.Repeat("x", maxJobPayloadRunes+1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,1,?,'queued',3,unixepoch(),unixepoch(),unixepoch())`, id, "refresh_account", blob); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimJob(ctx)
+	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, jobErr string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, id).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(jobErr, "payload is too long") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+}
+
 func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
