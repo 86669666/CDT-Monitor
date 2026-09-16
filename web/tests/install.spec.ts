@@ -9150,3 +9150,19 @@ test('settings logs surface the live not_found envelope', async ({ page }) => {
   await expect(page.getByText('暂无日志')).toBeVisible()
   await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
 })
+
+test('settings logs surface the live internal_error envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
