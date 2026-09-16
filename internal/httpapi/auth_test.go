@@ -1081,6 +1081,46 @@ func TestLogsGETRedactsTelegramToken(t *testing.T) {
 	}
 }
 
+func TestLogsGETRedactsEmailIdentities(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops-alerts@example.test"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddLog(ctx, "error", "smtp AUTH failed for monitor@example.test sending to ops-alerts@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("logs status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "monitor@example.test") || strings.Contains(body, "ops-alerts@example.test") {
+		t.Fatalf("logs GET leaked email identity: %s", body)
+	}
+	reload := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if reload.Code != http.StatusOK {
+		t.Fatalf("config status = %d body = %s", reload.Code, reload.Body.String())
+	}
+	var gotConfig domain.Config
+	if err = json.Unmarshal(reload.Body.Bytes(), &gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if gotConfig.Notifications.Email.Username != "monitor@example.test" || gotConfig.Notifications.Email.To != "ops-alerts@example.test" {
+		t.Fatalf("GET config must still expose SMTP username and recipient: %#v", gotConfig.Notifications.Email)
+	}
+}
+
 func TestLogsGETRedactsTelegramChatID(t *testing.T) {
 	st := initializedAuthStore(t)
 	ctx := t.Context()
