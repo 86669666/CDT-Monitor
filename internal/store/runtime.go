@@ -348,6 +348,7 @@ const (
 	maxOutboxPayloadRunes       = 8192
 	maxOutboxEventIDRunes       = 64
 	maxOutboxChannels           = 3
+	maxOutboxIDBytes            = 128
 	maxNotificationTitleRunes   = 128
 	maxNotificationSummaryRunes = 1024
 	maxNotificationFields       = 16
@@ -448,12 +449,22 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 	return item, err
 }
 
+func validOutboxID(id string) bool {
+	return id != "" && len(id) <= maxOutboxIDBytes
+}
+
 func (s *Store) CompleteOutbox(ctx context.Context, id string) error {
+	if !validOutboxID(id) {
+		return sql.ErrNoRows
+	}
 	_, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status='sent',last_error='',updated_at=unixepoch() WHERE id=?`, id)
 	return err
 }
 
 func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) error {
+	if !validOutboxID(item.ID) {
+		return sql.ErrNoRows
+	}
 	status := "failed"
 	available := time.Now().UTC()
 	if item.Attempts < item.MaxAttempts {
