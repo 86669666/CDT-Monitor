@@ -89,6 +89,9 @@ scan_workflows() {
     if grep -Eiq 'tojson[[:space:]]*\([[:space:]]*secrets[[:space:]]*\)' <<<"$body"; then
       bad "$f: toJSON(secrets) is forbidden; do not dump the secret map into logs"
     fi
+    if grep -Fq 'docker.sock' <<<"$body"; then
+      bad "$f: docker.sock is forbidden; CI must not control the host Docker daemon"
+    fi
   done
 }
 
@@ -871,6 +874,15 @@ scan_compose() {
   fi
   if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
     bad "$f: external: true is forbidden; keep the named cdt-data volume local"
+  fi
+  if grep -Fq 'docker.sock' <<<"$body"; then
+    bad "$f: docker.sock bind is forbidden"
+  fi
+  if grep -Eq 'type:[[:space:]]*bind' <<<"$body"; then
+    bad "$f: bind mounts are forbidden; keep the named cdt-data volume"
+  fi
+  if grep -Eq '^[[:space:]]+-[[:space:]]+"?\./' <<<"$body"; then
+    bad "$f: relative host bind mounts are forbidden; keep the named cdt-data volume"
   fi
   svc_keys="$(awk '
     $0 ~ /^services:[[:space:]]*$/ { in_svc=1; next }

@@ -451,3 +451,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Dockerfile 里的 `curl`/`wget`、`ONBUILD` 和 `SHELL`。CA 仍只走一次 `apk add --no-cache ca-certificates`，不要再加管道安装器
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:28Z` / 2026-09-16 16:28 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `48b0890` 再加 docker.sock / bind-mount 扫描：
+
+- Publish Guard 现禁止 Compose/CI 挂 `docker.sock`，也禁止 `type: bind` 和相对路径宿主机 bind。数据只走本地 named volume `cdt-data`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
