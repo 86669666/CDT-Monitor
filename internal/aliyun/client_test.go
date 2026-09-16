@@ -703,6 +703,27 @@ func TestCallStopsAfterMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestCallRejectsOversizedAliyunCodes(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"` + strings.Repeat("T", maxAliyunCodeRunes+1) + `","Message":"throttling"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "code is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized code must not retry, hits=%d", hits)
+	}
+}
+
 func TestCallClipsAliyunErrorMessages(t *testing.T) {
 	client := NewClient()
 	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

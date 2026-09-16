@@ -582,8 +582,13 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	if resp.StatusCode >= 400 {
 		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
 	}
-	if code := stringValue(result["Code"]); code != "" && !isSuccessCode(code) {
-		return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, clipAliyunErrorText(stringValue(result["Message"])))
+	if code := stringValue(result["Code"]); code != "" {
+		if len([]rune(code)) > maxAliyunCodeRunes {
+			return nil, false, fmt.Errorf("aliyun %s invalid response: code is too long", action)
+		}
+		if !isSuccessCode(code) {
+			return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, clipAliyunErrorText(stringValue(result["Message"])))
+		}
 	}
 	return result, false, nil
 }
@@ -597,7 +602,10 @@ func isSuccessCode(code string) bool {
 	}
 }
 
-const maxAliyunErrorRunes = 240
+const (
+	maxAliyunErrorRunes = 240
+	maxAliyunCodeRunes  = 64
+)
 
 func clipAliyunErrorText(text string) string {
 	text = strings.TrimSpace(text)
