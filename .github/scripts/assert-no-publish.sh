@@ -783,6 +783,15 @@ scan_compose() {
   if grep -Eq 'ipc:[[:space:]]*host' <<<"$body"; then
     bad "$f: ipc: host is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+cap_add:' <<<"$body"; then
+    bad "$f: cap_add is forbidden; keep cap_drop ALL"
+  fi
+  if grep -Eq '^[[:space:]]+devices:' <<<"$body"; then
+    bad "$f: devices: passthrough is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+sysctls:' <<<"$body"; then
+    bad "$f: sysctls: is forbidden on this local Compose"
+  fi
 }
 
 scan_vars() {
