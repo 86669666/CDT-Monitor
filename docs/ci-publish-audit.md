@@ -296,3 +296,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 HEALTHCHECK 为 `30s/5s/10s/3` 且命令 `/cdt-monitor healthcheck`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:50Z` / 2026-09-16 10:50 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `039aade` 再加 Dockerfile VOLUME /data chown 扫描：
+
+- Publish Guard 现要求 `VOLUME ["/data"]` 且 `/runtime-data` 以 `--chown=65532:65532` 复制
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
