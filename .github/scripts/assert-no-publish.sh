@@ -170,6 +170,9 @@ scan_workflows() {
           ;;
       esac
     fi
+    if grep -Eq 'webfactory/ssh-agent|appleboy/scp-action|appleboy/ssh-action|ssh-key:' <<<"$body"; then
+      bad "$f: SSH deploy keys and scp/ssh actions are forbidden on this fork"
+    fi
   done
 }
 
