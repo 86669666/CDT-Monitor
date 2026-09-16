@@ -383,12 +383,25 @@ func allowedAliyunExtraValue(key, value string) bool {
 	}
 }
 
-func validateAliyunExtras(extras map[string]string) error {
+func allowedAliyunExtraForAction(action, key string) bool {
+	switch action {
+	case "DescribeInstanceStatus", "StartInstance":
+		return key == "RegionId" || key == "InstanceId"
+	case "StopInstance":
+		return key == "RegionId" || key == "InstanceId" || key == "StoppedMode"
+	case "DescribeInstanceBill":
+		return key == "BillingCycle" || key == "InstanceID" || key == "Granularity"
+	default:
+		return false
+	}
+}
+
+func validateAliyunExtras(action string, extras map[string]string) error {
 	if len(extras) > 8 {
 		return errors.New("aliyun extras are invalid")
 	}
 	for key, value := range extras {
-		if !allowedAliyunExtra(key) || !allowedAliyunExtraValue(key, value) {
+		if !allowedAliyunExtra(key) || !allowedAliyunExtraForAction(action, key) || !allowedAliyunExtraValue(key, value) {
 			return errors.New("aliyun extras are invalid")
 		}
 	}
@@ -433,7 +446,7 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	if !allowedAliyunVersion(version) {
 		return nil, errors.New("aliyun version is invalid")
 	}
-	if err := validateAliyunExtras(extras); err != nil {
+	if err := validateAliyunExtras(action, extras); err != nil {
 		return nil, err
 	}
 	if !allowedAliyunEndpoint(host, version, action) {

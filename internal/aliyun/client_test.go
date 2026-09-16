@@ -127,6 +127,10 @@ func TestCallRejectsUnknownExtras(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
 		t.Fatalf("stopped mode err=%v", err)
 	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": "i-test", "StoppedMode": "KeepCharging"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("status stopped mode err=%v", err)
+	}
 	if hits != 0 {
 		t.Fatalf("invalid extras must not call Aliyun, hits=%d", hits)
 	}
