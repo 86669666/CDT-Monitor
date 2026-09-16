@@ -2,6 +2,7 @@ package aliyun
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -755,5 +756,26 @@ func TestGetAccountBalanceCacheIsPerSiteType(t *testing.T) {
 	}
 	if hits != 2 {
 		t.Fatalf("international cache must be distinct, hits=%d hosts=%v", hits, hosts)
+	}
+}
+
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	followed := false
+	client := NewClient()
+	client.httpClient.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "169.254.169.254" {
+			followed = true
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+		}
+		header := make(http.Header)
+		header.Set("Location", "https://169.254.169.254/latest/meta-data/")
+		return &http.Response{StatusCode: http.StatusFound, Body: io.NopCloser(strings.NewReader("")), Header: header, Request: request}, nil
+	})
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if !errors.Is(err, errAliyunRedirect) {
+		t.Fatalf("err=%v", err)
+	}
+	if followed {
+		t.Fatal("aliyun client followed a redirect")
 	}
 }

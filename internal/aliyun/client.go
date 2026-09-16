@@ -57,11 +57,18 @@ type balanceCacheEntry struct {
 	createdAt time.Time
 }
 
+var errAliyunRedirect = errors.New("aliyun redirects are not allowed")
+
 func NewClient() *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 18 * time.Second},
-		traffic:    make(map[string]trafficCacheEntry),
-		balance:    make(map[string]balanceCacheEntry),
+		httpClient: &http.Client{
+			Timeout: 18 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return errAliyunRedirect
+			},
+		},
+		traffic: make(map[string]trafficCacheEntry),
+		balance: make(map[string]balanceCacheEntry),
 	}
 }
 
