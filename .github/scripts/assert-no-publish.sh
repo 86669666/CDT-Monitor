@@ -146,6 +146,14 @@ scan_workflows() {
           ;;
       esac
     fi
+    if grep -Fq 'softprops/action-gh-release' <<<"$body"; then
+      case "$(basename "$f")" in
+        release.yml) ;;
+        *)
+          bad "$f: action-gh-release is forbidden outside gated Release Binaries"
+          ;;
+      esac
+    fi
   done
 }
 
