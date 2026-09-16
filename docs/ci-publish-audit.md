@@ -581,3 +581,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 `.github/workflows/docker-build-push.yml` 使用 `docker/setup-buildx-action` 和 `docker/build-push-action`。CI / widget / Publish Guard 不要起 Buildx
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T21:36Z` / 2026-09-17 05:36 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `5df0e9f` 再加 Compose 单端口扫描：
+
+- Publish Guard 现只允许一条发布端口 `127.0.0.1:43210:8080`。不要再挂 8081 或其他 loopback 口
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
