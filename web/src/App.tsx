@@ -525,9 +525,9 @@ function NotificationSettings({ config, onChange, notify }: { config: Config; on
 
 function WebhookVariablePicker({ body, onBodyChange }: { body: string; onBodyChange: (body: string) => void }) {
   const variables = [
-    ['#TITLE#', '标题'], ['#MSG#', '消息'], ['#ACCOUNT#', '账号 ID'], ['#TRAFFIC#', '流量 GB'],
-    ['#MAX_TRAFFIC#', '阈值 %'], ['#INSTANCE#', '实例 ID'], ['#STATUS#', '实例状态'], ['#TYPE#', '事件类型'],
-    ['#CREATED_AT#', 'UTC 时间'],
+    ['#TITLE#', '标题'], ['#MSG#', '消息'], ['#ACCOUNT#', '账号 ID'], ['#ACCOUNT_ID#', '账号 ID'],
+    ['#TRAFFIC#', '流量 GB'], ['#TRAFFIC_GB#', '流量 GB'], ['#MAX_TRAFFIC#', '阈值 %'], ['#THRESHOLD_PERCENT#', '阈值 %'],
+    ['#INSTANCE#', '实例 ID'], ['#STATUS#', '实例状态'], ['#TYPE#', '事件类型'], ['#CREATED_AT#', 'UTC 时间'], ['#TIME#', 'UTC 时间'],
   ]
   const insert = (value: string) => onBodyChange(body + (body && !body.endsWith('\n') ? '\n' : '') + value)
   return <div className="webhook-variables"><div className="webhook-variables__head"><span>可用变量</span><small>点击插入到 Body 末尾，也可直接写入 URL</small></div><div className="webhook-variables__list">{variables.map(([value, label]) => <button type="button" key={value} onClick={() => insert(value)} title={`插入 ${value}`}><code>{value}</code><span>{label}</span></button>)}</div></div>
