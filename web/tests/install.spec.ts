@@ -6329,3 +6329,72 @@ test('settings wxpusher webhook template clears configured headers from a scrubb
   })
   expect(savedWebhook?.headers).not.toBe('')
 })
+
+test('instance start surfaces the invalid_action envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_action', message: 'action must be start or stop' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'action must be start or stop' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
+
+test('instance stop surfaces the invalid_action envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_action', message: 'action must be start or stop' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'action must be start or stop' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
+
+test('settings API key create surfaces the invalid_scope envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      expect(JSON.parse(route.request().postData() || '{}')).toMatchObject({
+        name: '桌面小组件',
+        scopes: ['widget:read'],
+      })
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'invalid_scope', message: 'invalid API key scope' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'invalid API key scope' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
