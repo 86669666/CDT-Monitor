@@ -70,8 +70,9 @@ type passkeySession struct {
 const adminWebAuthnID = "cdt-monitor-admin-v1"
 
 type rateWindow struct {
-	start time.Time
-	count int
+	start   time.Time
+	count   int
+	expires time.Time
 }
 
 func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger, build ...BuildInfo) *Server {
@@ -928,9 +929,14 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
+	for k, item := range s.limits {
+		if !item.expires.After(now) {
+			delete(s.limits, k)
+		}
+	}
 	entry := s.limits[key]
-	if entry == nil || now.Sub(entry.start) >= window {
-		s.limits[key] = &rateWindow{start: now, count: 1}
+	if entry == nil {
+		s.limits[key] = &rateWindow{start: now, count: 1, expires: now.Add(window)}
 		return true
 	}
 	if entry.count >= max {

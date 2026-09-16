@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/wang4386/CDT-Monitor/internal/domain"
@@ -248,5 +249,26 @@ func TestGitHubHTTPClientRequiresTLS12(t *testing.T) {
 	transport, ok := githubHTTPClient.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("github transport TLS = %#v", githubHTTPClient.Transport)
+	}
+}
+
+func TestAllowRateExpiresStaleWindows(t *testing.T) {
+	server := &Server{limits: make(map[string]*rateWindow)}
+	if !server.allowRate("login:1.1.1.1", 1, time.Hour) {
+		t.Fatal("first attempt should pass")
+	}
+	if server.allowRate("login:1.1.1.1", 1, time.Hour) {
+		t.Fatal("same-window excess should be limited")
+	}
+	server.limits["login:1.1.1.1"].expires = time.Now().Add(-time.Second)
+	server.limits["setup:2.2.2.2"] = &rateWindow{start: time.Now().Add(-time.Hour), count: 9, expires: time.Now().Add(-time.Second)}
+	if !server.allowRate("login:1.1.1.1", 1, time.Hour) {
+		t.Fatal("expired window should reset")
+	}
+	if _, ok := server.limits["setup:2.2.2.2"]; ok {
+		t.Fatal("stale rate window must be collected")
+	}
+	if len(server.limits) != 1 {
+		t.Fatalf("limits = %#v", server.limits)
 	}
 }
