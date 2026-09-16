@@ -69,8 +69,16 @@ test('installation wizard posts the setup contract and reaches the dashboard', a
   })
   const notifications = setupBody!.notifications as Record<string, Record<string, unknown>>
   expect(notifications.email).toMatchObject({ enabled: false, port: 465, security: 'ssl', password_configured: false })
+  expect(notifications.email).not.toHaveProperty('password')
   expect(notifications.telegram).toMatchObject({ enabled: false, token_configured: false, proxy_type: 'none', proxy_password_configured: false })
+  expect(notifications.telegram).not.toHaveProperty('token')
+  expect(notifications.telegram).not.toHaveProperty('proxy_url')
+  expect(notifications.telegram).not.toHaveProperty('proxy_pass')
   expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false })
+  expect(notifications.webhook).not.toHaveProperty('url')
+  expect(notifications.webhook).not.toHaveProperty('headers')
+  expect(notifications.webhook).not.toHaveProperty('body')
+  expect(notifications.webhook).not.toHaveProperty('secret')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('dashboard-desktop.png'), fullPage: true })
 
