@@ -9744,3 +9744,47 @@ test('settings API key create surfaces the live internal_error envelope', async 
   await expect(page.getByText('仅显示一次')).toHaveCount(0)
   expect(createCalls).toBe(1)
 })
+
+test('settings save surfaces the live unauthorized envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
+test('settings save surfaces the live internal_error envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 500,
+        json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
