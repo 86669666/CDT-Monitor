@@ -62,6 +62,24 @@ func TestRunJobRejectsOversizedControlSource(t *testing.T) {
 	}
 }
 
+func TestRunJobRejectsUnknownControlFields(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(context.Background(), domain.Job{
+		Type:      JobControlInstance,
+		AccountID: account.ID,
+		Payload:   `{"action":"start","source":"手动","reboot":true}`,
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("unknown field must not call Aliyun, controls=%#v", got)
+	}
+}
+
 func TestParseNotifyPayloadAllowlistsChannels(t *testing.T) {
 	var payload struct {
 		Channel string `json:"channel"`
