@@ -396,6 +396,9 @@ scan_checkout_credentials() {
     if grep -q 'actions/checkout@' <<<"$body" && ! grep -Eq 'persist-credentials:[[:space:]]*false' <<<"$body"; then
       bad "$f: checkout must set persist-credentials: false"
     fi
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+token:' <<<"$body"; then
+      bad "$f: checkout token: overrides are forbidden; do not pass a PAT"
+    fi
   done
 }
 
