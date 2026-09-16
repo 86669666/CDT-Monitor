@@ -7134,3 +7134,78 @@ test('admin password update surfaces the csrf_failed envelope', async ({ page })
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
   expect(updateCalls).toBe(1)
 })
+
+test('log clear surfaces the csrf_failed envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 403,
+        json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
+
+test('log clear surfaces the forbidden envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 403,
+        json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
+
+test('log clear surfaces the not_found envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 404,
+        json: { error: { code: 'not_found', message: '接口不存在' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
