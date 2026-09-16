@@ -9598,3 +9598,28 @@ test('admin password update surfaces the live forbidden envelope', async ({ page
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
   expect(updateCalls).toBe(1)
 })
+
+test('admin password update surfaces the live not_found envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
