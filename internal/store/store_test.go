@@ -376,7 +376,56 @@ func TestAccountSecretCannotBeSwappedBetweenAccounts(t *testing.T) {
 	if err != nil || got != "secret-one" {
 		t.Fatalf("original account secret = %q err=%v", got, err)
 	}
+	secrets, err := st.AccountSecrets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secrets) != 1 || secrets[0] != "secret-one" {
+		t.Fatalf("undecryptable swapped secret must be skipped: %#v", secrets)
+	}
+	listed, err = st.ListAccounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed[0].AccessKeySecret != "" || listed[1].AccessKeySecret != "" {
+		t.Fatalf("AccountSecrets must not attach plaintext to list results: %#v", listed)
+	}
 	_ = twoBlob
+}
+
+func TestAccountSecretsIncludesDeletedAccounts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAIkeep", AccessKeySecret: "keep-secret-value", RegionID: "cn-hongkong", InstanceID: "i-keep", MaxTraffic: 200, SiteType: "china"},
+			{AccessKeyID: "LTAIgone", AccessKeySecret: "gone-secret-value", RegionID: "cn-hongkong", InstanceID: "i-gone", MaxTraffic: 200, SiteType: "china"},
+		},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.Accounts = config.Accounts[:1]
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := st.ListAccounts(ctx)
+	if err != nil || len(listed) != 1 || listed[0].AccessKeySecret != "" {
+		t.Fatalf("active list=%#v err=%v", listed, err)
+	}
+	secrets, err := st.AccountSecrets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(secrets, ",")
+	if !strings.Contains(joined, "keep-secret-value") || !strings.Contains(joined, "gone-secret-value") {
+		t.Fatalf("deleted account secret missing from redaction material: %#v", secrets)
+	}
 }
 
 func TestInvalidTimezoneIsRejected(t *testing.T) {

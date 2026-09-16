@@ -424,6 +424,27 @@ func (s *Store) GetAccount(ctx context.Context, id int64) (domain.Account, error
 	return domain.Account{}, sql.ErrNoRows
 }
 
+func (s *Store) AccountSecrets(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT access_key_id, access_key_secret FROM accounts WHERE access_key_secret != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	secrets := make([]string, 0)
+	for rows.Next() {
+		var accessKeyID, encrypted string
+		if err = rows.Scan(&accessKeyID, &encrypted); err != nil {
+			return nil, err
+		}
+		plain, err := s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
+		if err != nil || len(plain) < 4 {
+			continue
+		}
+		secrets = append(secrets, plain)
+	}
+	return secrets, rows.Err()
+}
+
 func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 	var encrypted, accessKeyID string
 	err := s.db.QueryRowContext(ctx, `SELECT access_key_secret, access_key_id FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&encrypted, &accessKeyID)

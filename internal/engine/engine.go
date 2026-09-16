@@ -148,6 +148,10 @@ func (e *Engine) worker(ctx context.Context, index int) {
 	}
 }
 
+func (e *Engine) RunQueuedJobs(ctx context.Context) {
+	e.processJobs(ctx, 0)
+}
+
 func (e *Engine) processJobs(ctx context.Context, index int) {
 	for {
 		job, err := e.store.ClaimJob(ctx)
@@ -297,14 +301,14 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		wait.Wait()
 		if trafficErr != nil {
 			traffic = account.TrafficUsed
-			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(trafficErr, account.AccessKeyID, secret)))
+			_ = e.addLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(trafficErr, account.AccessKeyID, secret)))
 		}
 		if statusErr != nil || status == "" {
 			if statusErr == nil {
 				statusErr = errors.New("empty instance status")
 			}
 			status = account.InstanceStatus
-			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(statusErr, account.AccessKeyID, secret)))
+			_ = e.addLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(statusErr, account.AccessKeyID, secret)))
 		}
 		updatedAt := time.Now().UTC()
 		if trafficErr != nil && statusErr != nil {
@@ -358,7 +362,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 				"当前流量": fmt.Sprintf("%.2f GB", traffic), "设定阈值": fmt.Sprintf("%d%%", config.TrafficThreshold), "实例状态": status,
 			})
 			_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
-			_ = e.store.AddLog(ctx, "warning", event.Summary)
+			_ = e.addLog(ctx, "warning", event.Summary)
 		}
 	}
 
@@ -392,7 +396,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 		if force || now.Hour()%6 == 0 || !balanceCached || !billCached {
 			if billingErr := e.refreshBilling(ctx, account, secret, now); billingErr != nil {
-				_ = e.store.AddLog(ctx, "error", fmt.Sprintf("账单查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(billingErr, account.AccessKeyID, secret)))
+				_ = e.addLog(ctx, "error", fmt.Sprintf("账单查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(billingErr, account.AccessKeyID, secret)))
 			}
 		}
 	}
@@ -400,7 +404,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	if len(actions) > 0 {
 		message += " · 动作 " + strings.Join(actions, ",")
 	}
-	_ = e.store.AddLog(ctx, "heartbeat", message)
+	_ = e.addLog(ctx, "heartbeat", message)
 	return message, nil
 }
 
@@ -425,7 +429,7 @@ func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Confi
 		status = domain.StatusStopping
 	}
 	_ = e.store.UpdateRuntime(ctx, account.ID, account.TrafficUsed, status, time.Now().UTC())
-	_ = e.store.AddLog(ctx, "info", fmt.Sprintf("执行定时%s [%s]", map[string]string{"start": "开机", "stop": "关机"}[action], masked(account.AccessKeyID)))
+	_ = e.addLog(ctx, "info", fmt.Sprintf("执行定时%s [%s]", map[string]string{"start": "开机", "stop": "关机"}[action], masked(account.AccessKeyID)))
 	if config.EnableScheduleMail {
 		event := newEvent("schedule", "定时任务已执行", fmt.Sprintf("实例定时%s指令已发送。", map[string]string{"start": "开机", "stop": "关机"}[action]), account.ID, map[string]string{"账号": masked(account.AccessKeyID), "实例": account.InstanceID})
 		_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
@@ -473,7 +477,7 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 		return "", err
 	}
 	message := fmt.Sprintf("%s控制实例 [%s]：%s", source, masked(account.AccessKeyID), action)
-	_ = e.store.AddLog(ctx, "audit", message)
+	_ = e.addLog(ctx, "audit", message)
 	return message, nil
 }
 
@@ -485,7 +489,7 @@ func (e *Engine) accountLock(accountID int64) *sync.Mutex {
 func (e *Engine) refreshBilling(ctx context.Context, account domain.Account, secret string, now time.Time) error {
 	cycle := now.Format("2006-01")
 	setBillingError := func(err error) {
-		_ = e.store.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": sanitizeProviderError(err, account.AccessKeyID, secret)})
+		_ = e.store.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": e.persistRedacted(ctx, sanitizeProviderError(err, account.AccessKeyID, secret))})
 	}
 	var balance aliyun.BillingBalance
 	cached, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 6*time.Hour, &balance)
@@ -613,15 +617,26 @@ func masked(accessKeyID string) string {
 	return accessKeyID[:7] + "***"
 }
 
+func (e *Engine) addLog(ctx context.Context, logType, message string) error {
+	return e.store.AddLog(ctx, logType, e.persistRedacted(ctx, message))
+}
+
 func (e *Engine) persistRedacted(ctx context.Context, message string) string {
 	if message == "" {
 		return ""
 	}
-	config, err := e.store.GetConfig(ctx)
-	if err != nil {
-		return message
+	config, cfgErr := e.store.GetConfig(ctx)
+	extras, secretErr := e.store.AccountSecrets(ctx)
+	if cfgErr != nil && secretErr != nil {
+		return "[redacted]"
 	}
-	return notify.RedactSecrets(message, config)
+	if cfgErr != nil {
+		config = domain.Config{}
+	}
+	if secretErr != nil {
+		extras = nil
+	}
+	return notify.RedactSecrets(message, config, extras...)
 }
 
 func (e *Engine) persistRedactedErr(ctx context.Context, err error) error {
@@ -680,7 +695,7 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 				Message string `json:"message"`
 			}
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "error", "", 7*24*time.Hour, &billingError); ok {
-				item.BillingError = notify.RedactSecrets(strings.TrimSpace(billingError.Message), config)
+				item.BillingError = e.persistRedacted(ctx, strings.TrimSpace(billingError.Message))
 			}
 			var balance aliyun.BillingBalance
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 7*24*time.Hour, &balance); ok {

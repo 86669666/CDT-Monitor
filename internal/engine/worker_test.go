@@ -299,3 +299,57 @@ func TestProcessJobsPersistsRedactedNotifySecrets(t *testing.T) {
 		t.Fatalf("persisted job error missing redaction: %q", jobErr)
 	}
 }
+
+func TestAddLogPersistsRedactedNotifyAndAccountSecrets(t *testing.T) {
+	const token = "123456:AA-secret-token-value"
+	const ak = "ak-secret-value-xyz"
+	st, _ := setupAccount(t, func(config *domain.Config) {
+		config.Accounts[0].AccessKeySecret = ak
+		config.Notifications.Telegram.Token = token
+	})
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	msg := `Post "https://api.telegram.org/bot` + token + `/sendMessage": denied ` + ak
+	if err := eng.addLog(ctx, "error", msg); err != nil {
+		t.Fatal(err)
+	}
+	logs, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(logs) == 0 {
+		t.Fatalf("logs=%#v err=%v", logs, err)
+	}
+	got := logs[0].Message
+	if strings.Contains(got, token) || strings.Contains(got, ak) {
+		t.Fatalf("persisted log leaked secrets: %q", got)
+	}
+	if !strings.Contains(got, "[redacted]") {
+		t.Fatalf("persisted log missing redaction: %q", got)
+	}
+}
+
+func TestProcessJobsPersistsRedactedAccountSecret(t *testing.T) {
+	const ak = "ak-secret-value-xyz"
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.Accounts[0].AccessKeySecret = ak
+	})
+	defer st.Close()
+	provider := newFakeProvider()
+	provider.controlErr = errors.New("ecs denied " + ak)
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	job, err := eng.Enqueue(ctx, JobControlInstance, account.ID, ParseControlPayload("start", "手动"), JobUniqueKey(JobControlInstance, account.ID, "persist-ak"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.processJobs(ctx, 0)
+	var jobErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT error FROM jobs WHERE id=?`, job.ID).Scan(&jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(jobErr, ak) {
+		t.Fatalf("persisted job error leaked account secret: %q", jobErr)
+	}
+	if !strings.Contains(jobErr, "[redacted]") {
+		t.Fatalf("persisted job error missing redaction: %q", jobErr)
+	}
+}
