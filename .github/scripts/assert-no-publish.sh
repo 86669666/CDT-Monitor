@@ -792,6 +792,15 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+sysctls:' <<<"$body"; then
     bad "$f: sysctls: is forbidden on this local Compose"
   fi
+  if grep -Eq '^[[:space:]]+extra_hosts:' <<<"$body"; then
+    bad "$f: extra_hosts is forbidden"
+  fi
+  if grep -Eq 'stdin_open:[[:space:]]*true' <<<"$body"; then
+    bad "$f: stdin_open: true is forbidden on this local daemon Compose"
+  fi
+  if grep -Eq '^[[:space:]]+tty:[[:space:]]*true' <<<"$body"; then
+    bad "$f: tty: true is forbidden on this local daemon Compose"
+  fi
 }
 
 scan_vars() {
