@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, MAX_PASSWORD_RUNES, MAX_ACCESS_KEY_SECRET_RUNES, MAX_API_KEYS, MAX_PASSKEYS, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, MAX_PASSWORD_RUNES, MAX_ACCESS_KEY_SECRET_RUNES, MAX_API_KEYS, MAX_PASSKEYS, MAX_PASSKEY_NAME_RUNES, MAX_API_KEY_NAME_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -8798,4 +8798,95 @@ test('settings passkey create stays capped at the live passkey limit', async ({ 
   await expect(page.getByRole('button', { name: '创建 Passkey' })).toBeDisabled()
   await expect(page.getByText('Passkey 只能在 HTTPS 安全上下文中创建')).toBeVisible()
   await expect(page.getByText('尚未创建管理员 Passkey')).toHaveCount(0)
+})
+
+test('admin passkey name stops at the live rune cap', async ({ page }) => {
+  const overflow = `${'N'.repeat(MAX_PASSKEY_NAME_RUNES)}超`
+  const capped = 'N'.repeat(MAX_PASSKEY_NAME_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('设备名称').fill(overflow)
+  await expect(page.getByLabel('设备名称')).toHaveValue(capped)
+  await expect(page.getByRole('button', { name: '创建 Passkey' })).toBeDisabled()
+  await expect(page.getByText('Passkey 只能在 HTTPS 安全上下文中创建')).toBeVisible()
+})
+
+test('settings API key name posts at the live rune cap', async ({ page }) => {
+  let createCalls = 0
+  let createdName = ''
+  const overflow = `${'K'.repeat(MAX_API_KEY_NAME_RUNES)}超`
+  const capped = 'K'.repeat(MAX_API_KEY_NAME_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      const payload = JSON.parse(route.request().postData() || '{}') as { name?: string; scopes?: string[] }
+      createdName = payload.name || ''
+      expect(payload.scopes).toEqual(['widget:read'])
+      return route.fulfill({
+        status: 201,
+        json: {
+          key: { id: 1, name: capped, scopes: ['widget:read'], created_at: new Date().toISOString() },
+          token: 'cdt_test_token_once',
+        },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByLabel('名称').fill(overflow)
+  await expect(page.getByLabel('名称')).toHaveValue(capped)
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.getByText('仅显示一次')).toBeVisible()
+  expect(createCalls).toBe(1)
+  expect([...createdName]).toHaveLength(MAX_API_KEY_NAME_RUNES)
+  expect(createdName).toBe(capped)
+})
+
+test('settings save surfaces the live account region_id invalid envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'account region_id is invalid' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'account region_id is invalid' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
+test('wizard surfaces the live account region_id invalid setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'account region_id is invalid' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('account region_id is invalid')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
 })
