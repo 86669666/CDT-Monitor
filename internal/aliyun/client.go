@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -62,7 +63,8 @@ var errAliyunRedirect = errors.New("aliyun redirects are not allowed")
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: 18 * time.Second,
+			Timeout:   18 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return errAliyunRedirect
 			},

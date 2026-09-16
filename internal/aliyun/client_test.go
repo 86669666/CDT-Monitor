@@ -2,6 +2,7 @@ package aliyun
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net/http"
@@ -777,5 +778,12 @@ func TestClientDoesNotFollowRedirects(t *testing.T) {
 	}
 	if followed {
 		t.Fatal("aliyun client followed a redirect")
+	}
+}
+
+func TestClientRequiresTLS12(t *testing.T) {
+	transport, ok := NewClient().httpClient.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("aliyun transport TLS = %#v", NewClient().httpClient.Transport)
 	}
 }
