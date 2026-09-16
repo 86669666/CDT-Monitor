@@ -99,7 +99,7 @@ func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, 
 	if err != nil {
 		return nil, err
 	}
-	if len(ips) == 0 {
+	if len(ips) == 0 || len(ips) > maxAliyunResolvedIPs {
 		return nil, errAliyunForbiddenHost
 	}
 	for _, ip := range ips {
@@ -118,6 +118,8 @@ func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, 
 	}
 	return nil, lastErr
 }
+
+const maxAliyunResolvedIPs = 8
 
 var lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)

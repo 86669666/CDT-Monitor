@@ -1164,6 +1164,22 @@ func TestAliyunDialContextRejectsPrivateResolvedIPs(t *testing.T) {
 	}
 }
 
+func TestAliyunDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupAliyunIPs
+	lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxAliyunResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupAliyunIPs = original })
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("too many answers err=%v", err)
+	}
+}
+
 func TestAliyunDialContextRejectsNonTLSDestinations(t *testing.T) {
 	_, err := aliyunDialContext(context.Background(), "udp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
 	if !errors.Is(err, errAliyunForbiddenHost) {
