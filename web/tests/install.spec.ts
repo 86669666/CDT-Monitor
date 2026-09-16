@@ -7298,3 +7298,44 @@ test('settings webhook variable picker exposes live replacement aliases', async 
   expect(savedWebhook).toMatchObject({ body: '#TIME#' })
   expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
 })
+
+test('settings webhook variable picker inserts live aliases sequentially', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        body_configured: true,
+      }),
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('')
+  await page.getByTitle('插入 #ACCOUNT_ID#').click()
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('#ACCOUNT_ID#')
+  await page.getByTitle('插入 #TRAFFIC_GB#').click()
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('#ACCOUNT_ID#\n#TRAFFIC_GB#')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({ body: '#ACCOUNT_ID#\n#TRAFFIC_GB#' })
+  expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+})
