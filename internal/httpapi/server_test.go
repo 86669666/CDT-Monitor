@@ -267,6 +267,29 @@ func TestGitHubDialContextRejectsMetadataIP(t *testing.T) {
 	}
 }
 
+func TestForbiddenGitHubIPIncludesPrivateAndLoopback(t *testing.T) {
+	for _, raw := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.8", "100.64.0.1", "100.100.100.200", "fd00:ec2::254", "224.0.0.1"} {
+		if !forbiddenGitHubIP(net.ParseIP(raw)) {
+			t.Fatalf("%s must be forbidden", raw)
+		}
+	}
+	if forbiddenGitHubIP(net.ParseIP("8.8.8.8")) {
+		t.Fatal("public IP must remain allowed after DNS")
+	}
+}
+
+func TestGitHubDialContextRejectsPrivateResolvedIPs(t *testing.T) {
+	original := lookupGitHubIPs
+	lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	t.Cleanup(func() { lookupGitHubIPs = original })
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("loopback rebind err=%v", err)
+	}
+}
+
 func TestAllowRateExpiresStaleWindows(t *testing.T) {
 	server := &Server{limits: make(map[string]*rateWindow)}
 	if !server.allowRate("login:1.1.1.1", 1, time.Hour) {
