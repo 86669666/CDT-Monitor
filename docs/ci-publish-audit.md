@@ -421,3 +421,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `services:` 里只有 `cdt-monitor`，且唯一 `image:` 仍是无仓库前缀的 `cdt-monitor:local`。不要在 Compose 里加 nginx/caddy/traefik sidecar；HSTS/TLS 仍在外部反向代理
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T07:30Z` / 2026-09-16 15:30 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `8831163` 再加危险 workflow 触发扫描：
+
+- Publish Guard 现禁止 `pull_request_target`、`workflow_run`、`repository_dispatch` 和 `permissions: write-all`。fork PR 不得拿到 base 仓库权限，也不要靠 workflow_run 把 secrets 带到不可信代码
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
