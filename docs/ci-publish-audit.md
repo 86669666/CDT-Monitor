@@ -501,3 +501,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/github-script`。不要用它拿 `GITHUB_TOKEN` 跑任意 JS 去打 tag / 改仓库
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T11:54Z` / 2026-09-16 19:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e97bbec` 再加 Compose hostname/domainname 扫描：
+
+- Publish Guard 现禁止 Compose `hostname` 和 `domainname`。本地容器不要伪装成别的主机名
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

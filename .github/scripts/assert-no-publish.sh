@@ -912,6 +912,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+mac_address:' <<<"$body"; then
     bad "$f: mac_address is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+hostname:' <<<"$body"; then
+    bad "$f: hostname overrides are forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+domainname:' <<<"$body"; then
+    bad "$f: domainname overrides are forbidden"
+  fi
   if grep -Eq 'stdin_open:[[:space:]]*true' <<<"$body"; then
     bad "$f: stdin_open: true is forbidden on this local daemon Compose"
   fi
