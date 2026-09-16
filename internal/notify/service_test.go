@@ -170,6 +170,23 @@ func TestRedactSecretsIncludesAccountSecrets(t *testing.T) {
 	}
 }
 
+func TestRedactSecretsIncludesTelegramChatIDAndProxyUser(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.ChatID = "tg-chat-id-value"
+	config.Notifications.Telegram.ProxyUser = "socks-user-value"
+	msg := "telegram chat tg-chat-id-value via socks-user-value failed"
+	got := RedactSecrets(msg, config)
+	if strings.Contains(got, "tg-chat-id-value") || strings.Contains(got, "socks-user-value") {
+		t.Fatalf("telegram identity leaked: %q", got)
+	}
+	if strings.Count(got, "[redacted]") != 2 {
+		t.Fatalf("expected both identities redacted: %q", got)
+	}
+	if got := RedactSecrets("chat 42 ok", domain.Config{Notifications: domain.NotificationConfig{Telegram: domain.TelegramConfig{ChatID: "42"}}}); got != "chat 42 ok" {
+		t.Fatalf("short chat id should not redact: %q", got)
+	}
+}
+
 func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	allowed := []string{
 		"",
