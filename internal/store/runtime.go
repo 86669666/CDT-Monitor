@@ -14,7 +14,7 @@ import (
 )
 
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, message)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, clipRunes(message, maxLogRunes))
 	return err
 }
 
@@ -193,7 +193,7 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 }
 
 func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, result, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, clipRunes(result, maxLogRunes), id)
 	return err
 }
 
@@ -205,7 +205,7 @@ func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error
 		delay := time.Duration(1<<min(job.Attempts, 6)) * time.Second
 		available = available.Add(delay)
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,available_at=?,unique_key=CASE WHEN ?='failed' THEN NULL ELSE unique_key END,updated_at=unixepoch() WHERE id=?`, status, jobErr.Error(), available.Unix(), status, job.ID)
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,available_at=?,unique_key=CASE WHEN ?='failed' THEN NULL ELSE unique_key END,updated_at=unixepoch() WHERE id=?`, status, clipRunes(jobErr.Error(), maxLogRunes), available.Unix(), status, job.ID)
 	return err
 }
 
@@ -300,7 +300,7 @@ func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) 
 		status = "queued"
 		available = available.Add(time.Duration(1<<min(item.Attempts, 7)) * time.Second)
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status=?,last_error=?,available_at=?,updated_at=unixepoch() WHERE id=?`, status, sendErr.Error(), available.Unix(), item.ID)
+	_, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status=?,last_error=?,available_at=?,updated_at=unixepoch() WHERE id=?`, status, clipRunes(sendErr.Error(), maxLogRunes), available.Unix(), item.ID)
 	return err
 }
 
