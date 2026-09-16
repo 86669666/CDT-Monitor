@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"net"
@@ -370,5 +371,16 @@ func TestSendEmailRejectsHostnameResolvedToMetadata(t *testing.T) {
 	err := New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
 	if !errors.Is(err, errForbiddenNotifyHost) {
 		t.Fatalf("send err=%v", err)
+	}
+}
+
+func TestNotifyHTTPClientRequiresTLS12(t *testing.T) {
+	transport, ok := New().httpClient.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("default notify transport TLS = %#v", New().httpClient.Transport)
+	}
+	secured := tls12Transport(&http.Transport{})
+	if secured.TLSClientConfig == nil || secured.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("tls12Transport = %#v", secured.TLSClientConfig)
 	}
 }

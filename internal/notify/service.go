@@ -39,6 +39,9 @@ func New() *Service {
 }
 
 func notifyHTTPClient(timeout time.Duration, transport http.RoundTripper) *http.Client {
+	if transport == nil {
+		transport = tls12Transport(nil)
+	}
 	return &http.Client{
 		Timeout:   timeout,
 		Transport: transport,
@@ -46,6 +49,19 @@ func notifyHTTPClient(timeout time.Duration, transport http.RoundTripper) *http.
 			return errNotifyRedirect
 		},
 	}
+}
+
+func tls12Transport(base *http.Transport) *http.Transport {
+	if base == nil {
+		base = &http.Transport{}
+	}
+	if base.TLSClientConfig == nil {
+		base.TLSClientConfig = &tls.Config{}
+	}
+	cloned := base.TLSClientConfig.Clone()
+	cloned.MinVersion = tls.VersionTLS12
+	base.TLSClientConfig = cloned
+	return base
 }
 
 func EnabledChannels(config domain.Config) []string {
@@ -364,9 +380,9 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 		if err != nil {
 			return err
 		}
-		client = notifyHTTPClient(12*time.Second, &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+		client = notifyHTTPClient(12*time.Second, tls12Transport(&http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 			return dialer.Dial(network, address)
-		}})
+		}}))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
