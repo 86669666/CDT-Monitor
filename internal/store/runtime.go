@@ -168,6 +168,7 @@ const (
 	maxJobUniqueKeyRunes = 256
 	maxJobTypeRunes      = 64
 	maxJobAttempts       = 8
+	maxJobIDBytes        = 64
 )
 
 func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
@@ -207,7 +208,14 @@ func nullableString(value string) any {
 	return value
 }
 
+func validJobID(id string) bool {
+	return id != "" && len(id) <= maxJobIDBytes
+}
+
 func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
+	if !validJobID(id) {
+		return domain.Job{}, sql.ErrNoRows
+	}
 	var job domain.Job
 	var available, created, updated int64
 	err := s.db.QueryRowContext(ctx, `SELECT id,type,account_id,payload,status,result,error,attempts,max_attempts,available_at,created_at,updated_at FROM jobs WHERE id=?`, id).
@@ -241,6 +249,9 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 }
 
 func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
+	if !validJobID(id) {
+		return sql.ErrNoRows
+	}
 	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, clipRunes(result, maxLogRunes), id)
 	return err
 }
