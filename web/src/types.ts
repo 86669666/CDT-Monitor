@@ -16,6 +16,7 @@ export const MAX_NOTIFY_TCP_PORT = 65535
 export const MAX_WEBHOOK_HEADERS_RUNES = 4096
 export const MAX_WEBHOOK_BODY_RUNES = 8192
 export const MAX_NOTIFY_URL_RUNES = 2048
+export const MAX_NOTIFY_SECRET_RUNES = 255
 
 export function liveNotifyPort(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0
