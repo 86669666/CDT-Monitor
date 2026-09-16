@@ -321,3 +321,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求镜像前端 `npm ci --ignore-scripts` + `npm run build`，Go 侧 `CGO_ENABLED=0 ./cmd/cdt-monitor`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T03:30Z` / 2026-09-16 11:30 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `9a7bdfe` 再加 widget working-directory / setup-android 扫描：
+
+- Publish Guard 现要求 `working-directory: android-widget` 与 `android-actions/setup-android`
+- 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
