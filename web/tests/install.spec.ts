@@ -4063,15 +4063,12 @@ test('settings webhook keeps configured url when left empty', async ({ page }) =
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      webhook: {
+      webhook: liveGetWebhook({
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        secret_configured: false,
-        headers_configured: false,
         url_configured: true,
-        body_configured: false,
-      },
+      }),
     },
   }
   let savedWebhook: Record<string, unknown> | undefined
@@ -4110,15 +4107,12 @@ test('settings webhook clears configured url with the live sentinel', async ({ p
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      webhook: {
+      webhook: liveGetWebhook({
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        secret_configured: false,
-        headers_configured: false,
         url_configured: true,
-        body_configured: false,
-      },
+      }),
     },
   }
   let savedWebhook: Record<string, unknown> | undefined
@@ -4159,15 +4153,12 @@ test('settings webhook keeps configured body when left empty', async ({ page }) 
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      webhook: {
+      webhook: liveGetWebhook({
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        secret_configured: false,
-        headers_configured: false,
-        url_configured: false,
         body_configured: true,
-      },
+      }),
     },
   }
   let savedWebhook: Record<string, unknown> | undefined
@@ -4206,15 +4197,12 @@ test('settings webhook clears configured body with the live sentinel', async ({ 
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      webhook: {
+      webhook: liveGetWebhook({
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        secret_configured: false,
-        headers_configured: false,
-        url_configured: false,
         body_configured: true,
-      },
+      }),
     },
   }
   let savedWebhook: Record<string, unknown> | undefined
