@@ -476,6 +476,12 @@ scan_dockerfile() {
   if ! grep -Fq 'COPY go.mod go.sum ./' <<<"$body"; then
     bad "$f: Go deps must copy go.mod/go.sum before go mod download"
   fi
+  if ! grep -Eq '^COPY web \./$' <<<"$body"; then
+    bad "$f: frontend stage must COPY web ./ after the lockfile"
+  fi
+  if ! grep -Eq '^COPY \. \./$' <<<"$body"; then
+    bad "$f: builder must COPY . ./ after go mod download"
+  fi
   if ! grep -Fq 'RUN go mod download' <<<"$body"; then
     bad "$f: builder must run go mod download"
   fi
