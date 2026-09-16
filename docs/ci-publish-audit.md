@@ -621,3 +621,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `webfactory/ssh-agent`、`appleboy/scp-action` / `ssh-action` 和 `ssh-key:`。本 fork 不要用 SSH 把产物拷到生产机
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T23:05Z` / 2026-09-17 07:05 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `3f07d77` 再加 Compose 单 volume 扫描：
+
+- Publish Guard 现只允许服务 volume `cdt-data:/data`。不要再挂 cache 或其它路径
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
