@@ -126,6 +126,12 @@ scan_workflows() {
     if grep -Eq 'npm[[:space:]]+publish' <<<"$body"; then
       bad "$f: npm publish is forbidden on this fork"
     fi
+    if grep -Fq 'setup-qemu-action' <<<"$body"; then
+      bad "$f: QEMU/setup-qemu-action is forbidden on this fork"
+    fi
+    if grep -Fq 'docker-container' <<<"$body"; then
+      bad "$f: privileged docker-container Buildx is forbidden; keep driver: docker"
+    fi
   done
 }
 
@@ -840,6 +846,15 @@ scan_compose() {
   if ! grep -Eq 'cpus:[[:space:]]*1\.0' <<<"$body"; then
     bad "$f: cpus must stay 1.0"
   fi
+  if grep -Eq '^[[:space:]]+shm_size:' <<<"$body"; then
+    bad "$f: shm_size is forbidden; keep the default /dev/shm"
+  fi
+  if grep -Eq '^[[:space:]]+ulimits:' <<<"$body"; then
+    bad "$f: ulimits overrides are forbidden; keep pids_limit 256"
+  fi
+  if grep -Eq 'oom_kill_disable:[[:space:]]*true' <<<"$body"; then
+    bad "$f: oom_kill_disable is forbidden"
+  fi
   if ! grep -Eq 'CDT_LISTEN:[[:space:]]*:8080' <<<"$body"; then
     bad "$f: CDT_LISTEN must stay :8080"
   fi
@@ -882,11 +897,11 @@ scan_compose() {
   if grep -Eq 'network_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: network_mode: host is forbidden; keep loopback publish"
   fi
-  if grep -Eq 'pid:[[:space:]]*host' <<<"$body"; then
-    bad "$f: pid: host is forbidden"
+  if grep -Eq 'pid:[[:space:]]*(host|shareable|service:|container:)' <<<"$body"; then
+    bad "$f: pid namespace sharing is forbidden; keep loopback publish"
   fi
-  if grep -Eq 'ipc:[[:space:]]*host' <<<"$body"; then
-    bad "$f: ipc: host is forbidden"
+  if grep -Eq 'ipc:[[:space:]]*(host|shareable|service:|container:)' <<<"$body"; then
+    bad "$f: ipc namespace sharing is forbidden"
   fi
   if grep -Eq 'cgroup:[[:space:]]*host|cgroupns:[[:space:]]*host|cgroupns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: host cgroup namespace is forbidden"

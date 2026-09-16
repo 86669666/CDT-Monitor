@@ -511,3 +511,18 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `gh release create`、`gh auth login`、`actions/create-release` 和 `npm publish`。GitHub Release 只走已加开关的 draft action
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:23Z` / 2026-09-16 20:23 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `dad4a5d` 再加 Compose shm/ulimits/oom 扫描：
+
+- Publish Guard 现禁止 Compose `shm_size`、`ulimits` 和 `oom_kill_disable`。资源上限仍是 `pids_limit 256` / `mem_limit 512m` / `cpus 1.0`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:34Z` / 2026-09-16 20:34 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `13dc6cc` 再加 QEMU / docker-container Buildx 扫描：
+
+- Publish Guard 现对所有 workflow 禁止 `setup-qemu-action` 和 `docker-container` Buildx。多架构/特权 builder 不要回来；container verify 仍用 `driver: docker`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:56Z` / 2026-09-16 20:56 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `572170f` 再加 Compose pid/ipc sharing 扫描：
+
+- Publish Guard 现禁止 Compose `pid`/`ipc` 的 `host`、`shareable`、`service:`、`container:` 共享。不要把本地容器接到别的 PID/IPC 命名空间
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
