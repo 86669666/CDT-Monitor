@@ -104,6 +104,29 @@ func TestCallRejectsUnknownActions(t *testing.T) {
 	}
 }
 
+func TestCallRejectsUnknownHosts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "evil.example.test", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun host is invalid") {
+		t.Fatalf("evil host err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.not_a_region.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun host is invalid") {
+		t.Fatalf("bad ecs host err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown host must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunHost("cdt.aliyuncs.com") || !allowedAliyunHost("ecs.cn-hongkong.aliyuncs.com") || allowedAliyunHost("ecs.aliyuncs.com") {
+		t.Fatal("host allowlist mismatch")
+	}
+}
+
 func TestCallRequiresAccessKey(t *testing.T) {
 	var hits int
 	client := NewClient()

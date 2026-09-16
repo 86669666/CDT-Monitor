@@ -329,12 +329,31 @@ func allowedAliyunAction(action string) bool {
 	}
 }
 
+func allowedAliyunHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || strings.ContainsAny(host, "/:@") {
+		return false
+	}
+	switch host {
+	case "cdt.aliyuncs.com", "business.aliyuncs.com", "business.ap-southeast-1.aliyuncs.com":
+		return true
+	}
+	const prefix, suffix = "ecs.", ".aliyuncs.com"
+	if !strings.HasPrefix(host, prefix) || !strings.HasSuffix(host, suffix) {
+		return false
+	}
+	return validECSRegion(strings.TrimSuffix(strings.TrimPrefix(host, prefix), suffix))
+}
+
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
 	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
 		return nil, errors.New("access key is required")
 	}
 	if !allowedAliyunAction(action) {
 		return nil, errors.New("aliyun action is invalid")
+	}
+	if !allowedAliyunHost(host) {
+		return nil, errors.New("aliyun host is invalid")
 	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
