@@ -547,6 +547,9 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if !validScheduleClock(a.StartTime) || !validScheduleClock(a.StopTime) {
 			return nil, errors.New("schedule time is invalid")
 		}
+		if !validTrafficSample(a.TrafficUsed) {
+			return nil, errors.New("traffic sample is invalid")
+		}
 		a.SecretConfigured = secret != ""
 		a.ScheduleEnabled = schedule == 1
 		if updated > 0 {
