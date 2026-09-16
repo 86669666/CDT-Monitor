@@ -44,6 +44,24 @@ func TestParseControlPayloadUnknownActionDoesNotCallProvider(t *testing.T) {
 	}
 }
 
+func TestRunJobTrimsControlAction(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(context.Background(), domain.Job{
+		Type:      JobControlInstance,
+		AccountID: account.ID,
+		Payload:   `{"action":" START ","source":" 手动 "}`,
+	})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
+		t.Fatalf("controls=%#v", got)
+	}
+}
+
 func TestRunJobRejectsOversizedControlSource(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()
