@@ -52,8 +52,8 @@ export const dashboardConfig: Config = {
   timezone: 'Asia/Shanghai',
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
-    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '', secret_configured: false, headers_configured: false },
+    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_url_configured: false, proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
+    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '', secret_configured: false, headers_configured: false, url_configured: false },
   },
   accounts: [{
     id: 1,
