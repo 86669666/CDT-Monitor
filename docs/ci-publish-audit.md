@@ -341,3 +341,13 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 node/go/alpine 阶段 `--platform=$BUILDPLATFORM`，最终 `FROM scratch` 不钉 platform
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T04:20Z` / 2026-09-16 12:20 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e12a4cf` 再加 Dockerfile COPY --from=frontend dist 扫描：
+
+- Publish Guard 现要求嵌入 UI 来自 frontend 阶段 `internal/web/dist`，二进制来自 builder，而不是宿主机预提交的 dist
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T04:30Z` / 2026-09-16 12:30 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b58361f` 再加 Dockerfile lockfile COPY 扫描：
+
+- Publish Guard 现要求先 COPY `package-lock.json` / `go.mod` `go.sum`，再 `npm ci` / `go mod download`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
