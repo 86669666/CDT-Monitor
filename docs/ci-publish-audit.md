@@ -221,3 +221,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Android Widget 用 `secrets.ANDROID_KEYSTORE_BASE64`、`umask 077`、写在 `$RUNNER_TEMP`，并在 `if: always()` 里 `shred`
 - 仓库 secrets 仍为空。这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T00:06Z` / 2026-09-16 08:06 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `1fbd22c` 再加 Compose tmpfs/healthcheck 扫描：
+
+- Publish Guard 现要求 `/tmp` tmpfs 为 `noexec,nosuid,nodev`，healthcheck 为 `/cdt-monitor healthcheck`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
