@@ -394,7 +394,32 @@ func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) 
 	return err
 }
 
+const maxBillingCacheBytes = 8192
+
+func validBillingCacheType(cacheType string) bool {
+	switch cacheType {
+	case "balance", "instance_bill", "error":
+		return true
+	default:
+		return false
+	}
+}
+
+func validBillingCycle(cycle string) bool {
+	if cycle == "" {
+		return true
+	}
+	if len(cycle) != 7 {
+		return false
+	}
+	_, err := time.Parse("2006-01", cycle)
+	return err == nil
+}
+
 func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cycle string, maxAge time.Duration, target any) (bool, error) {
+	if !validBillingCacheType(cacheType) || !validBillingCycle(cycle) {
+		return false, errors.New("billing cache key is invalid")
+	}
 	var data string
 	var updated int64
 	err := s.db.QueryRowContext(ctx, `SELECT data,updated_at FROM billing_cache WHERE account_id=? AND cache_type=? AND billing_cycle=?`, accountID, cacheType, cycle).Scan(&data, &updated)
@@ -408,9 +433,15 @@ func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cy
 }
 
 func (s *Store) SetBillingCache(ctx context.Context, accountID int64, cacheType, cycle string, value any) error {
+	if !validBillingCacheType(cacheType) || !validBillingCycle(cycle) {
+		return errors.New("billing cache key is invalid")
+	}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
+	}
+	if len(data) > maxBillingCacheBytes {
+		return errors.New("billing cache payload is too long")
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(?,?,?,?,unixepoch()) ON CONFLICT(account_id,cache_type,billing_cycle) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at`, accountID, cacheType, cycle, string(data))
 	return err

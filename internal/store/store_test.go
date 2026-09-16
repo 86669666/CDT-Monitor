@@ -1548,6 +1548,30 @@ INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) V
 	}
 }
 
+func TestBillingCacheRejectsInvalidKeysAndOversizedPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.SetBillingCache(ctx, 1, "unknown", "", map[string]float64{"amount": 1}); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("type err=%v", err)
+	}
+	if err = st.SetBillingCache(ctx, 1, "instance_bill", "202609", map[string]float64{"amount": 1}); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("cycle err=%v", err)
+	}
+	if _, err = st.BillingCache(ctx, 1, "nope", "", time.Hour, &map[string]any{}); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("get type err=%v", err)
+	}
+	if err = st.SetBillingCache(ctx, 1, "error", "", map[string]string{"message": strings.Repeat("m", maxBillingCacheBytes)}); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("payload err=%v", err)
+	}
+	if err = st.SetBillingCache(ctx, 1, "instance_bill", "2026-09", map[string]float64{"total": 1}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBillingCacheIsIsolatedPerAccount(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
