@@ -379,6 +379,9 @@ scan_job_limits() {
     if grep -Eq 'security-events:[[:space:]]*write' <<<"$body"; then
       bad "$f: security-events: write is forbidden on this fork"
     fi
+    if grep -Eq '(deployments|statuses|checks|pages|repository-projects):[[:space:]]*write' <<<"$body"; then
+      bad "$f: extra GitHub write permissions are forbidden on this fork"
+    fi
     case "$base" in
       auto-release.yml|release.yml) ;;
       *)
