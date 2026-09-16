@@ -23,7 +23,7 @@ func TestMigratesLegacySecretsAndPassword(t *testing.T) {
 	_, err = db.Exec(`
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, access_key_id TEXT, access_key_secret TEXT, region_id TEXT, instance_id TEXT, max_traffic REAL, schedule_enabled INTEGER DEFAULT 0, start_time TEXT, stop_time TEXT, traffic_used REAL DEFAULT 0, instance_status TEXT DEFAULT 'Unknown', updated_at INTEGER DEFAULT 0, last_keep_alive_at INTEGER DEFAULT 0);
-INSERT INTO settings(key,value) VALUES('admin_password','legacy-password'),('notify_tg_token','legacy-token'),('notify_wh_secret','legacy-webhook-secret'),('notify_wh_url','https://example.test/hook?access_token=legacy-url-token');
+INSERT INTO settings(key,value) VALUES('admin_password','legacy-password'),('notify_tg_token','legacy-token'),('notify_wh_secret','legacy-webhook-secret'),('notify_wh_url','https://example.test/hook?access_token=legacy-url-token'),('notify_wh_body','{"access_token":"legacy-body-token"}');
 INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_traffic) VALUES('LTAIlegacy','legacy-secret','cn-hongkong','i-legacy',200);
 `)
 	if err != nil {
@@ -43,18 +43,24 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_secret'`).Scan(&webhook); err != nil {
 		t.Fatal(err)
 	}
-	var webhookURL string
+	var webhookURL, webhookBody string
 	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_url'`).Scan(&webhookURL); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_body'`).Scan(&webhookBody); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.db.QueryRow(`SELECT access_key_secret FROM accounts WHERE id=1`).Scan(&secret); err != nil {
 		t.Fatal(err)
 	}
-	if !security.IsBoundCiphertext(token) || !security.IsBoundCiphertext(webhook) || !security.IsBoundCiphertext(webhookURL) || !security.IsBoundCiphertext(secret) {
+	if !security.IsBoundCiphertext(token) || !security.IsBoundCiphertext(webhook) || !security.IsBoundCiphertext(webhookURL) || !security.IsBoundCiphertext(webhookBody) || !security.IsBoundCiphertext(secret) {
 		t.Fatal("legacy secrets were not bound to field AAD")
 	}
 	if strings.Contains(webhookURL, "legacy-url-token") {
 		t.Fatalf("webhook URL stored in plaintext: %q", webhookURL)
+	}
+	if strings.Contains(webhookBody, "legacy-body-token") {
+		t.Fatalf("webhook body stored in plaintext: %q", webhookBody)
 	}
 	telegram, err := st.DecryptAAD(token, "notify_tg_token")
 	if err != nil || telegram != "legacy-token" {
@@ -67,6 +73,10 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	urlPlain, err := st.DecryptAAD(webhookURL, "notify_wh_url")
 	if err != nil || urlPlain != "https://example.test/hook?access_token=legacy-url-token" {
 		t.Fatalf("webhook url = %q err=%v", urlPlain, err)
+	}
+	bodyPlain, err := st.DecryptAAD(webhookBody, "notify_wh_body")
+	if err != nil || bodyPlain != `{"access_token":"legacy-body-token"}` {
+		t.Fatalf("webhook body = %q err=%v", bodyPlain, err)
 	}
 	storedSecret, err := st.AccountSecret(context.Background(), 1)
 	if err != nil || storedSecret != "legacy-secret" {
@@ -240,6 +250,56 @@ func TestWebhookURLIsEncryptedAtRestAndClearable(t *testing.T) {
 	cleared, err := st.GetConfig(ctx)
 	if err != nil || cleared.Notifications.Webhook.URL != "" || cleared.Notifications.Webhook.URLConfigured {
 		t.Fatalf("sentinel must clear stored endpoint: %#v err=%v", cleared.Notifications.Webhook, err)
+	}
+}
+
+func TestWebhookBodyIsEncryptedAtRestAndClearable(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	template := `{"msgtype":"text","text":{"content":"token=body-token-value"}}`
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts:      []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{Body: template}},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='notify_wh_body'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !security.IsEncrypted(stored) || strings.Contains(stored, "body-token-value") {
+		t.Fatalf("webhook body must be encrypted at rest: %q", stored)
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil || loaded.Notifications.Webhook.Body != template || !loaded.Notifications.Webhook.BodyConfigured {
+		t.Fatalf("decrypted webhook body = %#v err=%v", loaded.Notifications.Webhook, err)
+	}
+	loaded.AdminPassword = ""
+	loaded.Accounts[0].AccessKeySecret = ""
+	loaded.Notifications.Webhook.Body = ""
+	if err = st.SaveConfig(ctx, loaded); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := st.GetConfig(ctx)
+	if err != nil || kept.Notifications.Webhook.Body != template || !kept.Notifications.Webhook.BodyConfigured {
+		t.Fatalf("empty body must keep stored template: %#v err=%v", kept.Notifications.Webhook, err)
+	}
+	kept.AdminPassword = ""
+	kept.Accounts[0].AccessKeySecret = ""
+	kept.Notifications.Webhook.Body = domain.ClearSecretSentinel
+	if err = st.SaveConfig(ctx, kept); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := st.GetConfig(ctx)
+	if err != nil || cleared.Notifications.Webhook.Body != "" || cleared.Notifications.Webhook.BodyConfigured {
+		t.Fatalf("sentinel must clear stored body: %#v err=%v", cleared.Notifications.Webhook, err)
 	}
 }
 

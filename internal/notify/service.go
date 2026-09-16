@@ -101,6 +101,7 @@ func notificationSecrets(config domain.Config, extraSecrets ...string) []string 
 		n.Webhook.URL,
 		n.Webhook.Headers,
 		n.Webhook.Secret,
+		n.Webhook.Body,
 		n.Telegram.ProxyURL,
 		n.Telegram.Token,
 		n.Telegram.ProxyPass,
