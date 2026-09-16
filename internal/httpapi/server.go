@@ -349,7 +349,7 @@ func (s *Server) completePasskeyRegistration(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err = s.store.SavePasskey(r.Context(), ceremony.name, *credential); err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 保存失败")
+		writeStoreValidationError(w, "passkey_failed", "Passkey 保存失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "创建管理员 Passkey")
@@ -1156,6 +1156,9 @@ func safeStoreValidationMessage(msg string) bool {
 		"account max traffic is invalid",
 		"too many accounts",
 		"too many api keys",
+		"too many passkeys",
+		"passkey credential is too large",
+		"passkey credential is invalid",
 		"notification identity is too long",
 		"notification payload is too long":
 		return true

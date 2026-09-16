@@ -1410,6 +1410,16 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 		t.Fatalf("accounts status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "api_key_failed", "API Key 创建失败", errors.New("too many api keys"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "too many api keys") {
+		t.Fatalf("api keys status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "passkey_failed", "Passkey 保存失败", errors.New("too many passkeys"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "too many passkeys") {
+		t.Fatalf("passkeys status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification identity is too long"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification identity is too long") {
 		t.Fatalf("identity status = %d body = %s", rec.Code, rec.Body.String())
