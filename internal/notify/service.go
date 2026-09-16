@@ -288,6 +288,7 @@ const (
 	maxWebhookHeadersRunes = 4096
 	maxWebhookBodyRunes    = 8192
 	maxNotifyURLRunes      = 2048
+	maxNotifySecretRunes   = 255
 )
 
 func ValidateSMTPIdentity(username, to string) error {
@@ -306,6 +307,34 @@ func ValidateTelegramChatID(id string) error {
 	}
 	if len([]rune(id)) > maxTelegramChatRunes {
 		return errInvalidNotifyIdentity
+	}
+	return nil
+}
+
+func ValidateNotifySecret(raw string) error {
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	if containsHeaderBreak(raw) {
+		return errInvalidNotifyHeader
+	}
+	if len([]rune(raw)) > maxNotifySecretRunes {
+		return errInvalidNotifyIdentity
+	}
+	return nil
+}
+
+func ValidateNotifyCredentials(config domain.NotificationConfig) error {
+	for _, raw := range []string{
+		config.Telegram.ProxyUser,
+		config.Telegram.ProxyPass,
+		config.Telegram.Token,
+		config.Email.Password,
+		config.Webhook.Secret,
+	} {
+		if err := ValidateNotifySecret(raw); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -481,6 +510,9 @@ func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.Noti
 	if err := ValidateSMTPIdentity(config.Username, config.To); err != nil {
 		return err
 	}
+	if err := ValidateNotifySecret(config.Password); err != nil {
+		return err
+	}
 	if err := ValidateTCPPort(config.Port); err != nil {
 		return err
 	}
@@ -561,6 +593,15 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 	if err := ValidateTelegramChatID(config.ChatID); err != nil {
 		return err
 	}
+	if err := ValidateNotifySecret(config.Token); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.ProxyUser); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.ProxyPass); err != nil {
+		return err
+	}
 	baseURL := "https://api.telegram.org"
 	if config.ProxyType == "custom" && config.ProxyURL != "" {
 		baseURL = strings.TrimRight(config.ProxyURL, "/")
@@ -610,6 +651,9 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 
 func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, event domain.NotificationEvent) error {
 	if err := ValidateWebhookBody(config.Body); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.Secret); err != nil {
 		return err
 	}
 	replacements := replacements(event)

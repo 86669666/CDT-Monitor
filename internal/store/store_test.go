@@ -457,6 +457,11 @@ func TestSaveConfigRejectsOversizedNotifyIdentity(t *testing.T) {
 	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "identity is too long") {
 		t.Fatalf("chat id err=%v", err)
 	}
+	config.Notifications.Telegram.ChatID = ""
+	config.Notifications.Telegram.ProxyUser = strings.Repeat("u", 256)
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "identity is too long") {
+		t.Fatalf("proxy user err=%v", err)
+	}
 }
 
 func TestSaveConfigRejectsOversizedWebhookPayload(t *testing.T) {

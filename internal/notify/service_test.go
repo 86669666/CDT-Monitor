@@ -377,6 +377,18 @@ func TestSendEmailRejectsInvalidPort(t *testing.T) {
 	}
 }
 
+func TestSendTelegramRejectsOversizedProxyUser(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyUser = strings.Repeat("u", maxNotifySecretRunes+1)
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("proxy user err=%v", err)
+	}
+}
+
 func TestSendTelegramRejectsInvalidSOCKSPort(t *testing.T) {
 	config := domain.Config{}
 	config.Notifications.Telegram.Enabled = true
@@ -458,6 +470,26 @@ func TestValidateSMTPIdentityRejectsOversizedMailbox(t *testing.T) {
 	}
 	if err := ValidateTelegramChatID("-100123"); err != nil {
 		t.Fatalf("normal chat id err=%v", err)
+	}
+}
+
+func TestValidateNotifySecretRejectsOversizedCredentials(t *testing.T) {
+	if err := ValidateNotifySecret(strings.Repeat("p", maxNotifySecretRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("secret err=%v", err)
+	}
+	if err := ValidateNotifySecret(strings.Repeat("p", maxNotifySecretRunes)); err != nil {
+		t.Fatalf("max secret err=%v", err)
+	}
+	if err := ValidateNotifySecret("proxy-user\nvalue"); !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("break err=%v", err)
+	}
+	if err := ValidateNotifySecret(domain.ClearSecretSentinel); err != nil {
+		t.Fatalf("clear sentinel err=%v", err)
+	}
+	config := domain.NotificationConfig{}
+	config.Telegram.ProxyUser = strings.Repeat("u", maxNotifySecretRunes+1)
+	if err := ValidateNotifyCredentials(config); !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("proxy user err=%v", err)
 	}
 }
 

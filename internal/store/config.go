@@ -240,6 +240,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if err := notify.ValidateNotifyOptions(config.Notifications); err != nil {
 		return err
 	}
+	if err := notify.ValidateNotifyCredentials(config.Notifications); err != nil {
+		return err
+	}
 	if len(config.Accounts) > maxAccounts {
 		return errors.New("too many accounts")
 	}
