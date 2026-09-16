@@ -161,6 +161,7 @@ var (
 	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
 	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
 	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
+	errInvalidNotifyPort       = errors.New("notification port is invalid")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -203,6 +204,28 @@ func ValidateDialHost(host string) error {
 	}
 	if forbiddenNotifyHost(host) {
 		return errForbiddenNotifyHost
+	}
+	return nil
+}
+
+func ValidateTCPPort(port int) error {
+	if port == 0 {
+		return nil
+	}
+	if port < 1 || port > 65535 {
+		return errInvalidNotifyPort
+	}
+	return nil
+}
+
+func ValidateTCPPortString(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return errInvalidNotifyPort
 	}
 	return nil
 }
@@ -355,6 +378,9 @@ func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.Noti
 	if err := ValidateSMTPIdentity(config.Username, config.To); err != nil {
 		return err
 	}
+	if err := ValidateTCPPort(config.Port); err != nil {
+		return err
+	}
 	if err := ValidateDialHost(config.Host); err != nil {
 		return err
 	}
@@ -446,6 +472,9 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 	form := url.Values{"chat_id": {config.ChatID}, "text": {eventText(event)}}
 	client := s.httpClient
 	if config.ProxyType == "socks5" && config.ProxyIP != "" && config.ProxyPort != "" {
+		if err := ValidateTCPPortString(config.ProxyPort); err != nil {
+			return err
+		}
 		var auth *proxy.Auth
 		if config.ProxyUser != "" || config.ProxyPass != "" {
 			auth = &proxy.Auth{User: config.ProxyUser, Password: config.ProxyPass}

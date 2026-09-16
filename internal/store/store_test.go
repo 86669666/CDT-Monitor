@@ -302,6 +302,34 @@ func TestSaveConfigRejectsInvalidScheduleClock(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsInvalidNotifyPorts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Email.Port = 65536
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification port is invalid") {
+		t.Fatalf("smtp port err=%v", err)
+	}
+	config.Notifications.Email.Port = 465
+	config.Notifications.Telegram.ProxyPort = "0"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification port is invalid") {
+		t.Fatalf("proxy port 0 err=%v", err)
+	}
+	config.Notifications.Telegram.ProxyPort = "1080"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSaveConfigRejectsNotifyHeaderInjection(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

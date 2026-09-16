@@ -339,6 +339,33 @@ func TestSendTelegramRejectsProxyHostnameResolvedToMetadata(t *testing.T) {
 	}
 }
 
+func TestSendEmailRejectsInvalidPort(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Email.Enabled = true
+	config.Notifications.Email.Host = "smtp.example.test"
+	config.Notifications.Email.Port = 70000
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops@example.test"
+	err := New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errInvalidNotifyPort) {
+		t.Fatalf("smtp port err=%v", err)
+	}
+}
+
+func TestSendTelegramRejectsInvalidSOCKSPort(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "socks5"
+	config.Notifications.Telegram.ProxyIP = "127.0.0.1"
+	config.Notifications.Telegram.ProxyPort = "not-a-port"
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errInvalidNotifyPort) {
+		t.Fatalf("socks port err=%v", err)
+	}
+}
+
 func TestSendEmailRejectsHeaderInjection(t *testing.T) {
 	config := domain.Config{}
 	config.Notifications.Email.Enabled = true

@@ -218,6 +218,12 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if err := notify.ValidateWebhookHeaders(config.Notifications.Webhook.Headers); err != nil {
 		return err
 	}
+	if err := notify.ValidateTCPPort(config.Notifications.Email.Port); err != nil {
+		return err
+	}
+	if err := notify.ValidateTCPPortString(config.Notifications.Telegram.ProxyPort); err != nil {
+		return err
+	}
 
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
 		if config.AdminPassword != "" {
