@@ -306,6 +306,10 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 数据加载失败")
 		return
 	}
+	if len(credentials) >= maxPasskeySessions {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "too many passkeys")
+		return
+	}
 	creation, session, err := s.webAuthn(r).BeginRegistration(&adminWebAuthnUser{credentials: credentials})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")

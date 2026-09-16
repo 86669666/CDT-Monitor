@@ -1779,6 +1779,23 @@ func TestClientIPTakesFirstForwardedHopAndClips(t *testing.T) {
 	}
 }
 
+func TestBeginPasskeyRegistrationRejectsWhenAtCapHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	for i := 0; i < maxPasskeySessions; i++ {
+		credential := webauthn.Credential{ID: []byte("credential-" + strconv.Itoa(i)), PublicKey: []byte("public-key")}
+		if err := st.SavePasskey(ctx, "key-"+strconv.Itoa(i), credential); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/begin", `{"name":"overflow"}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "too many passkeys") {
+		t.Fatalf("cap status = %d body = %s", got.Code, got.Body.String())
+	}
+}
+
 func TestCreatePasskeyRejectsOversizedNameHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
