@@ -352,12 +352,43 @@ func allowedAliyunExtra(key string) bool {
 	}
 }
 
+func validAliyunInstanceID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func allowedAliyunExtraValue(key, value string) bool {
+	switch key {
+	case "RegionId":
+		return validECSRegion(value)
+	case "InstanceId", "InstanceID":
+		return validAliyunInstanceID(value)
+	case "StoppedMode":
+		return value == "KeepCharging" || value == "StopCharging"
+	case "BillingCycle":
+		return validBillingCycle(value) == nil
+	case "Granularity":
+		return value == "MONTHLY"
+	default:
+		return false
+	}
+}
+
 func validateAliyunExtras(extras map[string]string) error {
 	if len(extras) > 8 {
 		return errors.New("aliyun extras are invalid")
 	}
 	for key, value := range extras {
-		if !allowedAliyunExtra(key) || len(value) > 64 {
+		if !allowedAliyunExtra(key) || !allowedAliyunExtraValue(key, value) {
 			return errors.New("aliyun extras are invalid")
 		}
 	}
