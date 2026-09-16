@@ -1268,6 +1268,24 @@ func TestGetJobRejectsOversizedID(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsOversizedPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-oversized-payload"
+	blob := strings.Repeat("x", maxJobPayloadRunes+1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,1,?,'queued',3,unixepoch(),unixepoch(),unixepoch())`, id, "refresh_account", blob); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, id)
+	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
