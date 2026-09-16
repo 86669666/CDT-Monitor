@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,39 @@ import (
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/notify"
 )
+
+func TestParseControlPayloadAllowlistsActions(t *testing.T) {
+	var payload struct {
+		Action string `json:"action"`
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal([]byte(ParseControlPayload("START", "手动")), &payload); err != nil || payload.Action != "start" || payload.Source != "手动" {
+		t.Fatalf("start payload=%#v err=%v", payload, err)
+	}
+	if err := json.Unmarshal([]byte(ParseControlPayload("reboot", strings.Repeat("s", maxControlSourceRunes+8))), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Action != "" {
+		t.Fatalf("unknown action leaked %q", payload.Action)
+	}
+	if got := []rune(payload.Source); len(got) != maxControlSourceRunes {
+		t.Fatalf("source len=%d", len(got))
+	}
+}
+
+func TestParseControlPayloadUnknownActionDoesNotCallProvider(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(context.Background(), domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: ParseControlPayload("reboot", "手动")})
+	if err == nil || !strings.Contains(err.Error(), "action must be start or stop") {
+		t.Fatalf("reboot err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("controls=%#v", got)
+	}
+}
 
 func TestManualStartAllowedWhenStatusUnknown(t *testing.T) {
 	st, account := setupAccount(t, nil)
