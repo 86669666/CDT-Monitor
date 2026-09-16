@@ -2782,6 +2782,108 @@ test('settings telegram custom proxy posts the live notify contract', async ({ p
   })
 })
 
+test('settings telegram keeps configured proxy url when left empty', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      telegram: {
+        enabled: true,
+        token_configured: true,
+        chat_id: '-1001',
+        proxy_type: 'custom',
+        proxy_url_configured: true,
+        proxy_ip: '',
+        proxy_port: '',
+        proxy_user: '',
+        proxy_password_configured: false,
+      },
+    },
+  }
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const urlField = page.getByLabel('反代 URL · 已配置')
+  await expect(urlField).toBeVisible()
+  await expect(urlField).toHaveAttribute('placeholder', '留空保持不变')
+  await expect(urlField).toHaveValue('')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    proxy_type: 'custom',
+    proxy_url_configured: true,
+  })
+  expect(savedTelegram).not.toHaveProperty('proxy_url')
+  expect(JSON.stringify(savedTelegram)).not.toContain('__clear__')
+})
+
+test('settings telegram clears configured proxy url with the live sentinel', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      telegram: {
+        enabled: true,
+        token_configured: true,
+        chat_id: '-1001',
+        proxy_type: 'custom',
+        proxy_url_configured: true,
+        proxy_ip: '',
+        proxy_port: '',
+        proxy_user: '',
+        proxy_password_configured: false,
+      },
+    },
+  }
+  let savedTelegram: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedTelegram = payload.notifications?.telegram
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const urlField = page.getByLabel('反代 URL · 已配置')
+  await expect(urlField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByText('清除已配置的反代 URL', { exact: true }).click()
+  await expect(urlField).toHaveAttribute('placeholder', '保存后清除')
+  await expect(urlField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedTelegram).toMatchObject({
+    enabled: true,
+    proxy_type: 'custom',
+    proxy_url: '__clear__',
+    proxy_url_configured: true,
+  })
+})
+
 test('settings bark webhook template requires a key', async ({ page }) => {
   let saveCalls = 0
   await mockInitStatus(page, true)
