@@ -475,6 +475,24 @@ func TestGetAccountBalanceUsesInternationalEndpoint(t *testing.T) {
 	}
 }
 
+func TestControlInstanceRejectsUnknownAction(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}
+	for _, action := range []string{"", "reboot", "delete", "STOPINSTANCE"} {
+		if err := client.ControlInstance(context.Background(), account, "secret", action, "KeepCharging"); err == nil || !strings.Contains(err.Error(), "instance action is invalid") {
+			t.Fatalf("action %q err=%v", action, err)
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("unknown actions must not call Aliyun, hits=%d", hits)
+	}
+}
+
 func TestControlInstanceStartSendsStartInstance(t *testing.T) {
 	var action, mode string
 	client := NewClient()
