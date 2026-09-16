@@ -38,7 +38,7 @@ docker compose logs -f cdt-monitor
 
 `VERSION` / `COMMIT` / `BUILT_AT` 只写入镜像 ldflags / `version` 输出。省略时仍是 `local` / `unknown` / `local`，与历史本地镜像一致。不要为了填这些值去 `docker login` 或 `compose push`。
 
-浏览器访问 `http://127.0.0.1:43210`。第一次进入安装向导。数据在 named volume `cdt-data`。
+浏览器访问 `http://127.0.0.1:43210`。第一次进入安装向导。数据在 named volume `cdt-data`。不要 bind-mount 宿主机目录或 `docker.sock`。
 
 等价的显式 build：
 
