@@ -8498,3 +8498,36 @@ test('settings email host posts at the live dial-host rune cap', async ({ page }
   expect([...host]).toHaveLength(MAX_NOTIFY_DIAL_HOST_RUNES)
   expect(host).toBe(capped)
 })
+
+test('settings telegram proxy ip posts at the live dial-host rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let proxyIP = ''
+  const overflow = `${'h'.repeat(MAX_NOTIFY_DIAL_HOST_RUNES)}超`
+  const capped = 'h'.repeat(MAX_NOTIFY_DIAL_HOST_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: { proxy_ip?: string } } }
+      expectKnownKeys(payload as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      proxyIP = payload.notifications?.telegram?.proxy_ip || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByLabel('代理类型').click()
+  await page.getByRole('option', { name: 'SOCKS5' }).click()
+  await page.getByLabel('代理 IP').fill(overflow)
+  await expect(page.getByLabel('代理 IP')).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...proxyIP]).toHaveLength(MAX_NOTIFY_DIAL_HOST_RUNES)
+  expect(proxyIP).toBe(capped)
+})
