@@ -413,6 +413,12 @@ scan_dockerfile() {
   if ! grep -Fq 'ARG IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor' <<<"$body"; then
     bad "$f: default IMAGE_SOURCE must stay https://github.com/86669666/CDT-Monitor"
   fi
+  if ! grep -Fq 'org.opencontainers.image.source="${IMAGE_SOURCE}"' <<<"$body"; then
+    bad "$f: OCI source label must use IMAGE_SOURCE"
+  fi
+  if ! grep -Fq 'org.opencontainers.image.licenses="MIT"' <<<"$body"; then
+    bad "$f: OCI licenses label must stay MIT"
+  fi
   if grep -Eq 'wang4386' <<<"$body"; then
     bad "$f: do not default image source to upstream wang4386"
   fi
