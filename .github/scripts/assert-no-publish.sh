@@ -375,6 +375,15 @@ scan_dockerfile() {
   if ! grep -Eq '^EXPOSE 8080$' <<<"$body"; then
     bad "$f: EXPOSE must stay 8080"
   fi
+  if ! grep -Eq '^STOPSIGNAL SIGTERM$' <<<"$body"; then
+    bad "$f: STOPSIGNAL must stay SIGTERM"
+  fi
+  if ! grep -Eq '^ENTRYPOINT \["/cdt-monitor"\]$' <<<"$body"; then
+    bad "$f: ENTRYPOINT must stay /cdt-monitor"
+  fi
+  if ! grep -Eq '^CMD \["serve"\]$' <<<"$body"; then
+    bad "$f: CMD must stay serve"
+  fi
   if grep -Eq 'FROM[[:space:]].*:latest' <<<"$body"; then
     bad "$f: :latest base tags are forbidden"
   fi
@@ -514,6 +523,12 @@ scan_compose() {
   fi
   if ! grep -Fq '/cdt-monitor", "healthcheck"' <<<"$body"; then
     bad "$f: healthcheck must stay /cdt-monitor healthcheck"
+  fi
+  if ! grep -Eq 'max-size:[[:space:]]*"10m"' <<<"$body"; then
+    bad "$f: json-file logs must stay max-size 10m"
+  fi
+  if ! grep -Eq 'max-file:[[:space:]]*"3"' <<<"$body"; then
+    bad "$f: json-file logs must stay max-file 3"
   fi
 }
 
