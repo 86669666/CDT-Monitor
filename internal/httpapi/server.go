@@ -633,11 +633,19 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github HTTP %d", response.StatusCode)
 	}
+	return decodeGitHubReleaseTag(response.Body)
+}
+
+func decodeGitHubReleaseTag(body io.Reader) (string, error) {
 	var payload struct {
 		TagName string `json:"tag_name"`
 	}
-	if err = json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(body, 1<<20))
+	if err := decoder.Decode(&payload); err != nil {
 		return "", err
+	}
+	if decoder.More() {
+		return "", errors.New("latest release response is invalid")
 	}
 	if payload.TagName == "" {
 		return "", errors.New("latest release has no tag")

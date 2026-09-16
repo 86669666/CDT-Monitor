@@ -246,6 +246,20 @@ func TestFetchLatestReleaseReadsTag(t *testing.T) {
 	}
 }
 
+func TestDecodeGitHubReleaseTagIgnoresUnknownFields(t *testing.T) {
+	got, err := decodeGitHubReleaseTag(strings.NewReader(`{"tag_name":"v1.2.3","html_url":"https://example.test/releases/v1.2.3"}`))
+	if err != nil || got != "v1.2.3" {
+		t.Fatalf("got=%q err=%v", got, err)
+	}
+}
+
+func TestDecodeGitHubReleaseTagRejectsTrailingJSON(t *testing.T) {
+	_, err := decodeGitHubReleaseTag(strings.NewReader(`{"tag_name":"v1.2.3"}{"tag_name":"v9.9.9"}`))
+	if err == nil || !strings.Contains(err.Error(), "response is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestFetchLatestReleaseRejectsOversizedTags(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"tag_name":"` + strings.Repeat("v", maxGitHubTagRunes+1) + `"}`))
