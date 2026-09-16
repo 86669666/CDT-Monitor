@@ -44,6 +44,18 @@ func TestParseControlPayloadUnknownActionDoesNotCallProvider(t *testing.T) {
 	}
 }
 
+func TestParseNotifyPayloadAllowlistsChannels(t *testing.T) {
+	var payload struct {
+		Channel string `json:"channel"`
+	}
+	if err := json.Unmarshal([]byte(ParseNotifyPayload("Telegram")), &payload); err != nil || payload.Channel != "telegram" {
+		t.Fatalf("telegram payload=%#v err=%v", payload, err)
+	}
+	if err := json.Unmarshal([]byte(ParseNotifyPayload("sms")), &payload); err != nil || payload.Channel != "" {
+		t.Fatalf("sms payload=%#v err=%v", payload, err)
+	}
+}
+
 func TestManualStartAllowedWhenStatusUnknown(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()
