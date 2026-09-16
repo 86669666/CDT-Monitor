@@ -232,7 +232,15 @@ func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error
 	return err
 }
 
+const (
+	maxLeaseNameRunes  = 64
+	maxLeaseOwnerRunes = 128
+)
+
 func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.Duration) (bool, error) {
+	if name == "" || owner == "" || len([]rune(name)) > maxLeaseNameRunes || len([]rune(owner)) > maxLeaseOwnerRunes {
+		return false, errors.New("lease identity is invalid")
+	}
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `INSERT INTO scheduler_leases(name,owner,expires_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at,updated_at=excluded.updated_at WHERE scheduler_leases.expires_at<? OR scheduler_leases.owner=?`,
 		name, owner, now.Add(ttl).Unix(), now.Unix(), now.Unix(), owner)

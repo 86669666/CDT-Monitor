@@ -1078,6 +1078,31 @@ func TestAddLogMessageIsClipped(t *testing.T) {
 	}
 }
 
+func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.AcquireLease(ctx, "", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("empty name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", "", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("empty owner err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes+1), "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", strings.Repeat("o", maxLeaseOwnerRunes+1), time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("owner err=%v", err)
+	}
+	got, err := st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes), strings.Repeat("o", maxLeaseOwnerRunes), time.Minute)
+	if err != nil || !got {
+		t.Fatalf("max identity = %v err=%v", got, err)
+	}
+}
+
 func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
