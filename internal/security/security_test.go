@@ -30,6 +30,26 @@ func TestHashPasswordRejectsShortSecrets(t *testing.T) {
 	}
 }
 
+func TestHashPasswordRejectsOversizedSecrets(t *testing.T) {
+	long := strings.Repeat("A", MaxPasswordRunes+1)
+	if _, err := HashPassword(long); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("oversized hash err=%v", err)
+	}
+	if _, err := HashPassword(strings.Repeat("A", MaxPasswordRunes)); err != nil {
+		t.Fatalf("max password err=%v", err)
+	}
+}
+
+func TestVerifyPasswordRejectsOversizedSecrets(t *testing.T) {
+	hash, err := HashPassword("Correct-Horse-42!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if VerifyPassword(hash, strings.Repeat("A", MaxPasswordRunes+1)) {
+		t.Fatal("oversized password must not verify")
+	}
+}
+
 func TestLegacyShortPasswordCanBeUpgraded(t *testing.T) {
 	hash, err := HashLegacyPassword("short")
 	if err != nil {

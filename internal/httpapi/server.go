@@ -246,6 +246,10 @@ func (s *Server) updateAdminPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_password", "新密码至少需要 10 个字符")
 		return
 	}
+	if len([]rune(request.NewPassword)) > security.MaxPasswordRunes {
+		writeError(w, http.StatusBadRequest, "invalid_password", "新密码过长")
+		return
+	}
 	currentToken := ""
 	if cookie, cookieErr := r.Cookie("cdt_session"); cookieErr == nil {
 		currentToken = cookie.Value
@@ -1122,6 +1126,7 @@ func safeStoreValidationMessage(msg string) bool {
 		"invalid timezone",
 		"administrator password must be at least 10 characters",
 		"administrator password is required",
+		"password is too long",
 		"account access_key_id and region_id are required",
 		"account access_key_id is invalid",
 		"account region_id is invalid",

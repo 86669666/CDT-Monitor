@@ -1395,6 +1395,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification payload is too long") {
 		t.Fatalf("payload status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("password is too long"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "password is too long") {
+		t.Fatalf("password status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {
@@ -1576,6 +1581,10 @@ func TestUpdateAdminPasswordKeepsCurrentSession(t *testing.T) {
 	short := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"short"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if short.Code != http.StatusBadRequest || !strings.Contains(short.Body.String(), "invalid_password") {
 		t.Fatalf("short password status = %d body = %s", short.Code, short.Body.String())
+	}
+	long := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"`+strings.Repeat("A", security.MaxPasswordRunes+1)+`"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if long.Code != http.StatusBadRequest || !strings.Contains(long.Body.String(), "invalid_password") {
+		t.Fatalf("long password status = %d body = %s", long.Code, long.Body.String())
 	}
 
 	ok := doRequest(t, handler, http.MethodPut, "/api/v1/admin/password", `{"current_password":"`+testAdminPassword+`","new_password":"Replacement-Password-84!"}`, []*http.Cookie{current, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
