@@ -6,6 +6,7 @@ name: Publish Guard
 # registry image names, or if Compose drops 127.0.0.1:43210.
 # Do not add pull_request_target, workflow_run, or repository_dispatch.
 # Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
+# Do not set continue-on-error or dump toJSON(secrets).
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
