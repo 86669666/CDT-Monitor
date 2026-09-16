@@ -774,6 +774,15 @@ scan_compose() {
   if ! grep -Fq 'IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor' <<<"$body"; then
     bad "$f: IMAGE_SOURCE must stay the 86669666 fork URL"
   fi
+  if grep -Eq 'network_mode:[[:space:]]*host' <<<"$body"; then
+    bad "$f: network_mode: host is forbidden; keep loopback publish"
+  fi
+  if grep -Eq 'pid:[[:space:]]*host' <<<"$body"; then
+    bad "$f: pid: host is forbidden"
+  fi
+  if grep -Eq 'ipc:[[:space:]]*host' <<<"$body"; then
+    bad "$f: ipc: host is forbidden"
+  fi
 }
 
 scan_vars() {
