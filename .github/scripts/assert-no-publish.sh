@@ -162,6 +162,14 @@ scan_workflows() {
           ;;
       esac
     fi
+    if grep -Eq 'actions/setup-go@|actions/setup-node@' <<<"$body"; then
+      case "$(basename "$f")" in
+        ci.yml|release.yml) ;;
+        *)
+          bad "$f: setup-go/setup-node are forbidden outside CI verify and gated Release Binaries"
+          ;;
+      esac
+    fi
   done
 }
 

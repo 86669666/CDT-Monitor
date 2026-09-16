@@ -22,6 +22,7 @@ name: Publish Guard
 # Buildx/build-push-action stays on Container Images verify only.
 # action-gh-release stays on gated Release Binaries only.
 # Android/Gradle actions stay on widget CI only.
+# setup-go/setup-node stay on CI verify and gated Release Binaries only.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 

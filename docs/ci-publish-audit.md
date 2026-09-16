@@ -606,3 +606,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 `security_opt: no-new-privileges:true`。不要再加 systempaths/unconfined 等项
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T22:36Z` / 2026-09-17 06:36 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `f483b13` 再加 setup-go/setup-node 白名单扫描：
+
+- Publish Guard 现只允许 `ci.yml` 和 gated `release.yml` 使用 `actions/setup-go` / `setup-node`。Publish Guard / widget / container 不要起 Go/Node 工具链
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
