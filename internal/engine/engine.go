@@ -564,7 +564,7 @@ func (e *Engine) flushOutbox(ctx context.Context) {
 				}
 			}()
 			var event domain.NotificationEvent
-			if sendErr = json.Unmarshal([]byte(item.Payload), &event); sendErr != nil {
+			if sendErr = decodeJobPayload(item.Payload, &event); sendErr != nil {
 				return sendErr
 			}
 			config, cfgErr := e.store.GetConfig(ctx)
