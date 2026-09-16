@@ -641,3 +641,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `submodules:`（含 gated auto-release）。不要拉嵌套仓库
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T23:45Z` / 2026-09-17 07:45 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `ca2e905` 再加 Compose cap_drop 白名单扫描：
+
+- Publish Guard 现只允许 Compose `cap_drop: ALL`。不要再列其它 capability
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

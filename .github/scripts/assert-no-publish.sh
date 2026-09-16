@@ -810,7 +810,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg
+  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg extra_cap
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -903,6 +903,14 @@ scan_compose() {
   fi
   if ! grep -Eq '^[[:space:]]+-[[:space:]]*ALL$' <<<"$body"; then
     bad "$f: cap_drop must include ALL"
+  fi
+  extra_cap="$(awk '
+    $0 ~ /^    cap_drop:[[:space:]]*$/ { in_c=1; next }
+    in_c && $0 ~ /^    [A-Za-z]/ { in_c=0 }
+    in_c && $0 ~ /^      - / { print }
+  ' <<<"$body" | grep -Ev '^      - ALL$' || true)"
+  if [ -n "$extra_cap" ]; then
+    bad "$f: extra cap_drop entries are forbidden; keep only ALL"
   fi
   if ! grep -Eq 'read_only:[[:space:]]*true' <<<"$body"; then
     bad "$f: read_only must stay true"
