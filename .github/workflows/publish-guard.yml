@@ -7,6 +7,7 @@ name: Publish Guard
 # Do not add pull_request_target, workflow_run, or repository_dispatch.
 # Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
 # Do not set continue-on-error or dump toJSON(secrets).
+# Do not add issue_comment, schedule, discussion, or watch triggers.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
