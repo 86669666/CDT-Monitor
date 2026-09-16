@@ -6,6 +6,7 @@ export type APIKeyScope = 'widget:read' | 'instance:control' | 'cron:run'
 
 export const CLEAR_SECRET_SENTINEL = '__clear__'
 export const MAX_ACCOUNTS = 32
+export const MAX_ACCOUNT_REMARK_RUNES = 64
 
 export type Account = {
   id: number
