@@ -48,8 +48,18 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	}
 	now := time.Now().UTC()
 	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-		security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
+		security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
 	return token, err
+}
+
+const maxUserAgentRunes = 256
+
+func clipUserAgent(value string) string {
+	runes := []rune(value)
+	if len(runes) <= maxUserAgentRunes {
+		return value
+	}
+	return string(runes[:maxUserAgentRunes])
 }
 
 func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
@@ -63,7 +73,7 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-			security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
+			security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
 		return err
 	})
 	return token, err

@@ -811,6 +811,30 @@ func TestCreateExclusiveSessionReplacesPrevious(t *testing.T) {
 	}
 }
 
+func TestSessionUserAgentIsClipped(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	long := strings.Repeat("A", 1024) + "💣"
+	token, err := st.CreateExclusiveSession(ctx, "127.0.0.1", long, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid, _ := st.ValidateSession(ctx, token); !valid {
+		t.Fatal("clipped session must validate")
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT user_agent FROM sessions`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != strings.Repeat("A", maxUserAgentRunes) {
+		t.Fatalf("stored user agent len = %d value = %q", len([]rune(stored)), stored)
+	}
+}
+
 func TestSessionExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
