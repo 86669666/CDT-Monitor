@@ -587,6 +587,13 @@ func TestNotifyDialContextRejectsTooManyResolvedIPs(t *testing.T) {
 	}
 }
 
+func TestNotifyDialContextRejectsNonTCP(t *testing.T) {
+	_, err := notifyDialContext(context.Background(), "udp", net.JoinHostPort("hooks.example.test", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+}
+
 func TestSOCKSTransportDialContextRejectsMetadataDestination(t *testing.T) {
 	dial := socksTransportDialContext(notifyContextDialer{})
 	_, err := dial(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
