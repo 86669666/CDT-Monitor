@@ -422,6 +422,12 @@ scan_dockerfile() {
   if ! grep -Fq -- '--chown=65532:65532 /runtime-data /data' <<<"$body"; then
     bad "$f: /data must be copied --chown=65532:65532"
   fi
+  if ! grep -Fq 'apk add --no-cache ca-certificates' <<<"$body"; then
+    bad "$f: certificates stage must install ca-certificates"
+  fi
+  if ! grep -Fq '/etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt' <<<"$body"; then
+    bad "$f: scratch image must copy ca-certificates.crt"
+  fi
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
