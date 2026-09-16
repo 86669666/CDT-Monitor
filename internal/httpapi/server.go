@@ -625,8 +625,13 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 	if payload.TagName == "" {
 		return "", errors.New("latest release has no tag")
 	}
+	if len([]rune(payload.TagName)) > maxGitHubTagRunes {
+		return "", errors.New("latest release tag is too long")
+	}
 	return payload.TagName, nil
 }
+
+const maxGitHubTagRunes = 64
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("cdt_session"); err == nil {
