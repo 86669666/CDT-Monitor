@@ -461,6 +461,14 @@ scan_dockerfile() {
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
+  if grep -Eq '^FROM --platform=.* scratch' <<<"$body"; then
+    bad "$f: final scratch stage must stay unpinned so the image platform matches TARGET"
+  fi
+  local bp
+  bp="$(grep -c -F -- 'FROM --platform=$BUILDPLATFORM' <<<"$body" || true)"
+  if [ "$bp" -lt 3 ]; then
+    bad "$f: node/go/alpine stages must pin --platform=\$BUILDPLATFORM (found $bp)"
+  fi
   if ! grep -Eq '^HEALTHCHECK ' <<<"$body"; then
     bad "$f: HEALTHCHECK is required"
   fi

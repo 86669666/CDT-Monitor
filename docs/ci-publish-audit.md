@@ -336,3 +336,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `ARG TARGETOS` / `ARG TARGETARCH` 不带默认值，编译用 `GOOS=${TARGETOS} GOARCH=${TARGETARCH}`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T03:59Z` / 2026-09-16 11:59 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `ab3ca2f` 再加 Dockerfile BUILDPLATFORM 扫描：
+
+- Publish Guard 现要求 node/go/alpine 阶段 `--platform=$BUILDPLATFORM`，最终 `FROM scratch` 不钉 platform
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
