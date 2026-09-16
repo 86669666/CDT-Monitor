@@ -126,6 +126,12 @@ scan_workflows() {
     if grep -Eq 'npm[[:space:]]+publish' <<<"$body"; then
       bad "$f: npm publish is forbidden on this fork"
     fi
+    if grep -Fq 'setup-qemu-action' <<<"$body"; then
+      bad "$f: QEMU/setup-qemu-action is forbidden on this fork"
+    fi
+    if grep -Fq 'docker-container' <<<"$body"; then
+      bad "$f: privileged docker-container Buildx is forbidden; keep driver: docker"
+    fi
   done
 }
 
