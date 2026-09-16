@@ -466,3 +466,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `cgroup: host`、`userns_mode: host`、自定义 `runtime` 和 `group_add`。本地容器不能再借宿主命名空间或 NVIDIA runtime 逃逸
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:58Z` / 2026-09-16 16:58 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `de25744` 再加 CI job services / GHA cache 扫描：
+
+- Publish Guard 现禁止 workflow `services:` sidecar，以及 `cache-to` / `cache-from` / `type=gha`。不要在 Actions 里起 redis/postgres，也不要把构建缓存推到 registry
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
