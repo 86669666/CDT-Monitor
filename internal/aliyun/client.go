@@ -592,6 +592,9 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	if jsonTooWide(result) {
 		return nil, false, fmt.Errorf("aliyun %s invalid response: nesting is too wide", action)
 	}
+	if reason := jsonLimitError(result); reason != "" {
+		return nil, false, fmt.Errorf("aliyun %s invalid response: %s", action, reason)
+	}
 	if resp.StatusCode >= 400 {
 		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
 	}
@@ -607,8 +610,10 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 }
 
 const (
-	maxAliyunJSONDepth   = 16
-	maxAliyunJSONBreadth = 1024
+	maxAliyunJSONDepth       = 16
+	maxAliyunJSONBreadth     = 1024
+	maxAliyunJSONKeyRunes    = 128
+	maxAliyunJSONStringRunes = 4096
 )
 
 func jsonDepth(value any) int {
@@ -656,6 +661,31 @@ func jsonTooWide(value any) bool {
 		}
 	}
 	return false
+}
+
+func jsonLimitError(value any) string {
+	switch nested := value.(type) {
+	case map[string]any:
+		for key, child := range nested {
+			if len([]rune(key)) > maxAliyunJSONKeyRunes {
+				return "key is too long"
+			}
+			if reason := jsonLimitError(child); reason != "" {
+				return reason
+			}
+		}
+	case []any:
+		for _, child := range nested {
+			if reason := jsonLimitError(child); reason != "" {
+				return reason
+			}
+		}
+	case string:
+		if len([]rune(nested)) > maxAliyunJSONStringRunes {
+			return "string is too long"
+		}
+	}
+	return ""
 }
 
 func isSuccessCode(code string) bool {

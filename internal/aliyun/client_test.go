@@ -746,6 +746,40 @@ func TestCallRejectsWideJSON(t *testing.T) {
 	}
 }
 
+func TestCallRejectsOversizedJSONKeys(t *testing.T) {
+	payload := `{"Code":"200","` + strings.Repeat("K", maxAliyunJSONKeyRunes+1) + `":1}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "key is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized json key must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsOversizedJSONStrings(t *testing.T) {
+	payload := `{"Code":"200","Pad":"` + strings.Repeat("A", maxAliyunJSONStringRunes+1) + `"}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "string is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized json string must not retry, hits=%d", hits)
+	}
+}
+
 func TestCallRejectsOversizedAliyunCodes(t *testing.T) {
 	hits := 0
 	client := NewClient()
