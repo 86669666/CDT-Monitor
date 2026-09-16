@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/tls"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -476,7 +477,8 @@ const githubReleaseURL = "https://api.github.com/repos/wang4386/CDT-Monitor/rele
 var errGitHubRedirect = errors.New("github redirects are not allowed")
 
 var githubHTTPClient = &http.Client{
-	Timeout: 4 * time.Second,
+	Timeout:   4 * time.Second,
+	Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
 	CheckRedirect: func(*http.Request, []*http.Request) error {
 		return errGitHubRedirect
 	},
