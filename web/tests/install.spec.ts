@@ -10,6 +10,7 @@ import {
   emptyHistory,
   expectKnownKeys,
   jobFixture,
+  liveGetWebhook,
   mockDashboardReads,
   mockInitStatus,
   mockUnauthorizedSession,
@@ -67,8 +68,7 @@ test('installation wizard posts the setup contract and reaches the dashboard', a
   const notifications = setupBody!.notifications as Record<string, Record<string, unknown>>
   expect(notifications.email).toMatchObject({ enabled: false, port: 465, security: 'ssl', password_configured: false })
   expect(notifications.telegram).toMatchObject({ enabled: false, token_configured: false, proxy_type: 'none', proxy_password_configured: false })
-  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false,
-        body_configured: false, body_configured: false })
+  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('dashboard-desktop.png'), fullPage: true })
 
@@ -2700,9 +2700,7 @@ test('settings telegram keeps configured proxy password when left empty', async 
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'socks5',
-        proxy_url: '',
         proxy_url_configured: false,
-        body_configured: false,
         proxy_ip: '127.0.0.1',
         proxy_port: '1080',
         proxy_user: 'proxy-user',
@@ -2752,9 +2750,7 @@ test('settings telegram clears configured proxy password with the live sentinel'
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'socks5',
-        proxy_url: '',
         proxy_url_configured: false,
-        body_configured: false,
         proxy_ip: '127.0.0.1',
         proxy_port: '1080',
         proxy_user: 'proxy-user',
@@ -4067,7 +4063,6 @@ test('settings webhook keeps configured url when left empty', async ({ page }) =
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        body: '',
         secret_configured: false,
         headers_configured: false,
         url_configured: true,
@@ -4115,7 +4110,6 @@ test('settings webhook clears configured url with the live sentinel', async ({ p
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        body: '',
         secret_configured: false,
         headers_configured: false,
         url_configured: true,
@@ -4258,15 +4252,12 @@ test('settings webhook keeps configured headers when left empty', async ({ page 
     notifications: {
       ...dashboardConfig.notifications,
       webhook: {
-        enabled: true,
-        url: 'https://example.invalid/hook',
-        method: 'POST',
-        request_type: 'JSON',
-        body: '',
-        secret_configured: false,
-        headers_configured: true,
-        url_configured: false,
-        body_configured: false,
+        ...liveGetWebhook({
+          enabled: true,
+          method: 'POST',
+          request_type: 'JSON',
+          headers_configured: true,
+        }),
       },
     },
   }
@@ -4291,19 +4282,22 @@ test('settings webhook keeps configured headers when left empty', async ({ page 
   await expect(headersField).toBeVisible()
   await expect(headersField).toHaveAttribute('placeholder', '留空保持不变')
   await expect(headersField).toHaveValue('')
+  await expect(page.getByLabel('Webhook URL')).toHaveValue('')
+  await expect(page.getByText('example.invalid')).toHaveCount(0)
   await page.getByRole('button', { name: '保存更改' }).click()
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(savedWebhook).toMatchObject({
     enabled: true,
-    url: 'https://example.invalid/hook',
     method: 'POST',
     request_type: 'JSON',
     headers_configured: true,
-        url_configured: false,
-        body_configured: false,
+    url_configured: false,
+    body_configured: false,
   })
   expect(savedWebhook).not.toHaveProperty('headers')
+  expect(savedWebhook).not.toHaveProperty('url')
   expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+  expect(JSON.stringify(savedWebhook)).not.toContain('example.invalid')
 })
 
 test('settings webhook clears configured headers with the live sentinel', async ({ page }) => {
@@ -4312,15 +4306,12 @@ test('settings webhook clears configured headers with the live sentinel', async 
     notifications: {
       ...dashboardConfig.notifications,
       webhook: {
-        enabled: true,
-        url: 'https://example.invalid/hook',
-        method: 'POST',
-        request_type: 'JSON',
-        body: '',
-        secret_configured: false,
-        headers_configured: true,
-        url_configured: false,
-        body_configured: false,
+        ...liveGetWebhook({
+          enabled: true,
+          method: 'POST',
+          request_type: 'JSON',
+          headers_configured: true,
+        }),
       },
     },
   }
@@ -4343,6 +4334,8 @@ test('settings webhook clears configured headers with the live sentinel', async 
   await page.getByRole('button', { name: 'Webhook' }).click()
   const headersField = page.getByLabel('自定义 Headers · 已配置')
   await expect(headersField).toHaveValue('')
+  await expect(page.getByLabel('Webhook URL')).toHaveValue('')
+  await expect(page.getByText('example.invalid')).toHaveCount(0)
   await expect(page.getByText('__clear__')).toHaveCount(0)
   await page.getByText('清除已配置的 Headers', { exact: true }).click()
   await expect(headersField).toHaveAttribute('placeholder', '保存后清除')
@@ -4352,12 +4345,13 @@ test('settings webhook clears configured headers with the live sentinel', async 
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(savedWebhook).toMatchObject({
     enabled: true,
-    url: 'https://example.invalid/hook',
     headers: '__clear__',
     headers_configured: true,
-        url_configured: false,
-        body_configured: false,
+    url_configured: false,
+    body_configured: false,
   })
+  expect(savedWebhook).not.toHaveProperty('url')
+  expect(JSON.stringify(savedWebhook)).not.toContain('example.invalid')
 })
 
 test('settings email omits empty password from the live notify contract', async ({ page }) => {
@@ -4532,9 +4526,7 @@ test('settings telegram keeps configured token when left empty', async ({ page }
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'none',
-        proxy_url: '',
         proxy_url_configured: false,
-        body_configured: false,
         proxy_ip: '',
         proxy_port: '',
         proxy_user: '',
@@ -4584,9 +4576,7 @@ test('settings telegram clears configured token with the live sentinel', async (
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'none',
-        proxy_url: '',
         proxy_url_configured: false,
-        body_configured: false,
         proxy_ip: '',
         proxy_port: '',
         proxy_user: '',
@@ -4695,16 +4685,14 @@ test('settings webhook keeps configured dingtalk secret when left empty', async 
     notifications: {
       ...dashboardConfig.notifications,
       webhook: {
-        enabled: true,
-        url: 'https://oapi.dingtalk.com/robot/send?access_token=ding-token',
-        method: 'POST',
-        request_type: 'JSON',
-        body: '',
-        provider: 'dingtalk',
-        secret_configured: true,
-        headers_configured: false,
-        url_configured: false,
-        body_configured: false,
+        ...liveGetWebhook({
+          enabled: true,
+          method: 'POST',
+          request_type: 'JSON',
+          provider: 'dingtalk',
+          secret_configured: true,
+          url_configured: true,
+        }),
       },
     },
   }
@@ -4729,15 +4717,20 @@ test('settings webhook keeps configured dingtalk secret when left empty', async 
   await expect(secretField).toBeVisible()
   await expect(secretField).toHaveAttribute('placeholder', '留空保持不变')
   await expect(secretField).toHaveValue('')
+  await expect(page.getByLabel('Webhook URL · 已配置')).toHaveValue('')
+  await expect(page.getByText('ding-token')).toHaveCount(0)
   await page.getByRole('button', { name: '保存更改' }).click()
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(savedWebhook).toMatchObject({
     enabled: true,
     provider: 'dingtalk',
     secret_configured: true,
+    url_configured: true,
   })
   expect(savedWebhook).not.toHaveProperty('secret')
+  expect(savedWebhook).not.toHaveProperty('url')
   expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+  expect(JSON.stringify(savedWebhook)).not.toContain('ding-token')
 })
 
 test('settings webhook clears configured dingtalk secret with the live sentinel', async ({ page }) => {
@@ -4746,16 +4739,14 @@ test('settings webhook clears configured dingtalk secret with the live sentinel'
     notifications: {
       ...dashboardConfig.notifications,
       webhook: {
-        enabled: true,
-        url: 'https://oapi.dingtalk.com/robot/send?access_token=ding-token',
-        method: 'POST',
-        request_type: 'JSON',
-        body: '',
-        provider: 'dingtalk',
-        secret_configured: true,
-        headers_configured: false,
-        url_configured: false,
-        body_configured: false,
+        ...liveGetWebhook({
+          enabled: true,
+          method: 'POST',
+          request_type: 'JSON',
+          provider: 'dingtalk',
+          secret_configured: true,
+          url_configured: true,
+        }),
       },
     },
   }
@@ -4778,6 +4769,8 @@ test('settings webhook clears configured dingtalk secret with the live sentinel'
   await page.getByRole('button', { name: 'Webhook' }).click()
   const secretField = page.getByLabel('钉钉加签密钥 · 已配置')
   await expect(secretField).toHaveValue('')
+  await expect(page.getByLabel('Webhook URL · 已配置')).toHaveValue('')
+  await expect(page.getByText('ding-token')).toHaveCount(0)
   await expect(page.getByText('__clear__')).toHaveCount(0)
   await page.getByText('清除已配置的加签密钥', { exact: true }).click()
   await expect(secretField).toHaveAttribute('placeholder', '保存后清除')
@@ -4790,7 +4783,10 @@ test('settings webhook clears configured dingtalk secret with the live sentinel'
     provider: 'dingtalk',
     secret: '__clear__',
     secret_configured: true,
+    url_configured: true,
   })
+  expect(savedWebhook).not.toHaveProperty('url')
+  expect(JSON.stringify(savedWebhook)).not.toContain('ding-token')
 })
 
 test('settings webhook omits empty provider from the live notify contract', async ({ page }) => {
@@ -6110,4 +6106,117 @@ test('instance stop surfaces the job_failed envelope', async ({ page }) => {
   await page.getByRole('button', { name: '关机' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: '任务查询失败' }).first()).toBeVisible()
   expect(stopCalls).toBe(1)
+})
+
+test('settings webhook GET matches the live scrubbed read model', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        provider: 'dingtalk',
+        secret_configured: true,
+        headers_configured: true,
+        url_configured: true,
+        body_configured: true,
+      }),
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('Webhook URL · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('自定义 Headers · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('钉钉加签密钥 · 已配置')).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await expect(page.getByText('access_token')).toHaveCount(0)
+  await expect(page.getByText('ding-token')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    provider: 'dingtalk',
+    method: 'POST',
+    request_type: 'JSON',
+    secret_configured: true,
+    headers_configured: true,
+    url_configured: true,
+    body_configured: true,
+  })
+  expect(savedWebhook).not.toHaveProperty('url')
+  expect(savedWebhook).not.toHaveProperty('headers')
+  expect(savedWebhook).not.toHaveProperty('body')
+  expect(savedWebhook).not.toHaveProperty('secret')
+  expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+})
+
+test('settings dingtalk webhook template clears configured headers from a scrubbed GET', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        headers_configured: true,
+        url_configured: true,
+        body_configured: true,
+      }),
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('自定义 Headers · 已配置')).toHaveValue('')
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: '钉钉群机器人' }).click()
+  await page.getByLabel('机器人 Access Token').fill('ding-token')
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.getByText('钉钉群机器人 模板已生成，请检查后保存')).toBeVisible()
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    provider: 'dingtalk',
+    method: 'POST',
+    request_type: 'JSON',
+    headers: '__clear__',
+    url: 'https://oapi.dingtalk.com/robot/send?access_token=ding-token',
+    body: '{\n  "msgtype": "text",\n  "text": {\n    "content": "#MSG#"\n  }\n}',
+  })
+  expect(savedWebhook?.headers).not.toBe('')
 })
