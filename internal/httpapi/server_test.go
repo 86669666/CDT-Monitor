@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -184,5 +186,51 @@ func TestRefreshAllEnqueuesEveryConfiguredAccount(t *testing.T) {
 	}
 	if payload.Jobs[0].Type != engine.JobRefreshAccount || payload.Jobs[1].Type != engine.JobRefreshAccount || payload.Jobs[0].AccountID == payload.Jobs[1].AccountID {
 		t.Fatalf("unexpected refresh jobs: %#v", payload.Jobs)
+	}
+}
+
+func TestFetchLatestReleaseDoesNotFollowRedirects(t *testing.T) {
+	hit := false
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hit = true
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+
+	original := githubHTTPClient
+	githubHTTPClient = &http.Client{
+		Timeout:       original.Timeout,
+		CheckRedirect: original.CheckRedirect,
+	}
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", source.URL)
+	if !errors.Is(err, errGitHubRedirect) {
+		t.Fatalf("err=%v", err)
+	}
+	if hit {
+		t.Fatal("github release check followed a redirect")
+	}
+}
+
+func TestFetchLatestReleaseReadsTag(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "application/vnd.github+json" {
+			t.Errorf("accept = %q", r.Header.Get("Accept"))
+		}
+		_, _ = w.Write([]byte(`{"tag_name":"v1.2.3"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	got, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err != nil || got != "v1.2.3" {
+		t.Fatalf("got=%q err=%v", got, err)
 	}
 }

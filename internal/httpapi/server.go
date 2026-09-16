@@ -471,8 +471,23 @@ func (s *Server) takePasskeySession(id, kind string) (passkeySession, bool) {
 	return session, true
 }
 
+const githubReleaseURL = "https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest"
+
+var errGitHubRedirect = errors.New("github redirects are not allowed")
+
+var githubHTTPClient = &http.Client{
+	Timeout: 4 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return errGitHubRedirect
+	},
+}
+
 func latestRelease(ctx context.Context, version string) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest", nil)
+	return fetchLatestRelease(ctx, version, githubReleaseURL)
+}
+
+func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
@@ -481,13 +496,12 @@ func latestRelease(ctx context.Context, version string) (string, error) {
 		version = "dev"
 	}
 	request.Header.Set("User-Agent", "CDT-Monitor/"+version)
-	client := &http.Client{Timeout: 4 * time.Second}
-	response, err := client.Do(request)
+	response, err := githubHTTPClient.Do(request)
 	if err != nil {
 		return "", err
 	}
 	defer response.Body.Close()
-	if response.StatusCode >= 400 {
+	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github HTTP %d", response.StatusCode)
 	}
 	var payload struct {
