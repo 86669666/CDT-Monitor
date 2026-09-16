@@ -92,21 +92,17 @@ func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, 
 	if port != "443" {
 		return nil, errAliyunForbiddenHost
 	}
-	if net.ParseIP(host) == nil && !allowedAliyunHost(host) {
+	if net.ParseIP(host) != nil || !allowedAliyunHost(host) {
 		return nil, errAliyunForbiddenHost
 	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
 	var ips []net.IP
-	if ip := net.ParseIP(host); ip != nil {
-		ips = []net.IP{ip}
-	} else {
-		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			return nil, err
-		}
-		for _, addr := range addrs {
-			if addr.IP != nil {
-				ips = append(ips, addr.IP)
-			}
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
 		}
 	}
 	if len(ips) == 0 {

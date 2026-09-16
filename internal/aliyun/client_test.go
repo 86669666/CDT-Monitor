@@ -1077,4 +1077,12 @@ func TestAliyunDialContextRejectsNonTLSDestinations(t *testing.T) {
 	if !errors.Is(err, errAliyunForbiddenHost) {
 		t.Fatalf("unknown host dial err=%v", err)
 	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("1.1.1.1", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("ipv4 literal dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("::1", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("ipv6 literal dial err=%v", err)
+	}
 }
