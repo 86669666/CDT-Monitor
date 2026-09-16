@@ -366,3 +366,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求镜像 Go 编译带 `-trimpath`、`-ldflags -s -w`、以及 `-X main.version=${VERSION}`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T05:08Z` / 2026-09-16 13:08 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `62567fb` 再加 Dockerfile WORKDIR/runtime-data 扫描：
+
+- Publish Guard 现要求 `WORKDIR /src/web`、`WORKDIR /src`、以及 `mkdir -p /runtime-data`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
