@@ -104,6 +104,25 @@ func TestCallRejectsUnknownActions(t *testing.T) {
 	}
 }
 
+func TestCallRejectsUnknownVersions(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2016-01-01", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun version is invalid") {
+		t.Fatalf("version err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown version must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunVersion("2014-05-26") || allowedAliyunVersion("2016-01-01") {
+		t.Fatal("version allowlist mismatch")
+	}
+}
+
 func TestCallRejectsUnknownHosts(t *testing.T) {
 	hits := 0
 	client := NewClient()

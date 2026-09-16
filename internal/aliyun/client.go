@@ -329,6 +329,15 @@ func allowedAliyunAction(action string) bool {
 	}
 }
 
+func allowedAliyunVersion(version string) bool {
+	switch version {
+	case "2014-05-26", "2017-12-14", "2021-08-13":
+		return true
+	default:
+		return false
+	}
+}
+
 func allowedAliyunHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" || strings.ContainsAny(host, "/:@") {
@@ -354,6 +363,9 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	}
 	if !allowedAliyunHost(host) {
 		return nil, errors.New("aliyun host is invalid")
+	}
+	if !allowedAliyunVersion(version) {
+		return nil, errors.New("aliyun version is invalid")
 	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
