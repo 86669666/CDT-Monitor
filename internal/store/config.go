@@ -218,6 +218,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if err := notify.ValidateSMTPIdentity(config.Notifications.Email.Username, config.Notifications.Email.To); err != nil {
 		return err
 	}
+	if err := notify.ValidateTelegramChatID(config.Notifications.Telegram.ChatID); err != nil {
+		return err
+	}
 	if err := notify.ValidateWebhookHeaders(config.Notifications.Webhook.Headers); err != nil {
 		return err
 	}

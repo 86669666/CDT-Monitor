@@ -1385,6 +1385,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "too many accounts") {
 		t.Fatalf("accounts status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification identity is too long"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification identity is too long") {
+		t.Fatalf("identity status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {
