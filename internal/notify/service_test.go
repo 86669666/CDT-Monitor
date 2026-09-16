@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -260,5 +261,48 @@ func TestSendWebhookDoesNotFollowRedirects(t *testing.T) {
 	}
 	if hit {
 		t.Fatal("webhook send followed a redirect")
+	}
+}
+
+func TestSendWebhookRejectsHostnameResolvedToMetadata(t *testing.T) {
+	original := lookupNotifyIPs
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		if host == "metadata.example.test" {
+			return []net.IP{net.ParseIP("100.100.100.200")}, nil
+		}
+		return []net.IP{net.ParseIP("1.2.3.4")}, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+
+	config := domain.Config{}
+	config.Notifications.Webhook.Enabled = true
+	config.Notifications.Webhook.URL = "http://metadata.example.test/hooks/test"
+	config.Notifications.Webhook.Method = "POST"
+	config.Notifications.Webhook.Type = "JSON"
+	err := New().Send(context.Background(), "webhook", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
+	}
+}
+
+func TestSendTelegramRejectsProxyHostnameResolvedToMetadata(t *testing.T) {
+	original := lookupNotifyIPs
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		if host == "tg-proxy.example.test" {
+			return []net.IP{net.ParseIP("169.254.169.254")}, nil
+		}
+		return []net.IP{net.ParseIP("1.2.3.4")}, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "custom"
+	config.Notifications.Telegram.ProxyURL = "http://tg-proxy.example.test"
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
 	}
 }
