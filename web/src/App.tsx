@@ -13,7 +13,7 @@ import { DEFAULT_TIME_ZONE, resolveTimeZone } from './timezone'
 import {
   APIKeyRecord, APIKeysResponse, APIKeyScope, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyRequest, CreateAPIKeyResponse,
   History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
-  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, defaultConfig, emptyAccount,
+  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, defaultConfig, emptyAccount,
 } from './types'
 
 type Phase = 'loading' | 'setup' | 'login' | 'dashboard' | 'fatal'
@@ -470,7 +470,7 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
     <Field label={`AccessKey Secret${account.secret_configured ? ' · 已配置' : ''}`}><input type="password" autoComplete="new-password" value={account.access_key_secret || ''} onChange={(event) => onChange({ ...account, access_key_secret: event.target.value })} placeholder={account.secret_configured ? '留空保持不变' : '输入 Secret'} /></Field>
     <Field label="实例 ID"><input value={account.instance_id} onChange={(event) => onChange({ ...account, instance_id: event.target.value })} placeholder="i-bp…" /></Field>
     <SelectField label="地域" value={account.region_id} options={regions} searchable searchPlaceholder="搜索地域名称或代码" onChange={(value) => onChange({ ...account, region_id: value })} />
-    <Field label="流量额度"><input type="number" min={1} value={account.max_traffic} onChange={(event) => onChange({ ...account, max_traffic: Number(event.target.value) })} /><span className="suffix">GB</span></Field>
+    <Field label="流量额度"><input type="number" min={1} max={MAX_ACCOUNT_TRAFFIC_GB} value={account.max_traffic} onChange={(event) => { const next = Number(event.target.value); onChange({ ...account, max_traffic: !Number.isFinite(next) || next <= 0 ? 1 : Math.min(MAX_ACCOUNT_TRAFFIC_GB, next) }) }} /><span className="suffix">GB</span></Field>
     <SelectField label="站点类型" value={account.site_type} options={[{ value: 'china', label: '中国站', meta: 'CNY' }, { value: 'international', label: '国际站', meta: 'USD' }]} onChange={(value) => onChange({ ...account, site_type: value as Account['site_type'] })} />
     <Field label="备注"><input value={account.remark} maxLength={MAX_ACCOUNT_REMARK_RUNES} onChange={(event) => onChange({ ...account, remark: Array.from(event.target.value).slice(0, MAX_ACCOUNT_REMARK_RUNES).join('') })} placeholder="香港主节点" /></Field>
     <ToggleRow title="每日定时开关机" icon={<Clock3 />} checked={account.schedule_enabled} onChange={(checked) => onChange({ ...account, schedule_enabled: checked })} />
