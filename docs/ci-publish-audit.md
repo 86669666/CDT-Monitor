@@ -426,3 +426,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `pull_request_target`、`workflow_run`、`repository_dispatch` 和 `permissions: write-all`。fork PR 不得拿到 base 仓库权限，也不要靠 workflow_run 把 secrets 带到不可信代码
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T07:35Z` / 2026-09-16 15:35 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `7593d7e` 再加 Compose env_file/command 扫描：
+
+- Publish Guard 现禁止 Compose `env_file`、`command`、`entrypoint`。不要用宿主机 `.env` 把 AK 绕过 YAML 扫描，也不要覆盖镜像 `/cdt-monitor serve`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

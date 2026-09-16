@@ -54,7 +54,7 @@ docker build   --build-arg VERSION=local   --build-arg COMMIT="$(git rev-parse -
 TZ=Asia/Shanghai docker compose up -d
 ```
 
-或在 overlay / 环境里覆盖 `TZ`。不要把真实 Aliyun AK、SMTP 密码或 Telegram token 写进 Compose。
+或在 overlay / 环境里覆盖 `TZ`。不要把真实 Aliyun AK、SMTP 密码或 Telegram token 写进 Compose，也不要用 `env_file` 加载宿主机 `.env`，不要覆盖镜像的 `entrypoint` / `command`。
 
 ## HTTPS 与反向代理
 

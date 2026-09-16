@@ -830,6 +830,15 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+tty:[[:space:]]*true' <<<"$body"; then
     bad "$f: tty: true is forbidden on this local daemon Compose"
   fi
+  if grep -Eq '^[[:space:]]+env_file:' <<<"$body"; then
+    bad "$f: env_file is forbidden; do not load host .env secrets into the container"
+  fi
+  if grep -Eq '^[[:space:]]+command:' <<<"$body"; then
+    bad "$f: command: overrides are forbidden; keep the image ENTRYPOINT/CMD"
+  fi
+  if grep -Eq '^[[:space:]]+entrypoint:' <<<"$body"; then
+    bad "$f: entrypoint: overrides are forbidden; keep /cdt-monitor"
+  fi
   svc_keys="$(awk '
     $0 ~ /^services:[[:space:]]*$/ { in_svc=1; next }
     in_svc && $0 ~ /^[^[:space:]]/ { in_svc=0 }
