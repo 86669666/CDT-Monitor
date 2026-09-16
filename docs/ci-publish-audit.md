@@ -236,3 +236,13 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Android Widget 使用同一 SHA 的 `wrapper-validation` 与 `setup-gradle`，并保持 `assembleDebug assembleRelease bundleRelease`
 - 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T00:53Z` / 2026-09-16 08:53 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `6defbaa` 再加 extra write permissions 扫描：
+
+- Publish Guard 现禁止 `actions: write`、`pull-requests: write`、`attestations: write`、`security-events: write`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T00:58Z` / 2026-09-16 08:58 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `5b931f8` 再加 STOPSIGNAL / log cap 扫描：
+
+- Publish Guard 现要求 Dockerfile `STOPSIGNAL SIGTERM`、`ENTRYPOINT /cdt-monitor`、`CMD serve`，以及 Compose json-file `max-size: 10m` × `max-file: 3`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

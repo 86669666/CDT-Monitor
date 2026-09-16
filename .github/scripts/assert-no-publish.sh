@@ -250,6 +250,18 @@ scan_job_limits() {
     if grep -Eq 'id-token:[[:space:]]*write' <<<"$body"; then
       bad "$f: id-token: write is forbidden on this fork"
     fi
+    if grep -Eq 'actions:[[:space:]]*write' <<<"$body"; then
+      bad "$f: actions: write is forbidden on this fork"
+    fi
+    if grep -Eq 'pull-requests:[[:space:]]*write' <<<"$body"; then
+      bad "$f: pull-requests: write is forbidden on this fork"
+    fi
+    if grep -Eq 'attestations:[[:space:]]*write' <<<"$body"; then
+      bad "$f: attestations: write is forbidden on this fork"
+    fi
+    if grep -Eq 'security-events:[[:space:]]*write' <<<"$body"; then
+      bad "$f: security-events: write is forbidden on this fork"
+    fi
     case "$base" in
       auto-release.yml|release.yml) ;;
       *)
@@ -362,6 +374,15 @@ scan_dockerfile() {
   fi
   if ! grep -Eq '^EXPOSE 8080$' <<<"$body"; then
     bad "$f: EXPOSE must stay 8080"
+  fi
+  if ! grep -Eq '^STOPSIGNAL SIGTERM$' <<<"$body"; then
+    bad "$f: STOPSIGNAL must stay SIGTERM"
+  fi
+  if ! grep -Eq '^ENTRYPOINT \["/cdt-monitor"\]$' <<<"$body"; then
+    bad "$f: ENTRYPOINT must stay /cdt-monitor"
+  fi
+  if ! grep -Eq '^CMD \["serve"\]$' <<<"$body"; then
+    bad "$f: CMD must stay serve"
   fi
   if grep -Eq 'FROM[[:space:]].*:latest' <<<"$body"; then
     bad "$f: :latest base tags are forbidden"
@@ -502,6 +523,12 @@ scan_compose() {
   fi
   if ! grep -Fq '/cdt-monitor", "healthcheck"' <<<"$body"; then
     bad "$f: healthcheck must stay /cdt-monitor healthcheck"
+  fi
+  if ! grep -Eq 'max-size:[[:space:]]*"10m"' <<<"$body"; then
+    bad "$f: json-file logs must stay max-size 10m"
+  fi
+  if ! grep -Eq 'max-file:[[:space:]]*"3"' <<<"$body"; then
+    bad "$f: json-file logs must stay max-file 3"
   fi
 }
 
