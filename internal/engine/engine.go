@@ -212,6 +212,11 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
 		}
+		payload.Action = strings.ToLower(strings.TrimSpace(payload.Action))
+		payload.Source = strings.TrimSpace(payload.Source)
+		if payload.Action != "start" && payload.Action != "stop" {
+			return "", errors.New("action must be start or stop")
+		}
 		if len([]rune(payload.Source)) > maxControlSourceRunes {
 			return "", errors.New("control source is too long")
 		}
@@ -468,7 +473,7 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	if err != nil {
 		return "", err
 	}
-	action = strings.ToLower(action)
+	action = strings.ToLower(strings.TrimSpace(action))
 	if action != "start" && action != "stop" {
 		return "", errors.New("action must be start or stop")
 	}

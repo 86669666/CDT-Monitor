@@ -283,13 +283,15 @@ func containsHeaderBreak(value string) bool {
 }
 
 const (
-	maxNotifyEmailRunes    = 254
-	maxTelegramChatRunes   = 64
-	maxWebhookHeadersRunes = 4096
-	maxWebhookHeaderFields = 32
-	maxWebhookBodyRunes    = 8192
-	maxNotifyURLRunes      = 2048
-	maxNotifySecretRunes   = 255
+	maxNotifyEmailRunes        = 254
+	maxTelegramChatRunes       = 64
+	maxWebhookHeadersRunes     = 4096
+	maxWebhookHeaderFields     = 32
+	maxWebhookHeaderNameRunes  = 128
+	maxWebhookHeaderValueRunes = 2048
+	maxWebhookBodyRunes        = 8192
+	maxNotifyURLRunes          = 2048
+	maxNotifySecretRunes       = 255
 )
 
 func ValidateSMTPIdentity(username, to string) error {
@@ -361,6 +363,9 @@ func ValidateWebhookHeaders(raw string) error {
 	for key, value := range headers {
 		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
 			return errInvalidNotifyHeader
+		}
+		if len([]rune(key)) > maxWebhookHeaderNameRunes || len([]rune(value)) > maxWebhookHeaderValueRunes {
+			return errInvalidNotifyPayload
 		}
 	}
 	return nil
