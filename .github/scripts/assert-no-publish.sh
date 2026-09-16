@@ -410,6 +410,12 @@ scan_dockerfile() {
   if ! grep -Eq '^HEALTHCHECK ' <<<"$body"; then
     bad "$f: HEALTHCHECK is required"
   fi
+  if ! grep -Eq 'HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3' <<<"$body"; then
+    bad "$f: HEALTHCHECK timing must stay 30s/5s/10s/3"
+  fi
+  if ! grep -Fq 'CMD ["/cdt-monitor", "healthcheck"]' <<<"$body"; then
+    bad "$f: HEALTHCHECK must stay /cdt-monitor healthcheck"
+  fi
   if ! grep -Eq '^EXPOSE 8080$' <<<"$body"; then
     bad "$f: EXPOSE must stay 8080"
   fi
