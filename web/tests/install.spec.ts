@@ -74,7 +74,7 @@ test('installation wizard posts the setup contract and reaches the dashboard', a
   expect(notifications.telegram).not.toHaveProperty('token')
   expect(notifications.telegram).not.toHaveProperty('proxy_url')
   expect(notifications.telegram).not.toHaveProperty('proxy_pass')
-  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false })
+  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', provider: 'generic', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false })
   expect(notifications.webhook).not.toHaveProperty('url')
   expect(notifications.webhook).not.toHaveProperty('headers')
   expect(notifications.webhook).not.toHaveProperty('body')
@@ -4771,7 +4771,7 @@ test('settings webhook clears configured dingtalk secret with the live sentinel'
   expect(JSON.stringify(savedWebhook)).not.toContain('ding-token')
 })
 
-test('settings webhook omits empty provider from the live notify contract', async ({ page }) => {
+test('settings webhook keeps the live default generic provider', async ({ page }) => {
   let savedWebhook: Record<string, unknown> | undefined
   await mockInitStatus(page, true)
   await mockDashboardReads(page)
@@ -4796,8 +4796,8 @@ test('settings webhook omits empty provider from the live notify contract', asyn
   expect(savedWebhook).toMatchObject({
     enabled: true,
     url: 'https://example.invalid/hook',
+    provider: 'generic',
   })
-  expect(savedWebhook).not.toHaveProperty('provider')
 })
 
 test('history chart treats a null hourly array as empty', async ({ page }) => {
