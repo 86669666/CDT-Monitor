@@ -1749,6 +1749,25 @@ func TestCreateAPIKeyRejectsOversizedName(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsOversizedScopeList(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	scopes := make([]string, maxAPIKeyScopes+1)
+	for i := range scopes {
+		scopes[i] = "widget:read"
+	}
+	if _, _, err = st.CreateAPIKey(context.Background(), "widget", scopes, nil); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("scope list err=%v", err)
+	}
+	keys, err := st.ListAPIKeys(context.Background())
+	if err != nil || len(keys) != 0 {
+		t.Fatalf("listed %d err=%v", len(keys), err)
+	}
+}
+
 func TestCreateAPIKeyRejectsUnknownScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -59,6 +59,7 @@ const (
 	maxAPIKeyNameRunes  = 64
 	maxPasskeyNameRunes = 64
 	maxAPIKeys          = 16
+	maxAPIKeyScopes     = 8
 	maxPasskeys         = 8
 	maxPasskeyJSONBytes = 8192
 )
@@ -143,6 +144,9 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	name = strings.TrimSpace(name)
 	if name == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
+	}
+	if len(scopes) > maxAPIKeyScopes {
+		return domain.APIKey{}, "", errors.New("invalid API key scope")
 	}
 	if len([]rune(name)) > maxAPIKeyNameRunes {
 		return domain.APIKey{}, "", errors.New("api key name is too long")
