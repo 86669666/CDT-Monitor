@@ -506,3 +506,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `hostname` 和 `domainname`。本地容器不要伪装成别的主机名
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:03Z` / 2026-09-16 20:03 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b6317b6` 再加 gh release CLI / npm publish 扫描：
+
+- Publish Guard 现禁止 `gh release create`、`gh auth login`、`actions/create-release` 和 `npm publish`。GitHub Release 只走已加开关的 draft action
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

@@ -117,6 +117,15 @@ scan_workflows() {
     if grep -Fq 'actions/github-script' <<<"$body"; then
       bad "$f: actions/github-script is forbidden on this fork"
     fi
+    if grep -Eq 'gh[[:space:]]+release[[:space:]]+create|gh[[:space:]]+auth[[:space:]]+login' <<<"$body"; then
+      bad "$f: gh release/auth CLI is forbidden; keep the gated draft action"
+    fi
+    if grep -Fq 'actions/create-release' <<<"$body"; then
+      bad "$f: actions/create-release is forbidden; keep the gated draft action"
+    fi
+    if grep -Eq 'npm[[:space:]]+publish' <<<"$body"; then
+      bad "$f: npm publish is forbidden on this fork"
+    fi
   done
 }
 
