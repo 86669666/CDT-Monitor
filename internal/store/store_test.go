@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1375,6 +1377,35 @@ func TestSQLiteUsesWALAndBusyTimeout(t *testing.T) {
 	}
 	if foreignKeys != 1 {
 		t.Fatalf("foreign_keys = %d", foreignKeys)
+	}
+}
+
+func TestSQLiteFilesAreOwnerReadableOnly(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o750 {
+		t.Fatalf("data dir mode = %v", info.Mode().Perm())
+	}
+	for _, name := range []string{"data.sqlite", "data.sqlite-wal", "data.sqlite-shm"} {
+		path := filepath.Join(dir, name)
+		info, err = os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %v", name, info.Mode().Perm())
+		}
 	}
 }
 

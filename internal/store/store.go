@@ -58,7 +58,29 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err = restrictDataFiles(dataDir, dbPath); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return s, nil
+}
+
+func restrictDataFiles(dataDir, dbPath string) error {
+	if err := os.Chmod(dataDir, 0o750); err != nil {
+		return fmt.Errorf("restrict data directory permissions: %w", err)
+	}
+	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if err := os.Chmod(path, 0o600); err != nil {
+			return fmt.Errorf("restrict sqlite permissions: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) recoverInterruptedWork(ctx context.Context) error {
