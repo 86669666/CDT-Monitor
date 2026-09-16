@@ -82,7 +82,8 @@ func TestFlushOutboxRetriesFailedWebhook(t *testing.T) {
 func TestFlushOutboxRecoversFromNotifierPanic(t *testing.T) {
 	st, _ := setupAccount(t, nil)
 	defer st.Close()
-	eng := New(st, newFakeProvider(), nil, quietLogger(), 1)
+	logger, logs := capturingLogger()
+	eng := New(st, newFakeProvider(), nil, logger, 1)
 	ctx := context.Background()
 	if err := st.AddOutbox(ctx, domain.NotificationEvent{ID: "evt-panic-1", Type: "threshold", Title: "t", Summary: "s"}, []string{"webhook"}); err != nil {
 		t.Fatal(err)
@@ -101,5 +102,8 @@ func TestFlushOutboxRecoversFromNotifierPanic(t *testing.T) {
 	}
 	if lastError != errJobPanic.Error() || strings.Contains(lastError, "nil pointer") || strings.Contains(lastError, "runtime") {
 		t.Fatalf("outbox panic leaked internals: %q", lastError)
+	}
+	if strings.Contains(logs.String(), "nil pointer") || strings.Contains(logs.String(), "runtime") || strings.Contains(logs.String(), "invalid memory") {
+		t.Fatalf("outbox panic leaked internals into slog: %s", logs.String())
 	}
 }

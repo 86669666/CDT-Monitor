@@ -102,7 +102,8 @@ func TestTrafficPanicDoesNotStopOnStaleUsage(t *testing.T) {
 	provider := newFakeProvider()
 	provider.traffic = 200
 	provider.trafficPanic = "cdt-secret-should-not-leak"
-	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	logger, slogOut := capturingLogger()
+	eng := New(st, provider, notify.New(), logger, 1)
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +126,9 @@ func TestTrafficPanicDoesNotStopOnStaleUsage(t *testing.T) {
 	if !sawProviderPanic {
 		t.Fatal("expected provider panic to be logged as a traffic fetch failure")
 	}
+	if strings.Contains(slogOut.String(), "cdt-secret-should-not-leak") {
+		t.Fatalf("traffic panic leaked into slog: %s", slogOut.String())
+	}
 	provider.trafficPanic = ""
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
@@ -146,7 +150,8 @@ func TestStatusPanicDoesNotKeepAlive(t *testing.T) {
 	provider := newFakeProvider()
 	provider.status = domain.StatusStopped
 	provider.statusPanic = "ecs-secret-should-not-leak"
-	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	logger, slogOut := capturingLogger()
+	eng := New(st, provider, notify.New(), logger, 1)
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +173,9 @@ func TestStatusPanicDoesNotKeepAlive(t *testing.T) {
 	}
 	if !sawProviderPanic {
 		t.Fatal("expected provider panic to be logged as a status fetch failure")
+	}
+	if strings.Contains(slogOut.String(), "ecs-secret-should-not-leak") {
+		t.Fatalf("status panic leaked into slog: %s", slogOut.String())
 	}
 	provider.statusPanic = ""
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
