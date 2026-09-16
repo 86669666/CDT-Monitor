@@ -596,3 +596,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 Compose environment `CDT_DATA_DIR` / `CDT_LISTEN` / `CDT_WORKERS` / `TZ`。不要再加调试或密钥变量
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T22:20Z` / 2026-09-17 06:20 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `9e5ab80` 再加 Android/Gradle action 白名单扫描：
+
+- Publish Guard 现只允许 `android-widget.yml` 使用 `setup-java` / `setup-android` / `setup-gradle` / wrapper-validation。其它 workflow 不要起 Android 构建面
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
