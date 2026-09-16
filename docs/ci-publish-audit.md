@@ -591,3 +591,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 gated `release.yml` 使用 `softprops/action-gh-release`。CI / widget / Publish Guard 不要打 GitHub Release
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T22:13Z` / 2026-09-17 06:13 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `1b30090` 再加 Compose env 白名单扫描：
+
+- Publish Guard 现只允许 Compose environment `CDT_DATA_DIR` / `CDT_LISTEN` / `CDT_WORKERS` / `TZ`。不要再加调试或密钥变量
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
