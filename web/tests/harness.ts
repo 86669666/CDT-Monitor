@@ -52,8 +52,8 @@ export const dashboardConfig: Config = {
   timezone: 'Asia/Shanghai',
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
-    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_url_configured: false, proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false },
+    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url_configured: false, proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
+    webhook: { enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false },
   },
   accounts: [{
     id: 1,
@@ -126,6 +126,21 @@ export function liveGetTelegram(
     proxy_port: telegram.proxy_port ?? '',
     proxy_user: telegram.proxy_user ?? '',
     proxy_password_configured: telegram.proxy_password_configured ?? false,
+  }
+}
+
+/** Live GET /api/v1/config email after scrubConfig: password omitted. */
+export function liveGetEmail(
+  email: Partial<Config['notifications']['email']> = {},
+): Config['notifications']['email'] {
+  return {
+    enabled: email.enabled ?? false,
+    to: email.to ?? '',
+    host: email.host ?? '',
+    port: email.port ?? 465,
+    username: email.username ?? '',
+    password_configured: email.password_configured ?? false,
+    security: email.security ?? 'ssl',
   }
 }
 
