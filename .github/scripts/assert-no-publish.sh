@@ -461,6 +461,9 @@ scan_dockerfile() {
   if ! grep -Eq '^EXPOSE 8080$' <<<"$body"; then
     bad "$f: EXPOSE must stay 8080"
   fi
+  if grep -Eq '^EXPOSE (80|443)$' <<<"$body"; then
+    bad "$f: do not EXPOSE 80/443; TLS stays at the reverse proxy"
+  fi
   if ! grep -Eq '^STOPSIGNAL SIGTERM$' <<<"$body"; then
     bad "$f: STOPSIGNAL must stay SIGTERM"
   fi
@@ -585,6 +588,9 @@ scan_compose() {
   fi
   if ! grep -Eq '^[[:space:]]*-[[:space:]]*"127\.0\.0\.1:43210:8080"' <<<"$body"; then
     bad "$f: published port must stay 127.0.0.1:43210:8080"
+  fi
+  if grep -Eq ':(80|443):|"80:|"443:' <<<"$body"; then
+    bad "$f: do not publish host 80/443; TLS stays at the reverse proxy"
   fi
   if grep -Eq '^[[:space:]]*-[[:space:]]*"?[0-9]+:[0-9]+' <<<"$body"; then
     bad "$f: host port without 127.0.0.1 publishes 0.0.0.0"
