@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -249,6 +250,20 @@ func TestGitHubHTTPClientRequiresTLS12(t *testing.T) {
 	transport, ok := githubHTTPClient.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("github transport TLS = %#v", githubHTTPClient.Transport)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("github HTTP dialer must pin destinations at connect time")
+	}
+}
+
+func TestGitHubDialContextRejectsMetadataIP(t *testing.T) {
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("link-local dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("aliyun metadata dial err=%v", err)
 	}
 }
 

@@ -497,13 +497,63 @@ func (s *Server) takePasskeySession(id, kind string) (passkeySession, bool) {
 const githubReleaseURL = "https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest"
 
 var errGitHubRedirect = errors.New("github redirects are not allowed")
+var errGitHubForbiddenHost = errors.New("github host is not allowed")
 
 var githubHTTPClient = &http.Client{
-	Timeout:   4 * time.Second,
-	Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+	Timeout: 4 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		DialContext:     githubDialContext,
+	},
 	CheckRedirect: func(*http.Request, []*http.Request) error {
 		return errGitHubRedirect
 	},
+}
+
+func githubDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			if addr.IP != nil {
+				ips = append(ips, addr.IP)
+			}
+		}
+	}
+	if len(ips) == 0 {
+		return nil, errGitHubForbiddenHost
+	}
+	for _, ip := range ips {
+		if forbiddenGitHubIP(ip) {
+			return nil, errGitHubForbiddenHost
+		}
+	}
+	dialer := &net.Dialer{Timeout: 4 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func forbiddenGitHubIP(ip net.IP) bool {
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	return ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254"))
 }
 
 func latestRelease(ctx context.Context, version string) (string, error) {
