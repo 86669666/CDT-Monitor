@@ -212,6 +212,12 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if err := notify.ValidateDialHost(config.Notifications.Email.Host); err != nil {
 		return err
 	}
+	if err := notify.ValidateSMTPIdentity(config.Notifications.Email.Username, config.Notifications.Email.To); err != nil {
+		return err
+	}
+	if err := notify.ValidateWebhookHeaders(config.Notifications.Webhook.Headers); err != nil {
+		return err
+	}
 
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
 		if config.AdminPassword != "" {
