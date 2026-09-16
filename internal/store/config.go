@@ -26,6 +26,8 @@ const (
 	maxAccountTrafficGB     = 1000000
 	maxAccounts             = 32
 	maxTimezoneRunes        = 64
+	maxSettingKeyRunes      = 64
+	maxSettingValueBytes    = 32 << 10
 )
 
 var sensitiveSettings = map[string]bool{
@@ -70,6 +72,9 @@ func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
 		var key, value string
 		if err = rows.Scan(&key, &value); err != nil {
 			return nil, err
+		}
+		if len([]rune(key)) > maxSettingKeyRunes || len(value) > maxSettingValueBytes {
+			return nil, errors.New("setting is too large")
 		}
 		if sensitiveSettings[key] {
 			value, err = s.DecryptAAD(value, key)
