@@ -848,6 +848,18 @@ scan_compose() {
   if grep -Eq 'ipc:[[:space:]]*host' <<<"$body"; then
     bad "$f: ipc: host is forbidden"
   fi
+  if grep -Eq 'cgroup:[[:space:]]*host|cgroupns:[[:space:]]*host|cgroupns_mode:[[:space:]]*host' <<<"$body"; then
+    bad "$f: host cgroup namespace is forbidden"
+  fi
+  if grep -Eq 'userns_mode:[[:space:]]*host' <<<"$body"; then
+    bad "$f: userns_mode: host is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+runtime:' <<<"$body"; then
+    bad "$f: custom runtime is forbidden on this local Compose"
+  fi
+  if grep -Eq '^[[:space:]]+group_add:' <<<"$body"; then
+    bad "$f: group_add is forbidden"
+  fi
   if grep -Eq '^[[:space:]]+cap_add:' <<<"$body"; then
     bad "$f: cap_add is forbidden; keep cap_drop ALL"
   fi

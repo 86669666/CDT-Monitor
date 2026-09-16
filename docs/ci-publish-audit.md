@@ -461,3 +461,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `issue_comment`、`discussion`、`schedule`/`cron` 和 `watch` 触发。fork 的校验只走 push/PR/手动，不要靠评论或定时任务叫醒发布面
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:50Z` / 2026-09-16 16:50 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `efbc27f` 再加 Compose cgroup/userns/runtime 扫描：
+
+- Publish Guard 现禁止 Compose `cgroup: host`、`userns_mode: host`、自定义 `runtime` 和 `group_add`。本地容器不能再借宿主命名空间或 NVIDIA runtime 逃逸
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
