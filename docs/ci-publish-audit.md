@@ -456,3 +456,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose/CI 挂 `docker.sock`，也禁止 `type: bind` 和相对路径宿主机 bind。数据只走本地 named volume `cdt-data`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:39Z` / 2026-09-16 16:39 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `d4f4164` 再加 issue_comment/schedule 触发扫描：
+
+- Publish Guard 现禁止 `issue_comment`、`discussion`、`schedule`/`cron` 和 `watch` 触发。fork 的校验只走 push/PR/手动，不要靠评论或定时任务叫醒发布面
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
