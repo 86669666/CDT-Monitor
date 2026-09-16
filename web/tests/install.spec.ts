@@ -8363,3 +8363,36 @@ test('settings email password posts at the live secret rune cap', async ({ page 
   expect([...password]).toHaveLength(MAX_NOTIFY_SECRET_RUNES)
   expect(password).toBe(capped)
 })
+
+test('settings telegram proxy password posts at the live secret rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let proxyPass = ''
+  const overflow = `${'p'.repeat(MAX_NOTIFY_SECRET_RUNES)}超`
+  const capped = 'p'.repeat(MAX_NOTIFY_SECRET_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: { proxy_pass?: string } } }
+      expectKnownKeys(payload as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      proxyPass = payload.notifications?.telegram?.proxy_pass || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByLabel('代理类型').click()
+  await page.getByRole('option', { name: 'SOCKS5' }).click()
+  await page.getByLabel('代理密码').fill(overflow)
+  await expect(page.getByLabel('代理密码')).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...proxyPass]).toHaveLength(MAX_NOTIFY_SECRET_RUNES)
+  expect(proxyPass).toBe(capped)
+})
