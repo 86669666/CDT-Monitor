@@ -2084,15 +2084,14 @@ test('settings bark webhook template clears configured headers with the live sen
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      webhook: {
+      webhook: liveGetWebhook({
         enabled: true,
         method: 'POST',
         request_type: 'JSON',
-        secret_configured: false,
         headers_configured: true,
         url_configured: true,
         body_configured: true,
-      },
+      }),
     },
   }
   let savedWebhook: Record<string, unknown> | undefined
@@ -2112,6 +2111,9 @@ test('settings bark webhook template clears configured headers with the live sen
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: '通知', exact: true }).click()
   await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('自定义 Headers · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('Webhook URL · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('')
   await page.locator('#webhook-template').click()
   await page.getByRole('option', { name: 'Bark' }).click()
   await page.getByLabel('Bark Key').fill('test-key')
@@ -2128,6 +2130,8 @@ test('settings bark webhook template clears configured headers with the live sen
     body: '__clear__',
     url: 'https://api.day.app/test-key/#TITLE#/#MSG#',
   })
+  expect(savedWebhook?.headers).not.toBe('')
+  expect(savedWebhook?.body).not.toBe('')
 })
 
 test('instance refresh surfaces the job_failed envelope', async ({ page }) => {
