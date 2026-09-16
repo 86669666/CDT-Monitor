@@ -1078,6 +1078,46 @@ func TestLogsGETRedactsTelegramToken(t *testing.T) {
 	}
 }
 
+func TestLogsGETRedactsTelegramChatID(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Telegram.ChatID = "tg-chat-id-value"
+	config.Notifications.Telegram.ProxyUser = "socks-user-value"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddLog(ctx, "error", "telegram chat tg-chat-id-value via socks-user-value failed"); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("logs status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "tg-chat-id-value") || strings.Contains(body, "socks-user-value") {
+		t.Fatalf("logs GET leaked telegram identity: %s", body)
+	}
+	reload := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if reload.Code != http.StatusOK {
+		t.Fatalf("config status = %d body = %s", reload.Code, reload.Body.String())
+	}
+	var gotConfig domain.Config
+	if err = json.Unmarshal(reload.Body.Bytes(), &gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if gotConfig.Notifications.Telegram.ChatID != "tg-chat-id-value" || gotConfig.Notifications.Telegram.ProxyUser != "socks-user-value" {
+		t.Fatalf("GET config must still expose chat_id and proxy_user for editing: %#v", gotConfig.Notifications.Telegram)
+	}
+}
+
 func TestLogsGETRedactsAccountSecret(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
