@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -299,6 +300,31 @@ func TestSaveConfigRejectsInvalidScheduleClock(t *testing.T) {
 	accounts, err := st.ListAccounts(ctx)
 	if err != nil || accounts[0].StartTime != "08:30" || accounts[0].StopTime != "23:45" {
 		t.Fatalf("accounts=%#v err=%v", accounts, err)
+	}
+}
+
+func TestSaveConfigRejectsInvalidMaxTraffic(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	for _, value := range []float64{0, -1, math.NaN(), math.Inf(1), maxAccountTrafficGB + 1} {
+		config.Accounts[0].MaxTraffic = value
+		if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "max traffic is invalid") {
+			t.Fatalf("max traffic %v err=%v", value, err)
+		}
+	}
+	config.Accounts[0].MaxTraffic = 512.5
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
 	}
 }
 

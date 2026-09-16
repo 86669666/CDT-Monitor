@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ const (
 	maxAccessKeyIDRunes   = 64
 	maxRegionIDRunes      = 32
 	maxInstanceIDRunes    = 64
+	maxAccountTrafficGB   = 1000000
 )
 
 var sensitiveSettings = map[string]bool{
@@ -407,6 +409,9 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		account.Remark = strings.TrimSpace(account.Remark)
 		if len([]rune(account.Remark)) > maxAccountRemarkRunes {
 			return errors.New("account remark is too long")
+		}
+		if math.IsNaN(account.MaxTraffic) || math.IsInf(account.MaxTraffic, 0) || account.MaxTraffic <= 0 || account.MaxTraffic > maxAccountTrafficGB {
+			return errors.New("account max traffic is invalid")
 		}
 		row, found := byID[account.ID]
 		if !found {
