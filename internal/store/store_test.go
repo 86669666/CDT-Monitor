@@ -2366,6 +2366,30 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestClaimOutboxFailsOversizedPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	blob := strings.Repeat("x", maxOutboxPayloadRunes+1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',unixepoch(),unixepoch(),unixepoch())`, "evt-huge:webhook", "evt-huge", "webhook", blob); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimOutbox(ctx)
+	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, lastError string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE event_id='evt-huge'`).Scan(&status, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(lastError, "payload is too long") {
+		t.Fatalf("status=%q last_error=%q", status, lastError)
+	}
+}
+
 func TestValidateOutboxItem(t *testing.T) {
 	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
 	if err := ValidateOutboxItem("webhook", event); err != nil {
