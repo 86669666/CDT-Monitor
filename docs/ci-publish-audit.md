@@ -561,3 +561,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/cache@` / `actions/cache/save` / `actions/cache/restore`。setup-go `cache: true` 和 setup-node `cache: npm` 仍可用
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T18:13Z` / 2026-09-17 02:13 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `6970b30` 再加 Compose unconfined LSM 扫描：
+
+- Publish Guard 现禁止 Compose `apparmor:unconfined`、`seccomp:unconfined` 和 `label:disable`。`no-new-privileges` 不能靠关掉 LSM 绕过
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

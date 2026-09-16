@@ -821,6 +821,9 @@ scan_compose() {
   if ! grep -Eq 'no-new-privileges:true' <<<"$body"; then
     bad "$f: no-new-privileges:true is required"
   fi
+  if grep -Eq 'apparmor:[[:space:]]*unconfined|seccomp:[[:space:]]*unconfined|label:[[:space:]]*disable' <<<"$body"; then
+    bad "$f: unconfined apparmor/seccomp or disabled SELinux labels are forbidden"
+  fi
   if ! grep -Eq '^[[:space:]]+-[[:space:]]*ALL$' <<<"$body"; then
     bad "$f: cap_drop must include ALL"
   fi
