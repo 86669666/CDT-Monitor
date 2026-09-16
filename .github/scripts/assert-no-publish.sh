@@ -343,6 +343,12 @@ scan_job_limits() {
     if [ "$runs" -gt "$timeouts" ]; then
       bad "$f: each runs-on job must set timeout-minutes (runs-on=$runs timeout-minutes=$timeouts)"
     fi
+    if grep -Fq 'self-hosted' <<<"$body"; then
+      bad "$f: self-hosted runners are forbidden on this fork"
+    fi
+    if grep -E '^[[:space:]]*runs-on:' <<<"$body" | grep -Evq '^[[:space:]]*runs-on:[[:space:]]*ubuntu-latest$'; then
+      bad "$f: runs-on must stay ubuntu-latest"
+    fi
   done
 }
 
