@@ -470,6 +470,9 @@ func TestValidateWebhookHeadersRejectsHopByHopNames(t *testing.T) {
 	if err := ValidateWebhookHeaders(`{"Authorization":"Bearer token-value"}`); err != nil {
 		t.Fatalf("authorization header err=%v", err)
 	}
+	if err := ValidateWebhookHeaders("not-json"); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("non-json headers err=%v", err)
+	}
 	if err := ValidateWebhookHeaders(`{"Host":"169.254.169.254"}`); !errors.Is(err, errInvalidNotifyHeader) {
 		t.Fatalf("host header err=%v", err)
 	}

@@ -353,7 +353,7 @@ func ValidateWebhookHeaders(raw string) error {
 		if containsHeaderBreak(raw) {
 			return errInvalidNotifyHeader
 		}
-		return nil
+		return errInvalidNotifyPayload
 	}
 	if len(headers) > maxWebhookHeaderFields {
 		return errInvalidNotifyPayload
