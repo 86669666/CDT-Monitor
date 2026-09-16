@@ -488,6 +488,15 @@ scan_dockerfile() {
   if ! grep -Fq -- '-X main.version=${VERSION}' <<<"$body"; then
     bad "$f: go build must stamp main.version from VERSION"
   fi
+  if ! grep -Fq 'mkdir -p /runtime-data' <<<"$body"; then
+    bad "$f: builder must mkdir /runtime-data for the empty /data volume"
+  fi
+  if ! grep -Eq '^WORKDIR /src/web$' <<<"$body"; then
+    bad "$f: frontend WORKDIR must stay /src/web"
+  fi
+  if ! grep -Eq '^WORKDIR /src$' <<<"$body"; then
+    bad "$f: builder WORKDIR must stay /src"
+  fi
   if ! grep -Eq ' AS frontend$' <<<"$body"; then
     bad "$f: node stage must stay AS frontend"
   fi
