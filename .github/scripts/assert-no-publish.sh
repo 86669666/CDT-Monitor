@@ -256,6 +256,18 @@ scan_widget() {
   if ! grep -Eq 'gradle-home-cache-cleanup:[[:space:]]*true' <<<"$body"; then
     bad "$f: setup-gradle must keep gradle-home-cache-cleanup: true"
   fi
+  if ! grep -Fq 'android-widget/app/build/outputs/apk/debug/*.apk' "$f"; then
+    bad "$f: artifact paths must include debug APK"
+  fi
+  if ! grep -Fq 'android-widget/app/build/outputs/apk/release/*.apk' "$f"; then
+    bad "$f: artifact paths must include release APK"
+  fi
+  if ! grep -Fq 'android-widget/app/build/outputs/bundle/release/*.aab' "$f"; then
+    bad "$f: artifact paths must include release AAB"
+  fi
+  if grep -Eq 'app/build/outputs/.*\.jks|app/build/outputs/.*\.keystore' <<<"$body"; then
+    bad "$f: keystore files must not be uploaded as artifacts"
+  fi
 }
 
 scan_checkout_credentials() {
