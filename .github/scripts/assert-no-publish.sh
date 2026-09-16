@@ -65,8 +65,8 @@ scan_workflows() {
     if grep -Eq 'docker[[:space:]]+push|docker[[:space:]]+compose[[:space:]]+push|[[:space:]]compose[[:space:]]+push' <<<"$body"; then
       bad "$f: docker push / compose push is forbidden on this fork"
     fi
-    if grep -Eq 'environment:[[:space:]]*production|environment:[[:space:]]*prod$' <<<"$body"; then
-      bad "$f: GitHub environment production is forbidden on this fork"
+    if grep -Eq '^[[:space:]]+environment:' <<<"$body"; then
+      bad "$f: GitHub Environment jobs are forbidden on this fork"
     fi
     if grep -Eq 'curl.*\|[[:space:]]*(ba)?sh|wget.*\|[[:space:]]*(ba)?sh' <<<"$body"; then
       bad "$f: pipe-to-shell installers are forbidden"
