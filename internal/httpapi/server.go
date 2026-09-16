@@ -799,7 +799,7 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	key, token, err := s.store.CreateAPIKey(r.Context(), request.Name, request.Scopes, request.ExpiresAt)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 创建失败")
+		writeStoreValidationError(w, "api_key_failed", "API Key 创建失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "创建 API Key: "+request.Name)
@@ -1155,6 +1155,7 @@ func safeStoreValidationMessage(msg string) bool {
 		"notification option is invalid",
 		"account max traffic is invalid",
 		"too many accounts",
+		"too many api keys",
 		"notification identity is too long",
 		"notification payload is too long":
 		return true

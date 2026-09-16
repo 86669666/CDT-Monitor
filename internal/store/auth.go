@@ -58,6 +58,7 @@ const (
 	maxLogRunes         = 4096
 	maxAPIKeyNameRunes  = 64
 	maxPasskeyNameRunes = 64
+	maxAPIKeys          = 16
 )
 
 func clipUserAgent(value string) string {
@@ -150,6 +151,13 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	}
 	if expiresAt != nil && !expiresAt.UTC().After(time.Now().UTC()) {
 		return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL`).Scan(&count); err != nil {
+		return domain.APIKey{}, "", err
+	}
+	if count >= maxAPIKeys {
+		return domain.APIKey{}, "", errors.New("too many api keys")
 	}
 	secret, err := security.NewToken(32)
 	if err != nil {

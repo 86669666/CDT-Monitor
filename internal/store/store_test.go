@@ -1688,6 +1688,33 @@ func TestExpiredAPIKeyIsRejected(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsWhenAtCap(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for i := 0; i < maxAPIKeys; i++ {
+		if _, _, err = st.CreateAPIKey(ctx, "key-"+strconv.Itoa(i), []string{"widget:read"}, nil); err != nil {
+			t.Fatalf("create %d err=%v", i, err)
+		}
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "overflow", []string{"widget:read"}, nil); err == nil || !strings.Contains(err.Error(), "too many api keys") {
+		t.Fatalf("cap err=%v", err)
+	}
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil || len(keys) != maxAPIKeys {
+		t.Fatalf("listed %d err=%v", len(keys), err)
+	}
+	if err = st.RevokeAPIKey(ctx, keys[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "replacement", []string{"widget:read"}, nil); err != nil {
+		t.Fatalf("after revoke err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

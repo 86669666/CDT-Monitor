@@ -708,6 +708,25 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsWhenAtCapHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	for i := 0; i < 16; i++ {
+		body := `{"name":"key-` + strconv.Itoa(i) + `","scopes":["widget:read"]}`
+		got := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", body, cookies, headers)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("create %d status = %d body = %s", i, got.Code, got.Body.String())
+		}
+	}
+	overflow := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"overflow","scopes":["widget:read"]}`, cookies, headers)
+	if overflow.Code != http.StatusBadRequest || !strings.Contains(overflow.Body.String(), "too many api keys") {
+		t.Fatalf("overflow status = %d body = %s", overflow.Code, overflow.Body.String())
+	}
+}
+
 func TestCreateAPIKeyRejectsOversizedNameHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
