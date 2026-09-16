@@ -278,7 +278,11 @@ func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, 
 		return BillingBalance{}, err
 	}
 	data, _ := result["Data"].(map[string]any)
-	value := BillingBalance{Amount: number(data["AvailableAmount"]), Currency: stringValue(data["Currency"])}
+	amount, err := parseFiniteNumber(data["AvailableAmount"])
+	if err != nil {
+		return BillingBalance{}, errors.New("aliyun balance is invalid")
+	}
+	value := BillingBalance{Amount: amount, Currency: stringValue(data["Currency"])}
 	if value.Currency == "" {
 		value.Currency = "CNY"
 	}
@@ -309,7 +313,11 @@ func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, se
 	var total float64
 	for _, item := range items {
 		if obj, ok := item.(map[string]any); ok {
-			total += number(obj["PretaxAmount"])
+			amount, err := parseFiniteNumber(obj["PretaxAmount"])
+			if err != nil {
+				return BillingBill{}, errors.New("aliyun bill is invalid")
+			}
+			total += amount
 		}
 	}
 	return BillingBill{TotalCost: math.Round(total*100) / 100}, nil
@@ -776,7 +784,11 @@ func trafficFromResponse(result map[string]any, class string) (float64, error) {
 		}
 		region := stringValue(obj["BusinessRegionId"])
 		if trafficClass(region) == class {
-			total += number(obj["Traffic"])
+			amount, err := parseFiniteNumber(obj["Traffic"])
+			if err != nil {
+				return 0, errors.New("CDT traffic is invalid")
+			}
+			total += amount
 		}
 	}
 	return total / (1024 * 1024 * 1024), nil
@@ -811,18 +823,39 @@ func asSlice(value any) []any {
 }
 
 func number(value any) float64 {
-	switch number := value.(type) {
+	result, _ := parseFiniteNumber(value)
+	return result
+}
+
+func parseFiniteNumber(value any) (float64, error) {
+	var result float64
+	switch n := value.(type) {
 	case float64:
-		return number
+		result = n
 	case json.Number:
-		result, _ := number.Float64()
-		return result
+		parsed, err := n.Float64()
+		if err != nil {
+			return 0, err
+		}
+		result = parsed
 	case string:
-		result, _ := strconv.ParseFloat(number, 64)
-		return result
+		if strings.TrimSpace(n) == "" {
+			return 0, nil
+		}
+		parsed, err := strconv.ParseFloat(n, 64)
+		if err != nil {
+			return 0, err
+		}
+		result = parsed
+	case nil:
+		return 0, nil
 	default:
-		return 0
+		return 0, errors.New("number is invalid")
 	}
+	if math.IsNaN(result) || math.IsInf(result, 0) {
+		return 0, errors.New("number is not finite")
+	}
+	return result, nil
 }
 
 func stringValue(value any) string {

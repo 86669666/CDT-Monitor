@@ -52,6 +52,16 @@ func TestTrafficResponseAggregation(t *testing.T) {
 	}
 }
 
+func TestTrafficResponseRejectsNonFiniteValues(t *testing.T) {
+	result := map[string]any{"TrafficDetails": []any{
+		map[string]any{"BusinessRegionId": "cn-hangzhou", "Traffic": "NaN"},
+	}}
+	_, err := trafficFromResponse(result, "china")
+	if err == nil || !strings.Contains(err.Error(), "traffic is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestAsSliceSupportsSingleBssItem(t *testing.T) {
 	items := asSlice(map[string]any{"Item": map[string]any{"PretaxAmount": "23.456"}})
 	if len(items) != 1 {
@@ -83,6 +93,27 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
 	if err != nil || balance.Amount != 123.45 || balance.Currency != "CNY" {
 		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+}
+
+func TestGetAccountBalanceRejectsNonFiniteAmounts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"Inf"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "balance is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("non-finite balance must not retry, hits=%d", hits)
 	}
 }
 
