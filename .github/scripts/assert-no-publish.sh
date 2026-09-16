@@ -154,6 +154,14 @@ scan_workflows() {
           ;;
       esac
     fi
+    if grep -Eq 'actions/setup-java@|android-actions/setup-android@|gradle/actions/' <<<"$body"; then
+      case "$(basename "$f")" in
+        android-widget.yml) ;;
+        *)
+          bad "$f: Android/Gradle actions are forbidden outside widget CI"
+          ;;
+      esac
+    fi
   done
 }
 
