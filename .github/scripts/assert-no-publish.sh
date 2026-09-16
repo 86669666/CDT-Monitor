@@ -428,6 +428,12 @@ scan_dockerfile() {
   if ! grep -Eq '^USER 65532:65532$' <<<"$body"; then
     bad "$f: final image must stay USER 65532:65532"
   fi
+  if grep -Eq '^USER (0|root)(:0)?$' <<<"$body"; then
+    bad "$f: USER root/0 is forbidden"
+  fi
+  if grep -Eq '^ADD ' <<<"$body"; then
+    bad "$f: ADD is forbidden; keep COPY"
+  fi
   if ! grep -Fq 'VOLUME ["/data"]' <<<"$body"; then
     bad "$f: VOLUME must stay /data"
   fi
