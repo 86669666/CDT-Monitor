@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"bufio"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -725,5 +726,17 @@ func TestNotifyHTTPClientRequiresTLS12(t *testing.T) {
 	}
 	if transport.DialContext == nil {
 		t.Fatal("notify HTTP dialer must pin destinations at connect time")
+	}
+}
+
+func TestReadDotResponseBoundsSize(t *testing.T) {
+	got, err := readDotResponse(bufio.NewReader(strings.NewReader("250 ok\r\n.\r\n")))
+	if err != nil || string(got) != "250 ok\r\n" {
+		t.Fatalf("got=%q err=%v", got, err)
+	}
+	huge := strings.Repeat("x", maxSMTPDotResponseBytes+1) + "\r\n.\r\n"
+	_, err = readDotResponse(bufio.NewReader(strings.NewReader(huge)))
+	if err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("oversized err=%v", err)
 	}
 }
