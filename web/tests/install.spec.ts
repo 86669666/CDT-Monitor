@@ -8057,3 +8057,81 @@ test('settings webhook headers strip live header line breaks', async ({ page }) 
   expect(headers).toBe(stripped)
   expect(headers).not.toMatch(/[\r\n\u0000]/)
 })
+
+test('settings telegram chat id strips live header line breaks', async ({ page }) => {
+  let saveCalls = 0
+  let chatID = ''
+  const broken = '-1001\n超'
+  const stripped = liveNotifyHeaderText(broken)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: { chat_id?: string } } }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      chatID = body.notifications?.telegram?.chat_id || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByLabel('Chat ID').evaluate((input, value) => {
+    const field = input as HTMLInputElement
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(field, value)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  }, broken)
+  await expect(page.getByLabel('Chat ID')).toHaveValue(stripped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(chatID).toBe(stripped)
+  expect(chatID).not.toMatch(/[\r\n\u0000]/)
+})
+
+test('settings email identity strips live header line breaks', async ({ page }) => {
+  let saveCalls = 0
+  let email: { to?: string; username?: string } | undefined
+  const brokenTo = 'ops@example.invalid\n'
+  const brokenUser = 'ops\ruser'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { email?: { to?: string; username?: string } } }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      email = body.notifications?.email
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Email' }).click()
+  await page.getByLabel('接收邮箱').evaluate((input, value) => {
+    const field = input as HTMLInputElement
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(field, value)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  }, brokenTo)
+  await page.getByLabel('用户名').evaluate((input, value) => {
+    const field = input as HTMLInputElement
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(field, value)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  }, brokenUser)
+  await expect(page.getByLabel('接收邮箱')).toHaveValue(liveNotifyHeaderText(brokenTo))
+  await expect(page.getByLabel('用户名')).toHaveValue(liveNotifyHeaderText(brokenUser))
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(email).toMatchObject({
+    to: liveNotifyHeaderText(brokenTo),
+    username: liveNotifyHeaderText(brokenUser),
+  })
+})
