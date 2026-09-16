@@ -7956,3 +7956,33 @@ test('settings email port posts at the live TCP cap', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect(port).toBe(MAX_NOTIFY_TCP_PORT)
 })
+
+test('settings telegram proxy port posts at the live TCP cap', async ({ page }) => {
+  let saveCalls = 0
+  let proxyPort = ''
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { telegram?: { proxy_port?: string } } }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      proxyPort = body.notifications?.telegram?.proxy_port || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByLabel('代理类型').click()
+  await page.getByRole('option', { name: 'SOCKS5' }).click()
+  await page.getByLabel('代理端口').fill(String(MAX_NOTIFY_TCP_PORT + 1))
+  await expect(page.getByLabel('代理端口')).toHaveValue(String(MAX_NOTIFY_TCP_PORT))
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(proxyPort).toBe(String(MAX_NOTIFY_TCP_PORT))
+})

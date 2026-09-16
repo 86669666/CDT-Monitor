@@ -19,6 +19,15 @@ export function liveNotifyPort(value: number) {
   return Math.min(MAX_NOTIFY_TCP_PORT, Math.floor(value))
 }
 
+export function liveNotifyPortString(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (!/^\d+$/.test(trimmed)) return trimmed
+  const port = Number(trimmed)
+  if (port < 1) return trimmed
+  return String(Math.min(MAX_NOTIFY_TCP_PORT, port))
+}
+
 export function liveScheduleClock(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return ''
