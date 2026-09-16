@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -324,6 +325,27 @@ func TestSaveConfigRejectsInvalidMaxTraffic(t *testing.T) {
 	}
 	config.Accounts[0].MaxTraffic = 512.5
 	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSaveConfigRejectsTooManyAccounts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	accounts := make([]domain.Account, maxAccounts+1)
+	for i := range accounts {
+		accounts[i] = domain.Account{AccessKeyID: "LTAI" + strings.Repeat("x", 4) + strconv.Itoa(i), AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}
+	}
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: accounts}
+	if err = st.Setup(ctx, config); err == nil || !strings.Contains(err.Error(), "too many accounts") {
+		t.Fatalf("setup err=%v", err)
+	}
+	config.Accounts = accounts[:maxAccounts]
+	if err = st.Setup(ctx, config); err != nil {
 		t.Fatal(err)
 	}
 }

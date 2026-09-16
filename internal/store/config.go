@@ -23,6 +23,7 @@ const (
 	maxRegionIDRunes      = 32
 	maxInstanceIDRunes    = 64
 	maxAccountTrafficGB   = 1000000
+	maxAccounts           = 32
 )
 
 var sensitiveSettings = map[string]bool{
@@ -228,6 +229,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	}
 	if err := notify.ValidateNotifyOptions(config.Notifications); err != nil {
 		return err
+	}
+	if len(config.Accounts) > maxAccounts {
+		return errors.New("too many accounts")
 	}
 
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
