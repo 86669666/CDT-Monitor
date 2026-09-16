@@ -7209,3 +7209,51 @@ test('log clear surfaces the not_found envelope', async ({ page }) => {
   await expect(page.getByText('保留日志')).toBeVisible()
   expect(clearCalls).toBe(1)
 })
+
+test('settings webhook variable picker posts from a scrubbed GET', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        headers_configured: true,
+        url_configured: true,
+        body_configured: true,
+      }),
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('')
+  await page.getByTitle('插入 #TITLE#').click()
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('#TITLE#')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    body: '#TITLE#',
+    body_configured: true,
+  })
+  expect(savedWebhook).not.toHaveProperty('headers')
+  expect(savedWebhook).not.toHaveProperty('url')
+  expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+})
