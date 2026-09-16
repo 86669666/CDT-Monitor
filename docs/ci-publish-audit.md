@@ -471,3 +471,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 workflow `services:` sidecar，以及 `cache-to` / `cache-from` / `type=gha`。不要在 Actions 里起 redis/postgres，也不要把构建缓存推到 registry
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T09:13Z` / 2026-09-16 17:13 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `444f77b` 再加 Compose json-file 日志驱动扫描：
+
+- Publish Guard 现要求 Compose 日志驱动仍是本地 `json-file`（10m × 3），禁止 syslog/fluentd/awslogs 等远程驱动。不要把容器日志送到云端
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

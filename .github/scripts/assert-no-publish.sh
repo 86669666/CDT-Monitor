@@ -794,6 +794,12 @@ scan_compose() {
   if ! grep -Eq 'max-file:[[:space:]]*"3"' <<<"$body"; then
     bad "$f: json-file logs must stay max-file 3"
   fi
+  if ! grep -Eq 'driver:[[:space:]]*json-file' <<<"$body"; then
+    bad "$f: logging driver must stay json-file"
+  fi
+  if grep -Eq 'driver:[[:space:]]*(syslog|journald|gelf|fluentd|awslogs|splunk|gcplogs|logentries|etwlogs|loki)' <<<"$body"; then
+    bad "$f: remote logging drivers are forbidden on this local Compose"
+  fi
   if ! grep -Eq 'init:[[:space:]]*true' <<<"$body"; then
     bad "$f: init: true is required so PID 1 can reap"
   fi
