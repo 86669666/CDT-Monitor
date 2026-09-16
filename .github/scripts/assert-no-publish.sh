@@ -218,6 +218,15 @@ scan_widget() {
   if ! grep -Eq 'assembleDebug assembleRelease bundleRelease' <<<"$body"; then
     bad "$f: widget CI must keep assembleDebug assembleRelease bundleRelease"
   fi
+  if ! grep -Eq -- '--no-daemon' <<<"$body"; then
+    bad "$f: Gradle must run --no-daemon"
+  fi
+  if ! grep -Eq 'sdkmanager --licenses' <<<"$body"; then
+    bad "$f: SDK licenses must be accepted non-interactively"
+  fi
+  if ! grep -Fq 'platforms;android-35' "$f"; then
+    bad "$f: widget CI must install platforms;android-35"
+  fi
 }
 
 scan_checkout_credentials() {
