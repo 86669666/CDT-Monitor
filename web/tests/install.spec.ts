@@ -10,6 +10,7 @@ import {
   emptyHistory,
   expectKnownKeys,
   jobFixture,
+  liveGetTelegram,
   liveGetWebhook,
   mockDashboardReads,
   mockInitStatus,
@@ -2699,17 +2700,16 @@ test('settings telegram keeps configured proxy password when left empty', async 
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      telegram: {
+      telegram: liveGetTelegram({
         enabled: true,
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'socks5',
-        proxy_url_configured: false,
         proxy_ip: '127.0.0.1',
         proxy_port: '1080',
         proxy_user: 'proxy-user',
         proxy_password_configured: true,
-      },
+      }),
     },
   }
   let savedTelegram: Record<string, unknown> | undefined
@@ -2749,17 +2749,16 @@ test('settings telegram clears configured proxy password with the live sentinel'
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      telegram: {
+      telegram: liveGetTelegram({
         enabled: true,
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'socks5',
-        proxy_url_configured: false,
         proxy_ip: '127.0.0.1',
         proxy_port: '1080',
         proxy_user: 'proxy-user',
         proxy_password_configured: true,
-      },
+      }),
     },
   }
   let savedTelegram: Record<string, unknown> | undefined
@@ -2841,17 +2840,13 @@ test('settings telegram keeps configured proxy url when left empty', async ({ pa
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      telegram: {
+      telegram: liveGetTelegram({
         enabled: true,
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'custom',
         proxy_url_configured: true,
-        proxy_ip: '',
-        proxy_port: '',
-        proxy_user: '',
-        proxy_password_configured: false,
-      },
+      }),
     },
   }
   let savedTelegram: Record<string, unknown> | undefined
@@ -2891,17 +2886,13 @@ test('settings telegram clears configured proxy url with the live sentinel', asy
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      telegram: {
+      telegram: liveGetTelegram({
         enabled: true,
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'custom',
         proxy_url_configured: true,
-        proxy_ip: '',
-        proxy_port: '',
-        proxy_user: '',
-        proxy_password_configured: false,
-      },
+      }),
     },
   }
   let savedTelegram: Record<string, unknown> | undefined
@@ -4513,17 +4504,12 @@ test('settings telegram keeps configured token when left empty', async ({ page }
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      telegram: {
+      telegram: liveGetTelegram({
         enabled: true,
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'none',
-        proxy_url_configured: false,
-        proxy_ip: '',
-        proxy_port: '',
-        proxy_user: '',
-        proxy_password_configured: false,
-      },
+      }),
     },
   }
   let savedTelegram: Record<string, unknown> | undefined
@@ -4563,17 +4549,12 @@ test('settings telegram clears configured token with the live sentinel', async (
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      telegram: {
+      telegram: liveGetTelegram({
         enabled: true,
         token_configured: true,
         chat_id: '-1001',
         proxy_type: 'none',
-        proxy_url_configured: false,
-        proxy_ip: '',
-        proxy_port: '',
-        proxy_user: '',
-        proxy_password_configured: false,
-      },
+      }),
     },
   }
   let savedTelegram: Record<string, unknown> | undefined
