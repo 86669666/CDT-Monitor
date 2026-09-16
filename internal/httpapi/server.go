@@ -289,6 +289,11 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
+	name := strings.TrimSpace(request.Name)
+	if len([]rune(name)) > 64 {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称过长")
+		return
+	}
 	credentials, err := s.store.LoadPasskeyCredentials(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 数据加载失败")
@@ -304,7 +309,7 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
-	s.savePasskeySession(id, passkeySession{kind: "registration", name: strings.TrimSpace(request.Name), session: *session, expires: time.Now().Add(5 * time.Minute)})
+	s.savePasskeySession(id, passkeySession{kind: "registration", name: name, session: *session, expires: time.Now().Add(5 * time.Minute)})
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "public_key": creation})
 }
 

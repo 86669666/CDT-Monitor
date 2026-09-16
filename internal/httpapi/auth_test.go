@@ -1643,6 +1643,21 @@ func TestTrustedProxyAllowlistParsesCIDRsAndBareIPs(t *testing.T) {
 	}
 }
 
+func TestCreatePasskeyRejectsOversizedNameHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	name := strings.Repeat("n", 65)
+	got := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/begin", `{"name":"`+name+`"}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "passkey_failed") {
+		t.Fatalf("oversized passkey name status = %d body = %s", got.Code, got.Body.String())
+	}
+	ok := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/begin", `{"name":"`+strings.Repeat("n", 64)+`"}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), "session_id") {
+		t.Fatalf("max-length passkey name status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}
+
 func TestPasskeyLoginRequiresHTTPS(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

@@ -53,10 +53,11 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 }
 
 const (
-	maxUserAgentRunes  = 256
-	maxIPRunes         = 64
-	maxLogRunes        = 4096
-	maxAPIKeyNameRunes = 64
+	maxUserAgentRunes   = 256
+	maxIPRunes          = 64
+	maxLogRunes         = 4096
+	maxAPIKeyNameRunes  = 64
+	maxPasskeyNameRunes = 64
 )
 
 func clipUserAgent(value string) string {
@@ -285,8 +286,12 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 }
 
 func (s *Store) SavePasskey(ctx context.Context, name string, credential webauthn.Credential) error {
-	if strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		name = "管理员 Passkey"
+	}
+	if len([]rune(name)) > maxPasskeyNameRunes {
+		return errors.New("passkey name is too long")
 	}
 	encoded, err := json.Marshal(credential)
 	if err != nil {
