@@ -65,22 +65,22 @@ func (s *Service) Send(ctx context.Context, channel string, event domain.Notific
 	return sanitizeNotificationError(err, config)
 }
 
-func RedactSecrets(message string, config domain.Config) string {
+func RedactSecrets(message string, config domain.Config, extraSecrets ...string) string {
 	if message == "" {
 		return ""
 	}
-	err := sanitizeNotificationError(errors.New(message), config)
+	err := sanitizeNotificationError(errors.New(message), config, extraSecrets...)
 	if err == nil {
 		return ""
 	}
 	return err.Error()
 }
 
-func sanitizeNotificationError(err error, config domain.Config) error {
+func sanitizeNotificationError(err error, config domain.Config, extraSecrets ...string) error {
 	if err == nil {
 		return nil
 	}
-	secrets := notificationSecrets(config)
+	secrets := notificationSecrets(config, extraSecrets...)
 	if len(secrets) == 0 {
 		return err
 	}
@@ -95,7 +95,7 @@ func sanitizeNotificationError(err error, config domain.Config) error {
 	return errors.New(redacted)
 }
 
-func notificationSecrets(config domain.Config) []string {
+func notificationSecrets(config domain.Config, extraSecrets ...string) []string {
 	n := config.Notifications
 	candidates := []string{
 		n.Webhook.URL,
@@ -105,6 +105,10 @@ func notificationSecrets(config domain.Config) []string {
 		n.Telegram.Token,
 		n.Telegram.ProxyPass,
 		n.Email.Password,
+	}
+	candidates = append(candidates, extraSecrets...)
+	for _, account := range config.Accounts {
+		candidates = append(candidates, account.AccessKeySecret)
 	}
 	secrets := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {

@@ -153,3 +153,17 @@ func TestRedactSecretsLeavesEmptyAndUnknownText(t *testing.T) {
 		t.Fatalf("expected redaction in %q", got)
 	}
 }
+
+func TestRedactSecretsIncludesAccountSecrets(t *testing.T) {
+	config := domain.Config{
+		Accounts: []domain.Account{{AccessKeySecret: "ak-secret-from-config"}},
+	}
+	msg := "ecs denied ak-secret-from-config and extra-ak-secret-value"
+	got := RedactSecrets(msg, config, "extra-ak-secret-value")
+	if strings.Contains(got, "ak-secret-from-config") || strings.Contains(got, "extra-ak-secret-value") {
+		t.Fatalf("account secret leaked: %q", got)
+	}
+	if strings.Count(got, "[redacted]") != 2 {
+		t.Fatalf("expected both secrets redacted: %q", got)
+	}
+}

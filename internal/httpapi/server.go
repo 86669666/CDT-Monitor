@@ -637,10 +637,8 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "job_failed", "任务查询失败")
 		return
 	}
-	if config, cfgErr := s.store.GetConfig(r.Context()); cfgErr == nil {
-		job.Error = notify.RedactSecrets(job.Error, config)
-		job.Result = notify.RedactSecrets(job.Result, config)
-	}
+	job.Error = s.redactSecrets(r.Context(), job.Error)
+	job.Result = s.redactSecrets(r.Context(), job.Result)
 	writeJSON(w, http.StatusOK, job)
 }
 
@@ -650,10 +648,8 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
-	if config, cfgErr := s.store.GetConfig(r.Context()); cfgErr == nil {
-		for i := range entries {
-			entries[i].Message = notify.RedactSecrets(entries[i].Message, config)
-		}
+	for i := range entries {
+		entries[i].Message = s.redactSecrets(r.Context(), entries[i].Message)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": entries})
 }
@@ -1072,6 +1068,15 @@ func applyConfigDefaults(config *domain.Config) {
 	if config.Notifications.Webhook.Provider == "" {
 		config.Notifications.Webhook.Provider = "generic"
 	}
+}
+
+func (s *Server) redactSecrets(ctx context.Context, message string) string {
+	if message == "" {
+		return ""
+	}
+	config, _ := s.store.GetConfig(ctx)
+	extras, _ := s.store.AccountSecrets(ctx)
+	return notify.RedactSecrets(message, config, extras...)
 }
 
 func scrubConfig(config *domain.Config) {

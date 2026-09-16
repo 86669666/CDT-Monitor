@@ -998,6 +998,103 @@ func TestLogsGETRedactsTelegramToken(t *testing.T) {
 	}
 }
 
+func TestLogsGETRedactsAccountSecret(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	if err := st.AddLog(t.Context(), "error", "ecs denied super-secret-ak"); err != nil {
+		t.Fatal(err)
+	}
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("logs status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "super-secret-ak") {
+		t.Fatalf("logs GET leaked account secret: %s", body)
+	}
+	if !strings.Contains(body, "[redacted]") {
+		t.Fatalf("logs GET missing redaction: %s", body)
+	}
+}
+
+func TestJobGETRedactsAccountSecret(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	ctx := t.Context()
+	job, err := st.EnqueueJob(ctx, "test_notify", 0, `{"channel":"telegram"}`, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.Attempts = 1
+	if err = st.FailJob(ctx, job, errors.New("ecs denied super-secret-ak")); err != nil {
+		t.Fatal(err)
+	}
+	_, token, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+job.ID, "", nil, map[string]string{"X-API-Key": token})
+	if got.Code != http.StatusOK {
+		t.Fatalf("job status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "super-secret-ak") {
+		t.Fatalf("job GET leaked account secret: %s", body)
+	}
+	if !strings.Contains(body, "[redacted]") {
+		t.Fatalf("job GET missing redaction: %s", body)
+	}
+}
+
+func TestProcessJobsNotifyErrorIsRedactedOnJobGET(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "custom"
+	config.Notifications.Telegram.ProxyURL = "http://127.0.0.1:1"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	eng := engine.New(st, nil, notify.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), 1)
+	server := New(st, eng, fstest.MapFS{"index.html": {Data: []byte("ok")}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := server.Handler()
+	job, err := eng.Enqueue(ctx, engine.JobTestNotify, 0, engine.ParseNotifyPayload("telegram"), "notify-http-redact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.RunQueuedJobs(ctx)
+	var storedErr string
+	if err = st.DB().QueryRowContext(ctx, `SELECT error FROM jobs WHERE id=?`, job.ID).Scan(&storedErr); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(storedErr, "telegram-token-value") {
+		t.Fatalf("sqlite job error leaked telegram token: %q", storedErr)
+	}
+	_, token, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+job.ID, "", nil, map[string]string{"X-API-Key": token})
+	if got.Code != http.StatusOK {
+		t.Fatalf("job status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, "telegram-token-value") {
+		t.Fatalf("job GET leaked telegram token: %s", body)
+	}
+	if !strings.Contains(body, "[redacted]") {
+		t.Fatalf("job GET missing redaction: %s", body)
+	}
+}
+
 func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
@@ -1173,7 +1270,7 @@ func TestStatusRedactsBillingErrorSecrets(t *testing.T) {
 	if err != nil || len(accounts) != 1 {
 		t.Fatalf("accounts=%v err=%v", accounts, err)
 	}
-	if err = st.SetBillingCache(ctx, accounts[0].ID, "error", "", map[string]string{"message": "bss denied telegram-token-value"}); err != nil {
+	if err = st.SetBillingCache(ctx, accounts[0].ID, "error", "", map[string]string{"message": "bss denied telegram-token-value super-secret-ak"}); err != nil {
 		t.Fatal(err)
 	}
 	handler := testAPIHandler(t, st)
@@ -1187,8 +1284,8 @@ func TestStatusRedactsBillingErrorSecrets(t *testing.T) {
 		t.Fatalf("status = %d body = %s", status.Code, status.Body.String())
 	}
 	body := status.Body.String()
-	if strings.Contains(body, "telegram-token-value") {
-		t.Fatalf("status leaked telegram token: %s", body)
+	if strings.Contains(body, "telegram-token-value") || strings.Contains(body, "super-secret-ak") {
+		t.Fatalf("status leaked secret material: %s", body)
 	}
 	if !strings.Contains(body, "[redacted]") {
 		t.Fatalf("status missing redaction: %s", body)
@@ -1197,7 +1294,7 @@ func TestStatusRedactsBillingErrorSecrets(t *testing.T) {
 	if summary.Code != http.StatusOK {
 		t.Fatalf("widget summary status = %d body = %s", summary.Code, summary.Body.String())
 	}
-	if strings.Contains(summary.Body.String(), "telegram-token-value") || strings.Contains(summary.Body.String(), "billing_error") {
+	if strings.Contains(summary.Body.String(), "telegram-token-value") || strings.Contains(summary.Body.String(), "super-secret-ak") || strings.Contains(summary.Body.String(), "billing_error") {
 		t.Fatalf("widget summary leaked billing error: %s", summary.Body.String())
 	}
 }
