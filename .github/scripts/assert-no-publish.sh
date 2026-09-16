@@ -201,6 +201,23 @@ scan_widget() {
   if grep -Eq 'BEGIN (RSA |PRIVATE|CERTIFICATE)|keystorepassword:' <<<"$body"; then
     bad "$f: do not embed keystore material in YAML"
   fi
+  if ! grep -Eq 'gradle/actions/wrapper-validation@' <<<"$body"; then
+    bad "$f: Gradle Wrapper validation is required"
+  fi
+  if ! grep -Eq 'gradle/actions/setup-gradle@' <<<"$body"; then
+    bad "$f: setup-gradle is required"
+  fi
+  local wrap setup
+  wrap="$(grep -E 'gradle/actions/wrapper-validation@' <<<"$body" | head -1 || true)"
+  setup="$(grep -E 'gradle/actions/setup-gradle@' <<<"$body" | head -1 || true)"
+  wrap="${wrap##*@}"
+  setup="${setup##*@}"
+  if [ -n "$wrap" ] && [ -n "$setup" ] && [ "$wrap" != "$setup" ]; then
+    bad "$f: wrapper-validation and setup-gradle must share the same action SHA"
+  fi
+  if ! grep -Eq 'assembleDebug assembleRelease bundleRelease' <<<"$body"; then
+    bad "$f: widget CI must keep assembleDebug assembleRelease bundleRelease"
+  fi
 }
 
 scan_checkout_credentials() {

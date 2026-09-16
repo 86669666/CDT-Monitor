@@ -231,3 +231,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 workflow `environment: production` 与 `curl|sh` / `wget|sh`，并要求 Dockerfile `# syntax=` 前端钉 SHA
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T00:43Z` / 2026-09-16 08:43 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b992d66` 再加 widget wrapper-validation 扫描：
+
+- Publish Guard 现要求 Android Widget 使用同一 SHA 的 `wrapper-validation` 与 `setup-gradle`，并保持 `assembleDebug assembleRelease bundleRelease`
+- 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
