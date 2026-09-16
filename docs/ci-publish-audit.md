@@ -526,3 +526,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `pid`/`ipc` 的 `host`、`shareable`、`service:`、`container:` 共享。不要把本地容器接到别的 PID/IPC 命名空间
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T13:09Z` / 2026-09-16 21:09 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `243fdd1` 再加 extra GitHub write 权限扫描：
+
+- Publish Guard 现禁止 `deployments`/`statuses`/`checks`/`pages`/`repository-projects: write`。本 fork 不要用这些权限做 GitHub Pages 或部署环境
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

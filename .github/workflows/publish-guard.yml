@@ -14,6 +14,7 @@ name: Publish Guard
 # Do not add actions/github-script.
 # Do not add gh release create, actions/create-release, or npm publish.
 # Do not add QEMU or docker-container Buildx.
+# Do not add deployments/pages/statuses/checks write permissions.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
