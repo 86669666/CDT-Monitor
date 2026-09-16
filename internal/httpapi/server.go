@@ -537,14 +537,12 @@ func githubDialContext(ctx context.Context, network, address string) (net.Conn, 
 	if port != "443" {
 		return nil, errGitHubForbiddenHost
 	}
-	var ips []net.IP
-	if ip := net.ParseIP(host); ip != nil {
-		ips = []net.IP{ip}
-	} else {
-		ips, err = lookupGitHubIPs(ctx, host)
-		if err != nil {
-			return nil, err
-		}
+	if net.ParseIP(host) != nil || !allowedGitHubHost(host) {
+		return nil, errGitHubForbiddenHost
+	}
+	ips, err := lookupGitHubIPs(ctx, host)
+	if err != nil {
+		return nil, err
 	}
 	if len(ips) == 0 {
 		return nil, errGitHubForbiddenHost
@@ -578,6 +576,10 @@ var lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
 		}
 	}
 	return ips, nil
+}
+
+func allowedGitHubHost(host string) bool {
+	return strings.EqualFold(strings.TrimSuffix(host, "."), "api.github.com")
 }
 
 func forbiddenGitHubIP(ip net.IP) bool {

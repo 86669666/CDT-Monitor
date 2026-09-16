@@ -299,6 +299,18 @@ func TestGitHubDialContextRejectsNonTLSDestinations(t *testing.T) {
 	if !errors.Is(err, errGitHubForbiddenHost) {
 		t.Fatalf("port 80 dial err=%v", err)
 	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("evil.example.test", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("unknown host dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("1.1.1.1", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("ipv4 literal dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("::1", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("ipv6 literal dial err=%v", err)
+	}
 }
 
 func TestAllowRateExpiresStaleWindows(t *testing.T) {
