@@ -57,6 +57,23 @@ func TestProcessJobsRequeuesFailedControl(t *testing.T) {
 	}
 }
 
+func TestEnqueueRejectsUnknownJobType(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	_, err := eng.Enqueue(context.Background(), "not_a_job", 0, `{}`, "unknown:enqueue")
+	if err == nil || !strings.Contains(err.Error(), "unknown job type") {
+		t.Fatalf("err=%v", err)
+	}
+	var count int
+	if err = st.DB().QueryRowContext(context.Background(), `SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("unknown job type must not be queued, count=%d", count)
+	}
+}
+
 func TestProcessJobsUnknownTypeRequeues(t *testing.T) {
 	st, _ := setupAccount(t, nil)
 	defer st.Close()

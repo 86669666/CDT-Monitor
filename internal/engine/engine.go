@@ -64,7 +64,19 @@ func (e *Engine) Start(ctx context.Context) {
 	})
 }
 
+func allowedJobType(jobType string) bool {
+	switch jobType {
+	case JobMonitorAccount, JobRefreshAccount, JobControlInstance, JobTestNotify:
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *Engine) Enqueue(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string) (domain.Job, error) {
+	if !allowedJobType(jobType) {
+		return domain.Job{}, fmt.Errorf("unknown job type %q", jobType)
+	}
 	job, err := e.store.EnqueueJob(ctx, jobType, accountID, payload, uniqueKey, 3)
 	if err == nil {
 		e.signal()
