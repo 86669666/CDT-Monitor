@@ -6908,3 +6908,68 @@ test('wizard surfaces the live missing administrator password setup_failed envel
   await expect(page.getByText('administrator password is required')).toBeVisible()
   await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
 })
+
+test('instance start surfaces the csrf_failed envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
+
+test('instance stop surfaces the csrf_failed envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
+
+test('settings API key create surfaces the csrf_failed envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 403,
+        json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
