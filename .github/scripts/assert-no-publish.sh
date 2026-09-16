@@ -756,6 +756,9 @@ scan_compose() {
   if ! grep -Eq 'CDT_WORKERS:[[:space:]]*2$' <<<"$body"; then
     bad "$f: CDT_WORKERS must stay 2"
   fi
+  if ! grep -Fq 'IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor' <<<"$body"; then
+    bad "$f: IMAGE_SOURCE must stay the 86669666 fork URL"
+  fi
 }
 
 scan_vars() {

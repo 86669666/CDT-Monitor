@@ -371,3 +371,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `WORKDIR /src/web`、`WORKDIR /src`、以及 `mkdir -p /runtime-data`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T05:17Z` / 2026-09-16 13:17 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `0854a32` 再加 Compose IMAGE_SOURCE fork URL 扫描：
+
+- Publish Guard 现要求 Compose build-arg `IMAGE_SOURCE: https://github.com/86669666/CDT-Monitor`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
