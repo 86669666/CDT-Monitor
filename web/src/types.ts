@@ -24,6 +24,7 @@ export const MAX_ACCESS_KEY_SECRET_RUNES = 128
 export const MAX_API_KEYS = 16
 export const MAX_PASSKEYS = 8
 export const MAX_PASSKEY_NAME_RUNES = 64
+export const MAX_API_KEY_NAME_RUNES = 64
 
 export function liveNotifyPort(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0
