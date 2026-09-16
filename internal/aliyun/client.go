@@ -320,6 +320,20 @@ func validBillingCycle(cycle string) error {
 	return nil
 }
 
+func allowedAliyunEndpoint(host, version, action string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch action {
+	case "ListCdtInternetTraffic":
+		return host == "cdt.aliyuncs.com" && version == "2021-08-13"
+	case "DescribeInstanceStatus", "StartInstance", "StopInstance":
+		return strings.HasPrefix(host, "ecs.") && strings.HasSuffix(host, ".aliyuncs.com") && version == "2014-05-26"
+	case "QueryAccountBalance", "DescribeInstanceBill":
+		return (host == "business.aliyuncs.com" || host == "business.ap-southeast-1.aliyuncs.com") && version == "2017-12-14"
+	default:
+		return false
+	}
+}
+
 func allowedAliyunAction(action string) bool {
 	switch action {
 	case "ListCdtInternetTraffic", "DescribeInstanceStatus", "StartInstance", "StopInstance", "QueryAccountBalance", "DescribeInstanceBill":
@@ -390,6 +404,9 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	}
 	if err := validateAliyunExtras(extras); err != nil {
 		return nil, err
+	}
+	if !allowedAliyunEndpoint(host, version, action) {
+		return nil, errors.New("aliyun endpoint is invalid")
 	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {

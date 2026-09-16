@@ -85,6 +85,25 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	}
 }
 
+func TestCallRejectsMismatchedEndpoints(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "cdt.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun endpoint is invalid") {
+		t.Fatalf("mismatched endpoint err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("mismatched endpoint must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunEndpoint("ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "StartInstance") || allowedAliyunEndpoint("business.aliyuncs.com", "2017-12-14", "StartInstance") {
+		t.Fatal("endpoint pairing mismatch")
+	}
+}
+
 func TestCallRejectsUnknownExtras(t *testing.T) {
 	hits := 0
 	client := NewClient()
