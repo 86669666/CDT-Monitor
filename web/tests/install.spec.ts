@@ -4541,6 +4541,33 @@ test('refresh-all surfaces all-failed instance refresh', async ({ page }) => {
   expect(refreshCalls).toBe(1)
 })
 
+test('refresh-all timeout surfaces the all-failed refresh message', async ({ page }) => {
+  await page.clock.install()
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-timeout-a', 'queued'), jobFixture('refresh-timeout-b', 'queued')] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const id = route.request().url().split('/').pop() || 'refresh-timeout-a'
+    const queued = jobFixture(id, 'queued')
+    queued.error = 'FIXTURE-SECRET-TOKEN'
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  const jobPolled = page.waitForRequest('**/api/v1/jobs/**')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await jobPolled
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '全部实例刷新失败，请查看运行日志' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('FIXTURE-SECRET-TOKEN')
+  expect(refreshCalls).toBe(1)
+})
+
 test('refresh-all surfaces partial instance refresh failure', async ({ page }) => {
   let refreshCalls = 0
   await mockInitStatus(page, true)
