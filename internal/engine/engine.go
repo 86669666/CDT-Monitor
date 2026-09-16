@@ -567,6 +567,9 @@ func (e *Engine) flushOutbox(ctx context.Context) {
 			if sendErr = decodeJobPayload(item.Payload, &event); sendErr != nil {
 				return sendErr
 			}
+			if sendErr = store.ValidateOutboxItem(item.Channel, event); sendErr != nil {
+				return sendErr
+			}
 			config, cfgErr := e.store.GetConfig(ctx)
 			if cfgErr != nil {
 				return cfgErr

@@ -2261,6 +2261,23 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestValidateOutboxItem(t *testing.T) {
+	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
+	if err := ValidateOutboxItem("webhook", event); err != nil {
+		t.Fatalf("valid item err=%v", err)
+	}
+	if err := ValidateOutboxItem("sms", event); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
+		t.Fatalf("channel err=%v", err)
+	}
+	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: "", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("empty id err=%v", err)
+	}
+	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
+	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("title err=%v", err)
+	}
+}
+
 func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
