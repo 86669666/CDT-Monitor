@@ -436,3 +436,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求每个 `runs-on` 仍是 GitHub-hosted `ubuntu-latest`，禁止 `self-hosted`。不要把 fork 的 CI 放到自建 runner 上
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:01Z` / 2026-09-16 16:01 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `8071a4c` 再加 Compose networks/expose 扫描：
+
+- Publish Guard 现禁止 Compose `networks`、`expose`、`depends_on` 和 `external: true`。发布面只留 loopback `127.0.0.1:43210`，数据卷仍是本地 `cdt-data`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
