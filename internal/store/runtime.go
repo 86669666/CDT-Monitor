@@ -58,6 +58,7 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 		if err = rows.Scan(&entry.ID, &entry.Type, &entry.Message, &created); err != nil {
 			return nil, err
 		}
+		entry.Message = clipRunes(entry.Message, maxLogRunes)
 		entry.CreatedAt = time.Unix(created, 0).UTC()
 		entries = append(entries, entry)
 	}

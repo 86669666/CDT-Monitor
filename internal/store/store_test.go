@@ -386,6 +386,22 @@ func TestListAccountsRejectsInvalidTraffic(t *testing.T) {
 	}
 }
 
+func TestListAccountsRejectsInvalidMaxTraffic(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES('LTAItest','cn-hongkong','i-test','china','Unknown',-1)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "max traffic is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1187,6 +1203,25 @@ func TestAddLogMessageIsClipped(t *testing.T) {
 	}
 	if got := []rune(entries[0].Message); len(got) != maxLogRunes || string(got) != strings.Repeat("x", maxLogRunes) {
 		t.Fatalf("stored log len = %d", len(got))
+	}
+}
+
+func TestListLogsClipsOversizedStoredMessages(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES('error',?,unixepoch())`, strings.Repeat("x", maxLogRunes+64)); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("logs=%#v err=%v", entries, err)
+	}
+	if got := []rune(entries[0].Message); len(got) != maxLogRunes {
+		t.Fatalf("listed log len = %d", len(got))
 	}
 }
 
