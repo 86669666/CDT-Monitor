@@ -416,3 +416,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `ARG VERSION=dev`、`COMMIT=unknown`、`BUILT_AT=unknown`，本地构建不必 docker login 填版本
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T07:25Z` / 2026-09-16 15:25 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `1cb7745` 再加 Compose 单服务 / 本地标签扫描：
+
+- Publish Guard 现要求 `services:` 里只有 `cdt-monitor`，且唯一 `image:` 仍是无仓库前缀的 `cdt-monitor:local`。不要在 Compose 里加 nginx/caddy/traefik sidecar；HSTS/TLS 仍在外部反向代理
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

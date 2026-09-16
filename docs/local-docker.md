@@ -58,7 +58,7 @@ TZ=Asia/Shanghai docker compose up -d
 
 ## HTTPS 与反向代理
 
-本 fork 的 Compose 只绑定 `127.0.0.1:43210`，用明文 HTTP 跑本地向导。应用**不会**发送 `Strict-Transport-Security`（HSTS），避免把浏览器锁到 `https://127.0.0.1`。不要在容器里开 TLS，也不要把端口改成 `0.0.0.0` 或局域网地址来“先看公网”。
+本 fork 的 Compose 只绑定 `127.0.0.1:43210`，用明文 HTTP 跑本地向导。应用**不会**发送 `Strict-Transport-Security`（HSTS），避免把浏览器锁到 `https://127.0.0.1`。不要在容器里开 TLS，也不要把端口改成 `0.0.0.0` 或局域网地址来“先看公网”。Compose 只保留服务 `cdt-monitor`；不要在同一文件里加 nginx/caddy/traefik sidecar。TLS 与 HSTS 仍在外部反向代理。
 
 公网入口必须在反向代理（或网关）终止 TLS。代理需要：
 

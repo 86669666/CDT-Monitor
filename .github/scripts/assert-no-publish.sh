@@ -670,7 +670,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images
+  local body images svc_keys image_count
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -817,6 +817,25 @@ scan_compose() {
   fi
   if grep -Eq '^[[:space:]]+tty:[[:space:]]*true' <<<"$body"; then
     bad "$f: tty: true is forbidden on this local daemon Compose"
+  fi
+  svc_keys="$(awk '
+    $0 ~ /^services:[[:space:]]*$/ { in_svc=1; next }
+    in_svc && $0 ~ /^[^[:space:]]/ { in_svc=0 }
+    in_svc && $0 ~ /^  [A-Za-z0-9._-]+:[[:space:]]*$/ {
+      name=$1
+      sub(/:$/, "", name)
+      print name
+    }
+  ' <<<"$body")"
+  if [ "$svc_keys" != "cdt-monitor" ]; then
+    bad "$f: extra sidecar services are forbidden; only cdt-monitor is allowed (TLS stays at an external reverse proxy)"
+  fi
+  image_count="$(grep -cE '^[[:space:]]*image:' <<<"$body" || true)"
+  if [ "$image_count" -ne 1 ]; then
+    bad "$f: only one image: line is allowed (cdt-monitor:local, no sidecar)"
+  fi
+  if ! grep -Eq '^[[:space:]]+image:[[:space:]]*cdt-monitor:local$' <<<"$body"; then
+    bad "$f: image: must stay cdt-monitor:local"
   fi
 }
 
