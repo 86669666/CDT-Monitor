@@ -1070,7 +1070,8 @@ func safeStoreValidationMessage(msg string) bool {
 		"account instance_id is invalid",
 		"account remark is too long",
 		"notification header fields must not contain line breaks",
-		"account schedule time is invalid":
+		"account schedule time is invalid",
+		"notification port is invalid":
 		return true
 	default:
 		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")

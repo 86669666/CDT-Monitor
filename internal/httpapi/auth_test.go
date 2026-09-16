@@ -1365,6 +1365,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account schedule time is invalid") {
 		t.Fatalf("schedule status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification port is invalid"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification port is invalid") {
+		t.Fatalf("port status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {
