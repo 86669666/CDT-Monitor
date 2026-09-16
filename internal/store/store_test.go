@@ -2009,6 +2009,33 @@ func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
 	}
 }
 
+func TestValidateAPIKeyRejectsOversizedScopesJSON(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	token := "cdt_oversized_scopes_token"
+	blob := `["` + strings.Repeat("x", maxAPIKeyScopesJSONBytes) + `"]`
+	if _, err = st.db.Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('huge',?,?,unixepoch())`, security.TokenHash(token), blob); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, token); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("validate err=%v", err)
+	}
+	if _, err = st.ListAPIKeys(ctx); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("list err=%v", err)
+	}
+	var lastUsed sql.NullInt64
+	if err = st.db.QueryRow(`SELECT last_used_at FROM api_keys`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("oversized scopes must not record last_used_at")
+	}
+}
+
 func TestSavePasskeyRejectsWhenAtCap(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
