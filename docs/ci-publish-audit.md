@@ -511,3 +511,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `gh release create`、`gh auth login`、`actions/create-release` 和 `npm publish`。GitHub Release 只走已加开关的 draft action
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:23Z` / 2026-09-16 20:23 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `dad4a5d` 再加 Compose shm/ulimits/oom 扫描：
+
+- Publish Guard 现禁止 Compose `shm_size`、`ulimits` 和 `oom_kill_disable`。资源上限仍是 `pids_limit 256` / `mem_limit 512m` / `cpus 1.0`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

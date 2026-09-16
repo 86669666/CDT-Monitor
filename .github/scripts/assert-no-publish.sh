@@ -840,6 +840,15 @@ scan_compose() {
   if ! grep -Eq 'cpus:[[:space:]]*1\.0' <<<"$body"; then
     bad "$f: cpus must stay 1.0"
   fi
+  if grep -Eq '^[[:space:]]+shm_size:' <<<"$body"; then
+    bad "$f: shm_size is forbidden; keep the default /dev/shm"
+  fi
+  if grep -Eq '^[[:space:]]+ulimits:' <<<"$body"; then
+    bad "$f: ulimits overrides are forbidden; keep pids_limit 256"
+  fi
+  if grep -Eq 'oom_kill_disable:[[:space:]]*true' <<<"$body"; then
+    bad "$f: oom_kill_disable is forbidden"
+  fi
   if ! grep -Eq 'CDT_LISTEN:[[:space:]]*:8080' <<<"$body"; then
     bad "$f: CDT_LISTEN must stay :8080"
   fi
