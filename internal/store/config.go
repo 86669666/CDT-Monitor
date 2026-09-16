@@ -535,6 +535,15 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if !validAccountSiteType(a.SiteType) {
 			return nil, errors.New("site_type is invalid")
 		}
+		if !validAccountToken(a.AccessKeyID, maxAccessKeyIDRunes, "-") {
+			return nil, errors.New("account access_key_id is invalid")
+		}
+		if !validAccountToken(a.RegionID, maxRegionIDRunes, "-") {
+			return nil, errors.New("region_id is invalid")
+		}
+		if a.InstanceID != "" && !validAccountToken(a.InstanceID, maxInstanceIDRunes, "-_") {
+			return nil, errors.New("instance_id is invalid")
+		}
 		a.SecretConfigured = secret != ""
 		a.ScheduleEnabled = schedule == 1
 		if updated > 0 {
