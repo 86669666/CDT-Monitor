@@ -900,6 +900,15 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+extra_hosts:' <<<"$body"; then
     bad "$f: extra_hosts is forbidden"
   fi
+  if grep -Eq '^[[:space:]]*profiles:' <<<"$body"; then
+    bad "$f: Compose profiles are forbidden; keep the single local cdt-monitor service"
+  fi
+  if grep -Eq '^[[:space:]]+dns(_search|_opt)?:' <<<"$body"; then
+    bad "$f: custom dns/dns_search/dns_opt is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+mac_address:' <<<"$body"; then
+    bad "$f: mac_address is forbidden"
+  fi
   if grep -Eq 'stdin_open:[[:space:]]*true' <<<"$body"; then
     bad "$f: stdin_open: true is forbidden on this local daemon Compose"
   fi
