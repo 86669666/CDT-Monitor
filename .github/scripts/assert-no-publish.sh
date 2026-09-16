@@ -801,7 +801,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env extra_secopt
+  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -928,6 +928,23 @@ scan_compose() {
   fi
   if grep -Eq 'driver:[[:space:]]*(syslog|journald|gelf|fluentd|awslogs|splunk|gcplogs|logentries|etwlogs|loki)' <<<"$body"; then
     bad "$f: remote logging drivers are forbidden on this local Compose"
+  fi
+  extra_log="$(awk '
+    $0 ~ /^    logging:[[:space:]]*$/ { in_l=1; next }
+    in_l && $0 ~ /^    [A-Za-z]/ { in_l=0 }
+    in_l && $0 ~ /^      [A-Za-z0-9_-]+:/ { print }
+  ' <<<"$body" | grep -Ev '^      (driver|options):' || true)"
+  if [ -n "$extra_log" ]; then
+    bad "$f: extra logging keys are forbidden; keep driver json-file and max-size/max-file options"
+  fi
+  extra_logopt="$(awk '
+    $0 ~ /^      options:[[:space:]]*$/ { in_o=1; next }
+    in_o && $0 ~ /^      [A-Za-z]/ { in_o=0 }
+    in_o && $0 ~ /^    [A-Za-z]/ { in_o=0 }
+    in_o && $0 ~ /^        [A-Za-z0-9_-]+:/ { print }
+  ' <<<"$body" | grep -Ev '^        (max-size|max-file):' || true)"
+  if [ -n "$extra_logopt" ]; then
+    bad "$f: extra json-file logging options are forbidden; keep max-size 10m and max-file 3"
   fi
   if ! grep -Eq 'init:[[:space:]]*true' <<<"$body"; then
     bad "$f: init: true is required so PID 1 can reap"
