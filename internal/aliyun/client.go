@@ -282,10 +282,11 @@ func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, 
 	if err != nil {
 		return BillingBalance{}, errors.New("aliyun balance is invalid")
 	}
-	value := BillingBalance{Amount: amount, Currency: stringValue(data["Currency"])}
-	if value.Currency == "" {
-		value.Currency = "CNY"
+	currency, err := normalizeAliyunCurrency(stringValue(data["Currency"]))
+	if err != nil {
+		return BillingBalance{}, err
 	}
+	value := BillingBalance{Amount: amount, Currency: currency}
 	c.balanceMu.Lock()
 	c.balance[key] = balanceCacheEntry{value: value, createdAt: time.Now()}
 	c.balanceMu.Unlock()
@@ -337,6 +338,28 @@ func billingSite(siteType string) string {
 		return "international"
 	}
 	return "china"
+}
+
+func normalizeAliyunCurrency(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "CNY", nil
+	}
+	if len(value) != 3 {
+		return "", errors.New("aliyun currency is invalid")
+	}
+	out := make([]byte, 3)
+	for i := 0; i < 3; i++ {
+		c := value[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		if c < 'A' || c > 'Z' {
+			return "", errors.New("aliyun currency is invalid")
+		}
+		out[i] = c
+	}
+	return string(out), nil
 }
 
 func validBillingCycle(cycle string) error {

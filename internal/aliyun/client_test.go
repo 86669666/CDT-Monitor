@@ -117,6 +117,41 @@ func TestGetAccountBalanceRejectsNonFiniteAmounts(t *testing.T) {
 	}
 }
 
+func TestGetAccountBalanceRejectsInvalidCurrency(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"12.5","Currency":"USDT"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "currency is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("invalid currency must not retry, hits=%d", hits)
+	}
+}
+
+func TestNormalizeAliyunCurrency(t *testing.T) {
+	got, err := normalizeAliyunCurrency("")
+	if err != nil || got != "CNY" {
+		t.Fatalf("empty currency=%q err=%v", got, err)
+	}
+	got, err = normalizeAliyunCurrency("usd")
+	if err != nil || got != "USD" {
+		t.Fatalf("usd currency=%q err=%v", got, err)
+	}
+	if _, err = normalizeAliyunCurrency("US$"); err == nil {
+		t.Fatal("expected invalid currency")
+	}
+}
+
 func TestCallRejectsMismatchedEndpoints(t *testing.T) {
 	hits := 0
 	client := NewClient()
