@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -8134,4 +8134,75 @@ test('settings email identity strips live header line breaks', async ({ page }) 
     to: liveNotifyHeaderText(brokenTo),
     username: liveNotifyHeaderText(brokenUser),
   })
+})
+
+test('settings save surfaces the live notification payload envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'notification payload is too long' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'notification payload is too long' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
+test('wizard surfaces the live notification payload setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'notification payload is too long' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('notification payload is too long')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
+
+test('settings webhook headers post at the live rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let headers = ''
+  const overflow = `${'h'.repeat(MAX_WEBHOOK_HEADERS_RUNES)}超`
+  const capped = 'h'.repeat(MAX_WEBHOOK_HEADERS_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: { headers?: string } } }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      headers = body.notifications?.webhook?.headers || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByLabel(/自定义 Headers/).fill(overflow)
+  await expect(page.getByLabel(/自定义 Headers/)).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...headers]).toHaveLength(MAX_WEBHOOK_HEADERS_RUNES)
+  expect(headers).toBe(capped)
 })
