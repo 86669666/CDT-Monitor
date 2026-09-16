@@ -65,6 +65,12 @@ scan_workflows() {
     if grep -Eq 'docker[[:space:]]+push|docker[[:space:]]+compose[[:space:]]+push|[[:space:]]compose[[:space:]]+push' <<<"$body"; then
       bad "$f: docker push / compose push is forbidden on this fork"
     fi
+    if grep -Eq 'environment:[[:space:]]*production|environment:[[:space:]]*prod$' <<<"$body"; then
+      bad "$f: GitHub environment production is forbidden on this fork"
+    fi
+    if grep -Eq 'curl.*\|[[:space:]]*(ba)?sh|wget.*\|[[:space:]]*(ba)?sh' <<<"$body"; then
+      bad "$f: pipe-to-shell installers are forbidden"
+    fi
   done
 }
 
@@ -316,6 +322,9 @@ scan_dockerfile() {
   require_file "$f" || return
   local body
   body="$(strip_comments "$f")"
+  if ! grep -Eq 'syntax=docker/dockerfile:.*@sha256:' "$f"; then
+    bad "$f: dockerfile frontend must stay digest-pinned (# syntax=docker/dockerfile:...@sha256:...)"
+  fi
   if ! grep -Fq 'ARG IMAGE_SOURCE=https://github.com/86669666/CDT-Monitor' <<<"$body"; then
     bad "$f: default IMAGE_SOURCE must stay https://github.com/86669666/CDT-Monitor"
   fi
