@@ -848,6 +848,9 @@ scan_compose() {
   if ! grep -Eq '/tmp:size=16m,mode=1777,noexec,nosuid,nodev' <<<"$body"; then
     bad "$f: /tmp tmpfs must stay noexec,nosuid,nodev"
   fi
+  if grep -E '^[[:space:]]+-[[:space:]]+"?/' <<<"$body" | grep -Evq '/tmp:size=16m,mode=1777,noexec,nosuid,nodev'; then
+    bad "$f: extra tmpfs/host paths are forbidden; keep only /tmp noexec"
+  fi
   if ! grep -Fq '/cdt-monitor", "healthcheck"' <<<"$body"; then
     bad "$f: healthcheck must stay /cdt-monitor healthcheck"
   fi
