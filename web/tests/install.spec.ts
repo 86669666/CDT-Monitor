@@ -6733,3 +6733,39 @@ test('settings API key create surfaces the invalid_request envelope', async ({ p
   await expect(page.getByText('仅显示一次')).toHaveCount(0)
   expect(createCalls).toBe(1)
 })
+
+test('wizard surfaces the invalid_request envelope and stays on install', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'invalid_request', message: '请求体无效' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('请求体无效')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
+
+test('wizard surfaces the session_failed envelope and stays on install', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'session_failed', message: '无法创建会话' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('无法创建会话')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
