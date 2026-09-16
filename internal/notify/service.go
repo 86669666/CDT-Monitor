@@ -32,8 +32,20 @@ type Service struct {
 	httpClient *http.Client
 }
 
+var errNotifyRedirect = errors.New("notification redirects are not allowed")
+
 func New() *Service {
-	return &Service{httpClient: &http.Client{Timeout: 12 * time.Second}}
+	return &Service{httpClient: notifyHTTPClient(12*time.Second, nil)}
+}
+
+func notifyHTTPClient(timeout time.Duration, transport http.RoundTripper) *http.Client {
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errNotifyRedirect
+		},
+	}
 }
 
 func EnabledChannels(config domain.Config) []string {
@@ -294,9 +306,9 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 		if err != nil {
 			return err
 		}
-		client = &http.Client{Timeout: 12 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+		client = notifyHTTPClient(12*time.Second, &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 			return dialer.Dial(network, address)
-		}}}
+		}})
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {

@@ -237,3 +237,28 @@ func TestSendTelegramRejectsMetadataProxyURL(t *testing.T) {
 		t.Fatalf("send err=%v", err)
 	}
 }
+
+func TestSendWebhookDoesNotFollowRedirects(t *testing.T) {
+	hit := false
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hit = true
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+
+	config := domain.Config{}
+	config.Notifications.Webhook.Enabled = true
+	config.Notifications.Webhook.URL = source.URL
+	config.Notifications.Webhook.Method = "POST"
+	config.Notifications.Webhook.Type = "JSON"
+	err := New().Send(context.Background(), "webhook", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errNotifyRedirect) {
+		t.Fatalf("send err=%v", err)
+	}
+	if hit {
+		t.Fatal("webhook send followed a redirect")
+	}
+}
