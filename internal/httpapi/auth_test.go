@@ -1345,6 +1345,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "missing access key secret") {
 		t.Fatalf("missing secret status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account remark is too long"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account remark is too long") {
+		t.Fatalf("remark status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {
@@ -1814,6 +1819,44 @@ func TestClearLogsRequiresAdminCSRF(t *testing.T) {
 	listed := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"logs":[]`) {
 		t.Fatalf("cleared logs status = %d body = %s", listed.Code, listed.Body.String())
+	}
+}
+
+func TestSaveConfigRejectsOversizedAccountRemarkHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.Accounts[0].Remark = strings.Repeat("备", 65)
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "account remark is too long") {
+		t.Fatalf("oversized remark status = %d body = %s", bad.Code, bad.Body.String())
+	}
+	config.Accounts[0].Remark = strings.Repeat("备", 64)
+	raw, err = json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("max-length remark status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	reload := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if reload.Code != http.StatusOK || !strings.Contains(reload.Body.String(), strings.Repeat("备", 64)) {
+		t.Fatalf("reloaded remark status = %d body = %s", reload.Code, reload.Body.String())
 	}
 }
 

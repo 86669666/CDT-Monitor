@@ -211,6 +211,33 @@ func TestAccountIDsRemainStable(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Accounts[0].Remark = strings.Repeat("备", maxAccountRemarkRunes+1)
+	if err = st.SaveConfig(ctx, config); err == nil {
+		t.Fatal("expected oversized remark to be rejected")
+	}
+	config.Accounts[0].Remark = strings.Repeat("备", maxAccountRemarkRunes)
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 || accounts[0].Remark != strings.Repeat("备", maxAccountRemarkRunes) {
+		t.Fatalf("accounts=%#v err=%v", accounts, err)
+	}
+}
+
 func TestWebhookHeadersStayUntilCleared(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
