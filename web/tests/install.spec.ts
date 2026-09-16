@@ -1375,13 +1375,13 @@ test('login surfaces the invalid_request envelope', async ({ page }) => {
   await mockUnauthorizedSession(page)
   await page.route('**/api/v1/auth/login', (route) => route.fulfill({
     status: 400,
-    json: { error: { code: 'invalid_request', message: 'json: unknown field "nope"' } },
+    json: { error: { code: 'invalid_request', message: '请求体无效' } },
   }))
 
   await page.goto('/')
   await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
   await page.getByRole('button', { name: '安全登录' }).click()
-  await expect(page.getByText('json: unknown field "nope"')).toBeVisible()
+  await expect(page.getByText('请求体无效')).toBeVisible()
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
 
@@ -2350,7 +2350,7 @@ test('settings save surfaces the invalid_request envelope', async ({ page }) => 
       saveCalls += 1
       return route.fulfill({
         status: 400,
-        json: { error: { code: 'invalid_request', message: 'json: unknown field "nope"' } },
+        json: { error: { code: 'invalid_request', message: '请求体无效' } },
       })
     }
     return route.fulfill({ json: dashboardConfig })
@@ -2359,7 +2359,7 @@ test('settings save surfaces the invalid_request envelope', async ({ page }) => 
   await page.goto('/')
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('button', { name: '保存更改' }).click()
-  await expect(page.locator('.toast--error').filter({ hasText: 'json: unknown field "nope"' }).first()).toBeVisible()
+  await expect(page.locator('.toast--error').filter({ hasText: '请求体无效' }).first()).toBeVisible()
   expect(saveCalls).toBe(1)
 })
 
@@ -6659,4 +6659,29 @@ test('instance stop surfaces the not_found envelope', async ({ page }) => {
   await page.getByRole('button', { name: '关机' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
   expect(stopCalls).toBe(1)
+})
+
+test('admin password update surfaces the invalid_request envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_request', message: '请求体无效' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请求体无效' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
 })
