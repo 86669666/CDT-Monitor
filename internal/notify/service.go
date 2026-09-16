@@ -832,7 +832,8 @@ func replaceTemplate(input string, replacements map[string]string, urlEncode boo
 	return input
 }
 
-// ReadDotResponse is kept private to avoid accepting unbounded SMTP responses.
+const maxSMTPDotResponseBytes = 1 << 20
+
 func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 	var buffer bytes.Buffer
 	for {
@@ -842,6 +843,9 @@ func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 		}
 		if string(line) == ".\r\n" {
 			return buffer.Bytes(), nil
+		}
+		if buffer.Len()+len(line) > maxSMTPDotResponseBytes {
+			return nil, errors.New("SMTP response is too long")
 		}
 		buffer.Write(line)
 	}
