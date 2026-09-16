@@ -61,6 +61,9 @@ func tls12Transport(base *http.Transport) *http.Transport {
 	cloned := base.TLSClientConfig.Clone()
 	cloned.MinVersion = tls.VersionTLS12
 	base.TLSClientConfig = cloned
+	if base.DialContext == nil {
+		base.DialContext = notifyDialContext
+	}
 	return base
 }
 
@@ -248,6 +251,43 @@ func resolveForbiddenHost(ctx context.Context, host string) error {
 	return nil
 }
 
+func notifyDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if err = ValidateDialHost(host); err != nil {
+		return nil, err
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		ips, err = lookupNotifyIPs(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("notification URL host lookup failed: %w", err)
+		}
+	}
+	if len(ips) == 0 {
+		return nil, errForbiddenNotifyHost
+	}
+	for _, ip := range ips {
+		if forbiddenNotifyIP(ip) {
+			return nil, errForbiddenNotifyHost
+		}
+	}
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
 func forbiddenNotifyHost(host string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	switch host {
@@ -282,36 +322,30 @@ func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.Noti
 		return err
 	}
 	hostPort := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	var client *smtp.Client
-	if strings.EqualFold(config.Security, "ssl") || config.Port == 465 {
-		conn, err := tls.DialWithDialer(dialer, "tcp", hostPort, &tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12})
-		if err != nil {
-			return err
-		}
-		client, err = smtp.NewClient(conn, config.Host)
-		if err != nil {
+	useImplicitTLS := strings.EqualFold(config.Security, "ssl") || config.Port == 465
+	conn, err := notifyDialContext(ctx, "tcp", hostPort)
+	if err != nil {
+		return err
+	}
+	if useImplicitTLS {
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12})
+		if err = tlsConn.HandshakeContext(ctx); err != nil {
 			conn.Close()
 			return err
 		}
-	} else {
-		conn, err := dialer.DialContext(ctx, "tcp", hostPort)
-		if err != nil {
-			return err
-		}
-		client, err = smtp.NewClient(conn, config.Host)
-		if err != nil {
-			conn.Close()
-			return err
-		}
-		if strings.EqualFold(config.Security, "tls") || strings.EqualFold(config.Security, "starttls") {
-			if err = client.StartTLS(&tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12}); err != nil {
-				client.Close()
-				return err
-			}
-		}
+		conn = tlsConn
+	}
+	client, err := smtp.NewClient(conn, config.Host)
+	if err != nil {
+		conn.Close()
+		return err
 	}
 	defer client.Close()
+	if !useImplicitTLS && (strings.EqualFold(config.Security, "tls") || strings.EqualFold(config.Security, "starttls")) {
+		if err = client.StartTLS(&tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
 	if config.Password != "" {
 		if err := client.Auth(smtp.PlainAuth("", config.Username, config.Password, config.Host)); err != nil {
 			return err

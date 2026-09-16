@@ -1443,6 +1443,26 @@ func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
 	}
 }
 
+func TestSavePasskeyRejectsOversizedName(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	credential := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")}
+	if err = st.SavePasskey(ctx, strings.Repeat("n", maxPasskeyNameRunes+1), credential); err == nil {
+		t.Fatal("expected oversized passkey name to be rejected")
+	}
+	if err = st.SavePasskey(ctx, strings.Repeat("n", maxPasskeyNameRunes), credential); err != nil {
+		t.Fatal(err)
+	}
+	items, err := st.ListPasskeys(ctx)
+	if err != nil || len(items) != 1 || items[0].Name != strings.Repeat("n", maxPasskeyNameRunes) {
+		t.Fatalf("passkeys=%#v err=%v", items, err)
+	}
+}
+
 func TestPasskeyCredentialRoundTrip(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

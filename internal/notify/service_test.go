@@ -374,6 +374,77 @@ func TestSendEmailRejectsHostnameResolvedToMetadata(t *testing.T) {
 	}
 }
 
+func TestNotifyDialContextRejectsMetadataIP(t *testing.T) {
+	_, err := notifyDialContext(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "80"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("link-local dial err=%v", err)
+	}
+	_, err = notifyDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "80"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("aliyun metadata dial err=%v", err)
+	}
+}
+
+func TestSendWebhookRejectsDNSRebindingToMetadata(t *testing.T) {
+	original := lookupNotifyIPs
+	calls := 0
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		if host != "rebind.example.test" {
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		calls++
+		if calls == 1 {
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		return []net.IP{net.ParseIP("169.254.169.254")}, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+
+	config := domain.Config{}
+	config.Notifications.Webhook.Enabled = true
+	config.Notifications.Webhook.URL = "http://rebind.example.test/hooks/test"
+	config.Notifications.Webhook.Method = "POST"
+	config.Notifications.Webhook.Type = "JSON"
+	err := New().Send(context.Background(), "webhook", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if err == nil || !strings.Contains(err.Error(), errForbiddenNotifyHost.Error()) {
+		t.Fatalf("send err=%v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("dial-time lookup skipped, calls=%d", calls)
+	}
+}
+
+func TestSendEmailRejectsDNSRebindingToMetadata(t *testing.T) {
+	original := lookupNotifyIPs
+	calls := 0
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		if host != "smtp.rebind.example.test" {
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		calls++
+		if calls == 1 {
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		return []net.IP{net.ParseIP("100.100.100.200")}, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+
+	config := domain.Config{}
+	config.Notifications.Email.Enabled = true
+	config.Notifications.Email.Host = "smtp.rebind.example.test"
+	config.Notifications.Email.Port = 587
+	config.Notifications.Email.Security = "starttls"
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops@example.test"
+	err := New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("dial-time lookup skipped, calls=%d", calls)
+	}
+}
+
 func TestNotifyHTTPClientRequiresTLS12(t *testing.T) {
 	transport, ok := New().httpClient.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
@@ -382,5 +453,8 @@ func TestNotifyHTTPClientRequiresTLS12(t *testing.T) {
 	secured := tls12Transport(&http.Transport{})
 	if secured.TLSClientConfig == nil || secured.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("tls12Transport = %#v", secured.TLSClientConfig)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("notify HTTP dialer must pin destinations at connect time")
 	}
 }
