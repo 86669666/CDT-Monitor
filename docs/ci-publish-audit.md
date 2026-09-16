@@ -291,3 +291,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 CI `go build -trimpath ./cmd/cdt-monitor`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:35Z` / 2026-09-16 10:35 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `2704b6b` 再加 Dockerfile HEALTHCHECK command 扫描：
+
+- Publish Guard 现要求 HEALTHCHECK 为 `30s/5s/10s/3` 且命令 `/cdt-monitor healthcheck`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
