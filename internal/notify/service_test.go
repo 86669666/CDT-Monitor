@@ -232,6 +232,9 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 		"https://100.100.100.200/latest/meta-data/": errForbiddenNotifyHost,
 		"http://metadata.google.internal/":          errForbiddenNotifyHost,
 		"http://[fd00:ec2::254]/latest/meta-data/":  errForbiddenNotifyHost,
+		"http://0.0.0.0/hooks/test":                 errForbiddenNotifyHost,
+		"http://[::]/hooks/test":                    errForbiddenNotifyHost,
+		"http://224.0.0.1/hooks/test":               errForbiddenNotifyHost,
 	}
 	for raw, want := range blocked {
 		if err := ValidateCallbackURL(raw); !errors.Is(err, want) {
@@ -243,6 +246,12 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	}
 	if err := ValidateDialHost("192.168.1.1"); err != nil {
 		t.Fatalf("lan dial host rejected: %v", err)
+	}
+	if err := ValidateDialHost("0.0.0.0"); !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("unspecified dial host err=%v", err)
+	}
+	if err := ValidateDialHost("224.0.0.1"); !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("multicast dial host err=%v", err)
 	}
 	if err := ValidateDialHost(strings.Repeat("a", maxDialHostRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
 		t.Fatalf("oversized dial host err=%v", err)

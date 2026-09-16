@@ -509,7 +509,7 @@ func forbiddenNotifyHost(host string) bool {
 }
 
 func forbiddenNotifyIP(ip net.IP) bool {
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
 	if ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254")) {
