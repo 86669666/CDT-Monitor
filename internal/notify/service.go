@@ -372,6 +372,8 @@ func ValidateWebhookBody(raw string) error {
 	return nil
 }
 
+const maxNotifyResolvedIPs = 8
+
 var lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
@@ -408,6 +410,9 @@ func resolveForbiddenHost(ctx context.Context, host string) error {
 	ips, err := lookupNotifyIPs(ctx, host)
 	if err != nil {
 		return fmt.Errorf("notification URL host lookup failed: %w", err)
+	}
+	if len(ips) > maxNotifyResolvedIPs {
+		return errForbiddenNotifyHost
 	}
 	for _, ip := range ips {
 		if forbiddenNotifyIP(ip) {
@@ -460,7 +465,7 @@ func notifyDialContext(ctx context.Context, network, address string) (net.Conn, 
 			return nil, fmt.Errorf("notification URL host lookup failed: %w", err)
 		}
 	}
-	if len(ips) == 0 {
+	if len(ips) == 0 || len(ips) > maxNotifyResolvedIPs {
 		return nil, errForbiddenNotifyHost
 	}
 	for _, ip := range ips {
