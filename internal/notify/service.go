@@ -120,6 +120,8 @@ func notificationSecrets(config domain.Config, extraSecrets ...string) []string 
 		n.Telegram.ProxyUser,
 		n.Telegram.ProxyPass,
 		n.Email.Password,
+		n.Email.Username,
+		n.Email.To,
 	}
 	candidates = append(candidates, extraSecrets...)
 	for _, account := range config.Accounts {

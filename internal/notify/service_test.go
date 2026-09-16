@@ -187,6 +187,20 @@ func TestRedactSecretsIncludesTelegramChatIDAndProxyUser(t *testing.T) {
 	}
 }
 
+func TestRedactSecretsIncludesEmailIdentities(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops-alerts@example.test"
+	msg := "smtp AUTH failed for monitor@example.test sending to ops-alerts@example.test"
+	got := RedactSecrets(msg, config)
+	if strings.Contains(got, "monitor@example.test") || strings.Contains(got, "ops-alerts@example.test") {
+		t.Fatalf("email identity leaked: %q", got)
+	}
+	if strings.Count(got, "[redacted]") != 2 {
+		t.Fatalf("expected both identities redacted: %q", got)
+	}
+}
+
 func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	allowed := []string{
 		"",
