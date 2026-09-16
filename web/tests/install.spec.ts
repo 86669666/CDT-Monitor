@@ -6220,3 +6220,112 @@ test('settings dingtalk webhook template clears configured headers from a scrubb
   })
   expect(savedWebhook?.headers).not.toBe('')
 })
+
+test('settings wecom webhook template clears configured headers from a scrubbed GET', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        headers_configured: true,
+        url_configured: true,
+        body_configured: true,
+      }),
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('自定义 Headers · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('Webhook URL · 已配置')).toHaveValue('')
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: '微信群机器人' }).click()
+  await page.getByLabel('微信群机器人 Key').fill('wecom-key')
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.getByText('微信群机器人 模板已生成，请检查后保存')).toBeVisible()
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    provider: 'wecom',
+    method: 'POST',
+    request_type: 'JSON',
+    headers: '__clear__',
+    url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wecom-key',
+    body: '{\n  "msgtype": "text",\n  "text": {\n    "content": "#MSG#"\n  }\n}',
+  })
+  expect(savedWebhook?.headers).not.toBe('')
+})
+
+test('settings wxpusher webhook template clears configured headers from a scrubbed GET', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        headers_configured: true,
+        url_configured: true,
+        body_configured: true,
+      }),
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await expect(page.getByLabel('自定义 Headers · 已配置')).toHaveValue('')
+  await expect(page.getByLabel('Body 模板 · 已配置')).toHaveValue('')
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: 'WxPusher' }).click()
+  await page.getByLabel('AppToken').fill('AT_test')
+  await page.getByLabel('UID').fill('UID_test')
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.getByText('WxPusher 模板已生成，请检查后保存')).toBeVisible()
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    provider: 'wxpusher',
+    method: 'POST',
+    request_type: 'JSON',
+    headers: '__clear__',
+    url: 'https://wxpusher.zjiecode.com/api/send/message',
+    body: '{\n  "appToken": "AT_test",\n  "content": "#MSG#",\n  "summary": "#TITLE#",\n  "contentType": 1,\n  "uids": [\n    "UID_test"\n  ]\n}',
+  })
+  expect(savedWebhook?.headers).not.toBe('')
+})
