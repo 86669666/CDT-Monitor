@@ -1123,7 +1123,8 @@ func safeStoreValidationMessage(msg string) bool {
 		"account schedule time is invalid",
 		"notification port is invalid",
 		"notification option is invalid",
-		"account max traffic is invalid":
+		"account max traffic is invalid",
+		"too many accounts":
 		return true
 	default:
 		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")
