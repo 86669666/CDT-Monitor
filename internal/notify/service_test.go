@@ -482,6 +482,12 @@ func TestValidateWebhookHeadersRejectsHopByHopNames(t *testing.T) {
 	if err := ValidateWebhookHeaders(`{"":"x"}`); !errors.Is(err, errInvalidNotifyHeader) {
 		t.Fatalf("empty header err=%v", err)
 	}
+	if err := ValidateWebhookHeaders(`{"` + strings.Repeat("N", maxWebhookHeaderNameRunes+1) + `":"v"}`); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("oversized header name err=%v", err)
+	}
+	if err := ValidateWebhookHeaders(`{"X-Token":"` + strings.Repeat("v", maxWebhookHeaderValueRunes+1) + `"}`); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("oversized header value err=%v", err)
+	}
 }
 
 func TestValidateWebhookHeadersRejectsTooManyFields(t *testing.T) {
