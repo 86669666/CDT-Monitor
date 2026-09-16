@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, MAX_PASSWORD_RUNES, MAX_ACCESS_KEY_SECRET_RUNES, MAX_API_KEYS, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, MAX_PASSWORD_RUNES, MAX_ACCESS_KEY_SECRET_RUNES, MAX_API_KEYS, MAX_PASSKEYS, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -8780,4 +8780,22 @@ test('wizard surfaces the live notification option setup_failed envelope', async
   await page.getByRole('button', { name: '完成安装' }).click()
   await expect(page.getByText('notification option is invalid')).toBeVisible()
   await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
+
+test('settings passkey create stays capped at the live passkey limit', async ({ page }) => {
+  const passkeys = Array.from({ length: MAX_PASSKEYS }, (_, index) => ({
+    id: index + 1,
+    name: `device-${index + 1}`,
+    created_at: new Date().toISOString(),
+  }))
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys } }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await expect(page.locator('.passkey-row')).toHaveCount(MAX_PASSKEYS)
+  await expect(page.getByRole('button', { name: '创建 Passkey' })).toBeDisabled()
+  await expect(page.getByText('Passkey 只能在 HTTPS 安全上下文中创建')).toBeVisible()
+  await expect(page.getByText('尚未创建管理员 Passkey')).toHaveCount(0)
 })
