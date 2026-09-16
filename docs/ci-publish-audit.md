@@ -496,3 +496,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `profiles`、`dns`/`dns_search`/`dns_opt` 和 `mac_address`。不要用 profile 叠一层发布面，也不要自定义 DNS/MAC
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T11:46Z` / 2026-09-16 19:46 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e24d16b` 再加 github-script 扫描：
+
+- Publish Guard 现禁止 `actions/github-script`。不要用它拿 `GITHUB_TOKEN` 跑任意 JS 去打 tag / 改仓库
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

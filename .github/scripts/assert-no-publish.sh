@@ -114,6 +114,9 @@ scan_workflows() {
     if [ -n "$extra" ]; then
       bad "$f: unexpected secret reference: $extra"
     fi
+    if grep -Fq 'actions/github-script' <<<"$body"; then
+      bad "$f: actions/github-script is forbidden on this fork"
+    fi
   done
 }
 
