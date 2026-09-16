@@ -626,3 +626,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许服务 volume `cdt-data:/data`。不要再挂 cache 或其它路径
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T23:15Z` / 2026-09-17 07:15 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `be4fd5b` 再加 checkout token 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `token:` 覆盖。不要把 PAT 交给 checkout
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

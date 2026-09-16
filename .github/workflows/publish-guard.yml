@@ -24,6 +24,7 @@ name: Publish Guard
 # Android/Gradle actions stay on widget CI only.
 # setup-go/setup-node stay on CI verify and gated Release Binaries only.
 # Do not add SSH deploy keys or scp/ssh actions.
+# Do not pass checkout token: PATs.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
