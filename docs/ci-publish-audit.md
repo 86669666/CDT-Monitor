@@ -566,3 +566,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `apparmor:unconfined`、`seccomp:unconfined` 和 `label:disable`。`no-new-privileges` 不能靠关掉 LSM 绕过
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T19:40Z` / 2026-09-17 03:40 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c77d3da` 再加 GitHub Pages 部署 action 扫描：
+
+- Publish Guard 现禁止 `actions/deploy-pages`、`configure-pages`、`upload-pages-artifact` 和 `peaceiris/actions-gh-pages`。本 fork 不要做 GitHub Pages 发布
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
