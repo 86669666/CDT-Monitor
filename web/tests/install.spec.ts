@@ -9927,3 +9927,22 @@ test('instance refresh surfaces the live not_found envelope', async ({ page }) =
   await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('instance refresh surfaces the live internal_error envelope', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
