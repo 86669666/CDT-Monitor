@@ -255,6 +255,12 @@ func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.Noti
 	if config.Host == "" || config.Port == 0 || config.Username == "" || config.To == "" {
 		return errors.New("SMTP host, port, username and recipient are required")
 	}
+	if err := ValidateDialHost(config.Host); err != nil {
+		return err
+	}
+	if err := resolveForbiddenHost(ctx, config.Host); err != nil {
+		return err
+	}
 	hostPort := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var client *smtp.Client

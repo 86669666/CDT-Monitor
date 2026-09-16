@@ -1931,6 +1931,29 @@ func TestReadyzIsPublic(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsMetadataSMTPHost(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.Notifications.Email.Host = "169.254.169.254"
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "config_failed") {
+		t.Fatalf("metadata smtp host status = %d body = %s", bad.Code, bad.Body.String())
+	}
+}
+
 func TestSaveConfigRejectsMetadataWebhookURL(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

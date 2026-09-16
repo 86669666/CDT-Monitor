@@ -203,6 +203,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if err := notify.ValidateDialHost(config.Notifications.Telegram.ProxyIP); err != nil {
 		return err
 	}
+	if err := notify.ValidateDialHost(config.Notifications.Email.Host); err != nil {
+		return err
+	}
 
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
 		if config.AdminPassword != "" {
