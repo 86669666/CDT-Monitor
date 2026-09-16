@@ -18,6 +18,7 @@ export const MAX_WEBHOOK_BODY_RUNES = 8192
 export const MAX_NOTIFY_URL_RUNES = 2048
 export const MAX_NOTIFY_SECRET_RUNES = 255
 export const MAX_NOTIFY_DIAL_HOST_RUNES = 253
+export const MAX_TIMEZONE_RUNES = 64
 
 export function liveNotifyPort(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0
