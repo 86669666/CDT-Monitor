@@ -8741,3 +8741,43 @@ test('settings API key create stops at the live key cap', async ({ page }) => {
   await expect(page.locator('.key-row')).toHaveCount(MAX_API_KEYS)
   await expect(page.getByRole('button', { name: '创建 Key' })).toBeDisabled()
 })
+
+test('settings save surfaces the live notification option envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'notification option is invalid' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'notification option is invalid' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
+test('wizard surfaces the live notification option setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'notification option is invalid' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('notification option is invalid')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
