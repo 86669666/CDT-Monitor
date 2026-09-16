@@ -475,6 +475,9 @@ func requestOrigin(r *http.Request) string {
 }
 
 func (s *Server) savePasskeySession(id string, session passkeySession) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
@@ -491,6 +494,9 @@ func (s *Server) savePasskeySession(id string, session passkeySession) bool {
 }
 
 func (s *Server) takePasskeySession(id, kind string) (passkeySession, bool) {
+	if id == "" || len(id) > 128 {
+		return passkeySession{}, false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.passkeys[id]
