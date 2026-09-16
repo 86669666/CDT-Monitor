@@ -395,6 +395,7 @@ test('wizard surfaces the live missing account secret setup_failed envelope', as
     const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
     expect(body.accounts).toHaveLength(1)
     expect(body.accounts?.[0]).toMatchObject({ access_key_id: 'LTAI5added', secret_configured: false })
+    expect(body.accounts?.[0]).not.toHaveProperty('access_key_secret')
     return route.fulfill({
       status: 400,
       json: { error: { code: 'setup_failed', message: 'account LTAI5added is missing access key secret' } },
@@ -3698,7 +3699,7 @@ test('settings save surfaces the live missing account secret envelope', async ({
       const body = JSON.parse(route.request().postData() || '{}') as { accounts?: Record<string, unknown>[] }
       expect(body.accounts).toHaveLength(2)
       expect(body.accounts?.[1]).toMatchObject({ access_key_id: 'LTAI5added', secret_configured: false })
-      expect(body.accounts?.[1]?.access_key_secret === undefined || body.accounts?.[1]?.access_key_secret === '').toBeTruthy()
+      expect(body.accounts?.[1]).not.toHaveProperty('access_key_secret')
       return route.fulfill({
         status: 400,
         json: { error: { code: 'config_failed', message: 'account LTAI5added is missing access key secret' } },
