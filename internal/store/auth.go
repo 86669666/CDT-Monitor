@@ -298,6 +298,9 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 		if err = rows.Scan(&encoded); err != nil {
 			return nil, err
 		}
+		if len(encoded) > maxPasskeyJSONBytes {
+			return nil, errors.New("passkey credential is too large")
+		}
 		var credential webauthn.Credential
 		if err = json.Unmarshal([]byte(encoded), &credential); err != nil {
 			return nil, err

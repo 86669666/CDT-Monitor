@@ -740,3 +740,17 @@ func TestReadDotResponseBoundsSize(t *testing.T) {
 		t.Fatalf("oversized err=%v", err)
 	}
 }
+
+func TestClipNotifyErrorText(t *testing.T) {
+	if got := clipNotifyErrorText("  boom  "); got != "boom" {
+		t.Fatalf("trim=%q", got)
+	}
+	long := strings.Repeat("m", maxNotifyErrorRunes+40)
+	got := clipNotifyErrorText(long)
+	if !strings.HasSuffix(got, "...") {
+		t.Fatalf("missing clip marker: %q", got)
+	}
+	if runes := []rune(got); len(runes) != maxNotifyErrorRunes+3 {
+		t.Fatalf("clipped len=%d", len(runes))
+	}
+}

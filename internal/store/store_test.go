@@ -2051,6 +2051,23 @@ func TestSavePasskeyRejectsOversizedCredential(t *testing.T) {
 	}
 }
 
+func TestLoadPasskeyCredentialsRejectsOversizedJSON(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	blob := strings.Repeat("k", maxPasskeyJSONBytes+1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES(?,?,?,unixepoch())`, "poison", []byte("id"), blob); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestSavePasskeyRejectsOversizedName(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
