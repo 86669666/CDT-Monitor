@@ -5345,6 +5345,7 @@ test('login hides passkey sign-in without HTTPS', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   await expect(page.getByRole('button', { name: '使用 Passkey 登录' })).toHaveCount(0)
+  await expect(page.getByText('Passkey 登录只能在 HTTPS 安全上下文中使用')).toBeVisible()
 })
 
 test('login password visibility toggle reveals the password field', async ({ page }) => {
