@@ -138,6 +138,14 @@ scan_workflows() {
     if grep -Eq 'peaceiris/actions-gh-pages|actions/deploy-pages|actions/configure-pages|actions/upload-pages-artifact' <<<"$body"; then
       bad "$f: GitHub Pages deploy actions are forbidden on this fork"
     fi
+    if grep -Eq 'docker/setup-buildx-action|docker/build-push-action' <<<"$body"; then
+      case "$(basename "$f")" in
+        docker-build-push.yml) ;;
+        *)
+          bad "$f: Buildx/build-push-action is forbidden outside Container Images verify"
+          ;;
+      esac
+    fi
   done
 }
 

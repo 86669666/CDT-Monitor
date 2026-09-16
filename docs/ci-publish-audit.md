@@ -576,3 +576,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 `/tmp` tmpfs（16m, noexec,nosuid,nodev）。不要再挂 `/run` 或其他可写 tmpfs
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T21:30Z` / 2026-09-17 05:30 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `af68421` 再加 Buildx 白名单扫描：
+
+- Publish Guard 现只允许 `.github/workflows/docker-build-push.yml` 使用 `docker/setup-buildx-action` 和 `docker/build-push-action`。CI / widget / Publish Guard 不要起 Buildx
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
