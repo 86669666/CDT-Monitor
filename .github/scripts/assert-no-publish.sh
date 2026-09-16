@@ -793,7 +793,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env
+  local body images svc_keys image_count port_count extra_env extra_secopt
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -858,6 +858,14 @@ scan_compose() {
   fi
   if grep -Eq 'apparmor:[[:space:]]*unconfined|seccomp:[[:space:]]*unconfined|label:[[:space:]]*disable' <<<"$body"; then
     bad "$f: unconfined apparmor/seccomp or disabled SELinux labels are forbidden"
+  fi
+  extra_secopt="$(awk '
+    $0 ~ /^    security_opt:[[:space:]]*$/ { in_s=1; next }
+    in_s && $0 ~ /^    [A-Za-z]/ { in_s=0 }
+    in_s && $0 ~ /^      - / { print }
+  ' <<<"$body" | grep -Ev '^      - no-new-privileges:true$' || true)"
+  if [ -n "$extra_secopt" ]; then
+    bad "$f: extra security_opt entries are forbidden; keep only no-new-privileges:true"
   fi
   if ! grep -Eq '^[[:space:]]+-[[:space:]]*ALL$' <<<"$body"; then
     bad "$f: cap_drop must include ALL"
