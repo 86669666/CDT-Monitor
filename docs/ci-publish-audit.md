@@ -476,3 +476,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Compose 日志驱动仍是本地 `json-file`（10m × 3），禁止 syslog/fluentd/awslogs 等远程驱动。不要把容器日志送到云端
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T09:23Z` / 2026-09-16 17:23 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `52a34a4` 再加 GitHub Environment job 扫描：
+
+- Publish Guard 现禁止任何 GitHub Environment job（不只是 `production`）。staging/prod 保护环境会带部署密钥，本 fork 不要接
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
