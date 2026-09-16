@@ -322,6 +322,38 @@ func TestListAccountsRejectsInvalidStatus(t *testing.T) {
 	}
 }
 
+func TestListAccountsRejectsInvalidSiteType(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,region_id,instance_id,site_type,instance_status) VALUES('LTAItest','cn-hongkong','i-test','evil','Unknown')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "site_type is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestListAccountsRejectsInvalidIdentifiers(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,region_id,instance_id,site_type,instance_status) VALUES('LTAItest','cn-hongkong.evil','i-test','china','Unknown')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "region_id is invalid") {
+		t.Fatalf("region err=%v", err)
+	}
+}
+
 func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
