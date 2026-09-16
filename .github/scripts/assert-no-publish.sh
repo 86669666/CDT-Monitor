@@ -936,6 +936,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+sysctls:' <<<"$body"; then
     bad "$f: sysctls: is forbidden on this local Compose"
   fi
+  if grep -Eq '^[[:space:]]+storage_opt:' <<<"$body"; then
+    bad "$f: storage_opt is forbidden on this local Compose"
+  fi
+  if grep -Eq '^[[:space:]]+labels:' <<<"$body"; then
+    bad "$f: Compose labels are forbidden; keep OCI labels in the Dockerfile"
+  fi
   if grep -Eq '^[[:space:]]+extra_hosts:' <<<"$body"; then
     bad "$f: extra_hosts is forbidden"
   fi
