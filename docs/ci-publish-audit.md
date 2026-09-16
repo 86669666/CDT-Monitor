@@ -286,3 +286,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 named volume `cdt-data:/data`，禁止把宿主机 `./data` bind-mount 进容器
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:28Z` / 2026-09-16 10:28 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `227be06` 再加 CI go build ./cmd/cdt-monitor 扫描：
+
+- Publish Guard 现要求 CI `go build -trimpath ./cmd/cdt-monitor`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
