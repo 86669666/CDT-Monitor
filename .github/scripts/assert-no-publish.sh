@@ -482,6 +482,15 @@ scan_ci_verify() {
   if ! grep -Eq 'cache-dependency-path:[[:space:]]*web/package-lock.json' <<<"$body"; then
     bad "$f: npm cache must use web/package-lock.json"
   fi
+  if ! grep -Eq 'go build' <<<"$body"; then
+    bad "$f: verify must keep go build"
+  fi
+  if ! grep -Fq './cmd/cdt-monitor' "$f"; then
+    bad "$f: Linux build target must stay ./cmd/cdt-monitor"
+  fi
+  if ! grep -Eq -- '-trimpath' <<<"$body"; then
+    bad "$f: go build must keep -trimpath"
+  fi
 }
 
 scan_npm_ci() {
