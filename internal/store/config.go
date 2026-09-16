@@ -544,6 +544,9 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if a.InstanceID != "" && !validAccountToken(a.InstanceID, maxInstanceIDRunes, "-_") {
 			return nil, errors.New("instance_id is invalid")
 		}
+		if !validScheduleClock(a.StartTime) || !validScheduleClock(a.StopTime) {
+			return nil, errors.New("schedule time is invalid")
+		}
 		a.SecretConfigured = secret != ""
 		a.ScheduleEnabled = schedule == 1
 		if updated > 0 {
