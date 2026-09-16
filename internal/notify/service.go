@@ -200,10 +200,15 @@ func validateNotifyURL(raw string, schemes []string) error {
 	return nil
 }
 
+const maxDialHostRunes = 253
+
 func ValidateDialHost(host string) error {
 	host = strings.TrimSpace(host)
 	if host == "" {
 		return nil
+	}
+	if len([]rune(host)) > maxDialHostRunes {
+		return errInvalidNotifyIdentity
 	}
 	if forbiddenNotifyHost(host) {
 		return errForbiddenNotifyHost

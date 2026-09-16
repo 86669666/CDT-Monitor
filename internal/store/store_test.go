@@ -891,6 +891,18 @@ func TestInvalidTimezoneIsRejected(t *testing.T) {
 	}
 }
 
+func TestSetupRejectsOversizedTimezone(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: strings.Repeat("A", 65)}
+	if err = st.Setup(context.Background(), config); err == nil || !strings.Contains(err.Error(), "invalid timezone") {
+		t.Fatalf("oversized timezone err=%v", err)
+	}
+}
+
 func TestAPIIntervalMinimum(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -71,6 +71,18 @@ scan_workflows() {
     if grep -Eq 'curl.*\|[[:space:]]*(ba)?sh|wget.*\|[[:space:]]*(ba)?sh' <<<"$body"; then
       bad "$f: pipe-to-shell installers are forbidden"
     fi
+    if grep -Fq 'pull_request_target' <<<"$body"; then
+      bad "$f: pull_request_target is forbidden (base-repo privileges on fork PRs)"
+    fi
+    if grep -Fq 'workflow_run' <<<"$body"; then
+      bad "$f: workflow_run triggers are forbidden on this fork"
+    fi
+    if grep -Fq 'repository_dispatch' <<<"$body"; then
+      bad "$f: repository_dispatch is forbidden on this fork"
+    fi
+    if grep -Eq 'permissions:[[:space:]]*write-all' <<<"$body"; then
+      bad "$f: permissions: write-all is forbidden on this fork"
+    fi
   done
 }
 
