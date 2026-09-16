@@ -320,9 +320,97 @@ func validBillingCycle(cycle string) error {
 	return nil
 }
 
+func allowedAliyunEndpoint(host, version, action string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch action {
+	case "ListCdtInternetTraffic":
+		return host == "cdt.aliyuncs.com" && version == "2021-08-13"
+	case "DescribeInstanceStatus", "StartInstance", "StopInstance":
+		return strings.HasPrefix(host, "ecs.") && strings.HasSuffix(host, ".aliyuncs.com") && version == "2014-05-26"
+	case "QueryAccountBalance", "DescribeInstanceBill":
+		return (host == "business.aliyuncs.com" || host == "business.ap-southeast-1.aliyuncs.com") && version == "2017-12-14"
+	default:
+		return false
+	}
+}
+
 func allowedAliyunAction(action string) bool {
 	switch action {
 	case "ListCdtInternetTraffic", "DescribeInstanceStatus", "StartInstance", "StopInstance", "QueryAccountBalance", "DescribeInstanceBill":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowedAliyunExtra(key string) bool {
+	switch key {
+	case "RegionId", "InstanceId", "InstanceID", "StoppedMode", "BillingCycle", "Granularity":
+		return true
+	default:
+		return false
+	}
+}
+
+func validAliyunInstanceID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func allowedAliyunExtraValue(key, value string) bool {
+	switch key {
+	case "RegionId":
+		return validECSRegion(value)
+	case "InstanceId", "InstanceID":
+		return validAliyunInstanceID(value)
+	case "StoppedMode":
+		return value == "KeepCharging" || value == "StopCharging"
+	case "BillingCycle":
+		return validBillingCycle(value) == nil
+	case "Granularity":
+		return value == "MONTHLY"
+	default:
+		return false
+	}
+}
+
+func allowedAliyunExtraForAction(action, key string) bool {
+	switch action {
+	case "DescribeInstanceStatus", "StartInstance":
+		return key == "RegionId" || key == "InstanceId"
+	case "StopInstance":
+		return key == "RegionId" || key == "InstanceId" || key == "StoppedMode"
+	case "DescribeInstanceBill":
+		return key == "BillingCycle" || key == "InstanceID" || key == "Granularity"
+	default:
+		return false
+	}
+}
+
+func validateAliyunExtras(action string, extras map[string]string) error {
+	if len(extras) > 8 {
+		return errors.New("aliyun extras are invalid")
+	}
+	for key, value := range extras {
+		if !allowedAliyunExtra(key) || !allowedAliyunExtraForAction(action, key) || !allowedAliyunExtraValue(key, value) {
+			return errors.New("aliyun extras are invalid")
+		}
+	}
+	return nil
+}
+
+func allowedAliyunVersion(version string) bool {
+	switch version {
+	case "2014-05-26", "2017-12-14", "2021-08-13":
 		return true
 	default:
 		return false
@@ -354,6 +442,15 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	}
 	if !allowedAliyunHost(host) {
 		return nil, errors.New("aliyun host is invalid")
+	}
+	if !allowedAliyunVersion(version) {
+		return nil, errors.New("aliyun version is invalid")
+	}
+	if err := validateAliyunExtras(action, extras); err != nil {
+		return nil, err
+	}
+	if !allowedAliyunEndpoint(host, version, action) {
+		return nil, errors.New("aliyun endpoint is invalid")
 	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {

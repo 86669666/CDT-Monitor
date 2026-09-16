@@ -740,6 +740,12 @@ func ParseControlPayload(action, source string) string {
 }
 
 func ParseNotifyPayload(channel string) string {
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	switch channel {
+	case "email", "telegram", "webhook":
+	default:
+		channel = ""
+	}
 	payload, _ := json.Marshal(map[string]string{"channel": channel})
 	return string(payload)
 }

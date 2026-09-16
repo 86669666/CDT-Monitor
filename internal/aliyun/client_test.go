@@ -85,6 +85,57 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	}
 }
 
+func TestCallRejectsMismatchedEndpoints(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "cdt.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun endpoint is invalid") {
+		t.Fatalf("mismatched endpoint err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("mismatched endpoint must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunEndpoint("ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "StartInstance") || allowedAliyunEndpoint("business.aliyuncs.com", "2017-12-14", "StartInstance") {
+		t.Fatal("endpoint pairing mismatch")
+	}
+}
+
+func TestCallRejectsUnknownExtras(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"Action": "DeleteInstance"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("override action err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": strings.Repeat("i", 65)})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("long instance err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": "i-test/../meta"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("junk instance err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "StopInstance", map[string]string{"InstanceId": "i-test", "StoppedMode": "reboot"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("stopped mode err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": "i-test", "StoppedMode": "KeepCharging"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("status stopped mode err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("invalid extras must not call Aliyun, hits=%d", hits)
+	}
+}
+
 func TestCallRejectsUnknownActions(t *testing.T) {
 	hits := 0
 	client := NewClient()
@@ -101,6 +152,25 @@ func TestCallRejectsUnknownActions(t *testing.T) {
 	}
 	if !allowedAliyunAction("StartInstance") || allowedAliyunAction("RebootInstance") {
 		t.Fatal("action allowlist mismatch")
+	}
+}
+
+func TestCallRejectsUnknownVersions(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2016-01-01", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun version is invalid") {
+		t.Fatalf("version err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown version must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunVersion("2014-05-26") || allowedAliyunVersion("2016-01-01") {
+		t.Fatal("version allowlist mismatch")
 	}
 }
 
