@@ -29,7 +29,7 @@ require_file() {
 }
 
 scan_workflows() {
-  local f body
+  local f body extra
   shopt -s nullglob
   local files=(.github/workflows/*.yml)
   if [ "${#files[@]}" -eq 0 ]; then
@@ -109,6 +109,10 @@ scan_workflows() {
     fi
     if grep -Eq 'cache-to:|cache-from:|type=gha' <<<"$body"; then
       bad "$f: GHA/registry build cache is forbidden on this fork"
+    fi
+    extra="$(grep -Eo 'secrets\.[A-Za-z0-9_]+' <<<"$body" | grep -Ev '^secrets\.(ANDROID_KEYSTORE_BASE64|ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_ALIAS|ANDROID_KEY_PASSWORD)$' || true)"
+    if [ -n "$extra" ]; then
+      bad "$f: unexpected secret reference: $extra"
     fi
   done
 }

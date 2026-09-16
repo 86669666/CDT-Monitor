@@ -486,3 +486,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Compose `context: .`、`dockerfile: Dockerfile`，并禁止 `additional_contexts` 与 build `ssh`。不要从邻仓或 SSH agent 掺进构建上下文
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T09:51Z` / 2026-09-16 17:51 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e91a3f1` 再加 workflow secrets allowlist 扫描：
+
+- Publish Guard 现只允许 `secrets.ANDROID_KEYSTORE_*` / `ANDROID_KEY_*`。其它 `secrets.*`（含云 AK）不得出现在 workflow YAML
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
