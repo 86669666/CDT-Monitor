@@ -1888,6 +1888,10 @@ func TestMissingJobIsNotFound(t *testing.T) {
 	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "job_not_found") {
 		t.Fatalf("missing job status = %d body = %s", missing.Code, missing.Body.String())
 	}
+	oversized := doRequest(t, handler, http.MethodGet, "/api/v1/jobs/"+strings.Repeat("j", 65), "", nil, map[string]string{"X-API-Key": token})
+	if oversized.Code != http.StatusNotFound || !strings.Contains(oversized.Body.String(), "job_not_found") {
+		t.Fatalf("oversized job id status = %d body = %s", oversized.Code, oversized.Body.String())
+	}
 }
 
 func TestLoginRejectsInvalidJSON(t *testing.T) {

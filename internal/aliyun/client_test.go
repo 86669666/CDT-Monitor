@@ -295,6 +295,28 @@ func TestControlInstanceRequiresInstanceID(t *testing.T) {
 	}
 }
 
+func TestGetInstanceStatusUnknownValuesBecomeUnknown(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[{"InstanceId":"i-test","Status":"Exploded"}]}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret")
+	if err != nil || status != domain.StatusUnknown {
+		t.Fatalf("unknown status=%q err=%v", status, err)
+	}
+	if got := normalizeInstanceStatus(strings.Repeat("R", 33)); got != domain.StatusUnknown {
+		t.Fatalf("oversized status=%q", got)
+	}
+	if got := normalizeInstanceStatus("Pending"); got != "Pending" {
+		t.Fatalf("pending status=%q", got)
+	}
+}
+
 func TestGetInstanceStatusFromDescribeResponse(t *testing.T) {
 	client := NewClient()
 	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

@@ -1242,6 +1242,32 @@ func TestFailedJobRetriesThenReleasesUniqueKey(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsOversizedID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	job, err := st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetJob(ctx, job.ID)
+	if err != nil || got.ID != job.ID {
+		t.Fatalf("normal get = %#v err=%v", got, err)
+	}
+	if _, err = st.GetJob(ctx, ""); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("empty id err=%v", err)
+	}
+	if _, err = st.GetJob(ctx, strings.Repeat("j", maxJobIDBytes+1)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("oversized id err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, strings.Repeat("j", maxJobIDBytes+1), "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("complete oversized err=%v", err)
+	}
+}
+
 func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
