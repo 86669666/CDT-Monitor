@@ -6398,3 +6398,74 @@ test('settings API key create surfaces the invalid_scope envelope', async ({ pag
   await expect(page.getByText('仅显示一次')).toHaveCount(0)
   expect(createCalls).toBe(1)
 })
+
+test('instance refresh surfaces the invalid_id envelope', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_id', message: '无效 ID' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
+
+test('settings API key revoke surfaces the invalid_id envelope', async ({ page }) => {
+  const existing = {
+    id: 9,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_id', message: '无效 ID' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('admin passkey delete surfaces the invalid_id envelope', async ({ page }) => {
+  const existing = { id: 8, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_id', message: '无效 ID' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
