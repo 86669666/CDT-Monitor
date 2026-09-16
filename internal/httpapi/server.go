@@ -1181,7 +1181,13 @@ func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.More() {
+		return errors.New("request body is invalid")
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
