@@ -506,10 +506,10 @@ function NotificationSettings({ config, onChange, notify }: { config: Config; on
     if (provider === 'wxpusher' && (!form.appToken || !form.uid)) return notify('请填写 AppToken 和 UID', 'error')
     if (provider === 'dingtalk' && !form.token) return notify('请填写机器人 Access Token', 'error')
     const common = { enabled: true, provider, secret: form.secret || '' }
-    if (provider === 'bark') updateWebhook({ ...common, method: 'GET', request_type: 'JSON', headers: '', url: `https://api.day.app/${encodeURIComponent(form.key)}/#TITLE#/#MSG#`, body: '' })
-    if (provider === 'wxpusher') updateWebhook({ ...common, method: 'POST', request_type: 'JSON', headers: '', url: 'https://wxpusher.zjiecode.com/api/send/message', body: JSON.stringify({ appToken: form.appToken, content: '#MSG#', summary: '#TITLE#', contentType: 1, uids: [form.uid] }, null, 2) })
-    if (provider === 'dingtalk') updateWebhook({ ...common, method: 'POST', request_type: 'JSON', headers: '', url: `https://oapi.dingtalk.com/robot/send?access_token=${encodeURIComponent(form.token)}`, body: JSON.stringify({ msgtype: 'text', text: { content: '#MSG#' } }, null, 2) })
-    if (provider === 'wecom') updateWebhook({ ...common, method: 'POST', request_type: 'JSON', headers: '', url: `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${encodeURIComponent(form.key)}`, body: JSON.stringify({ msgtype: 'text', text: { content: '#MSG#' } }, null, 2) })
+    if (provider === 'bark') updateWebhook({ ...common, method: 'GET', request_type: 'JSON', headers: CLEAR_SECRET_SENTINEL, url: `https://api.day.app/${encodeURIComponent(form.key)}/#TITLE#/#MSG#`, body: CLEAR_SECRET_SENTINEL })
+    if (provider === 'wxpusher') updateWebhook({ ...common, method: 'POST', request_type: 'JSON', headers: CLEAR_SECRET_SENTINEL, url: 'https://wxpusher.zjiecode.com/api/send/message', body: JSON.stringify({ appToken: form.appToken, content: '#MSG#', summary: '#TITLE#', contentType: 1, uids: [form.uid] }, null, 2) })
+    if (provider === 'dingtalk') updateWebhook({ ...common, method: 'POST', request_type: 'JSON', headers: CLEAR_SECRET_SENTINEL, url: `https://oapi.dingtalk.com/robot/send?access_token=${encodeURIComponent(form.token)}`, body: JSON.stringify({ msgtype: 'text', text: { content: '#MSG#' } }, null, 2) })
+    if (provider === 'wecom') updateWebhook({ ...common, method: 'POST', request_type: 'JSON', headers: CLEAR_SECRET_SENTINEL, url: `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${encodeURIComponent(form.key)}`, body: JSON.stringify({ msgtype: 'text', text: { content: '#MSG#' } }, null, 2) })
     setChannel('webhook'); setModal(null); notify(`${modal.name} 模板已生成，请检查后保存`, 'success')
   }
   return <div className="settings-section"><SectionTitle icon={<Bell />} title="通知通道" subtitle="DELIVERY CHANNELS" />

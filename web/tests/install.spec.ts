@@ -2071,11 +2071,62 @@ test('settings bark webhook template posts the live webhook contract', async ({ 
     provider: 'bark',
     method: 'GET',
     request_type: 'JSON',
-    headers: '',
+    headers: '__clear__',
     url: 'https://api.day.app/test-key/#TITLE#/#MSG#',
-    body: '',
+    body: '__clear__',
     secret: '',
     secret_configured: false,
+  })
+})
+
+test('settings bark webhook template clears configured headers with the live sentinel', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: {
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        secret_configured: false,
+        headers_configured: true,
+        url_configured: true,
+        body_configured: true,
+      },
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(body, CONFIG_OBJECT_KEYS)
+      savedWebhook = body.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.locator('#webhook-template').click()
+  await page.getByRole('option', { name: 'Bark' }).click()
+  await page.getByLabel('Bark Key').fill('test-key')
+  await page.getByRole('button', { name: '生成 Webhook' }).click()
+  await expect(page.getByText('Bark 模板已生成，请检查后保存')).toBeVisible()
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    provider: 'bark',
+    method: 'GET',
+    headers: '__clear__',
+    body: '__clear__',
+    url: 'https://api.day.app/test-key/#TITLE#/#MSG#',
   })
 })
 
@@ -2343,7 +2394,7 @@ test('settings dingtalk webhook template posts the live webhook contract', async
     provider: 'dingtalk',
     method: 'POST',
     request_type: 'JSON',
-    headers: '',
+    headers: '__clear__',
     url: 'https://oapi.dingtalk.com/robot/send?access_token=ding-token',
     body: '{\n  "msgtype": "text",\n  "text": {\n    "content": "#MSG#"\n  }\n}',
     secret: 'SEC-test',
@@ -2381,7 +2432,7 @@ test('settings wecom webhook template posts the live webhook contract', async ({
     provider: 'wecom',
     method: 'POST',
     request_type: 'JSON',
-    headers: '',
+    headers: '__clear__',
     url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wecom-key',
     body: '{\n  "msgtype": "text",\n  "text": {\n    "content": "#MSG#"\n  }\n}',
     secret: '',
@@ -2420,7 +2471,7 @@ test('settings wxpusher webhook template posts the live webhook contract', async
     provider: 'wxpusher',
     method: 'POST',
     request_type: 'JSON',
-    headers: '',
+    headers: '__clear__',
     url: 'https://wxpusher.zjiecode.com/api/send/message',
     body: '{\n  "appToken": "AT_test",\n  "content": "#MSG#",\n  "summary": "#TITLE#",\n  "contentType": 1,\n  "uids": [\n    "UID_test"\n  ]\n}',
     secret: '',
