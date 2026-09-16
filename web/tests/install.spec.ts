@@ -9648,3 +9648,99 @@ test('admin password update surfaces the live internal_error envelope', async ({
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
   expect(updateCalls).toBe(1)
 })
+
+test('settings API key create surfaces the live unauthorized envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
+
+test('settings API key create surfaces the live forbidden envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 403,
+        json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
+
+test('settings API key create surfaces the live not_found envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 404,
+        json: { error: { code: 'not_found', message: '接口不存在' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
+
+test('settings API key create surfaces the live internal_error envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 500,
+        json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
