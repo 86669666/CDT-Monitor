@@ -122,6 +122,78 @@ func notificationSecrets(config domain.Config, extraSecrets ...string) []string 
 	return secrets
 }
 
+var (
+	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
+	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
+)
+
+func ValidateCallbackURL(raw string) error {
+	return validateNotifyURL(raw, []string{"http", "https"})
+}
+
+func ValidateProxyURL(raw string) error {
+	return validateNotifyURL(raw, []string{"http", "https", "socks5", "socks4"})
+}
+
+func validateNotifyURL(raw string, schemes []string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid notification URL: %w", err)
+	}
+	if !contains(schemes, parsed.Scheme) {
+		return errUnsupportedNotifyScheme
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return errors.New("notification URL host is required")
+	}
+	if strings.Contains(host, "#") {
+		return nil
+	}
+	if forbiddenNotifyHost(host) {
+		return errForbiddenNotifyHost
+	}
+	return nil
+}
+
+func ValidateDialHost(host string) error {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil
+	}
+	if forbiddenNotifyHost(host) {
+		return errForbiddenNotifyHost
+	}
+	return nil
+}
+
+func forbiddenNotifyHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	switch host {
+	case "metadata.google.internal", "metadata.google.com", "metadata.aliyuncs.com":
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return forbiddenNotifyIP(ip)
+}
+
+func forbiddenNotifyIP(ip net.IP) bool {
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254")) {
+		return true
+	}
+	return false
+}
+
 func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.NotificationEvent) error {
 	if config.Host == "" || config.Port == 0 || config.Username == "" || config.To == "" {
 		return errors.New("SMTP host, port, username and recipient are required")
@@ -205,6 +277,12 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 		baseURL = strings.TrimRight(config.ProxyURL, "/")
 	}
 	endpoint := baseURL + "/bot" + config.Token + "/sendMessage"
+	if err := ValidateCallbackURL(endpoint); err != nil {
+		return err
+	}
+	if err := ValidateDialHost(config.ProxyIP); err != nil {
+		return err
+	}
 	form := url.Values{"chat_id": {config.ChatID}, "text": {eventText(event)}}
 	client := s.httpClient
 	if config.ProxyType == "socks5" && config.ProxyIP != "" && config.ProxyPort != "" {
@@ -240,6 +318,9 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, event domain.NotificationEvent) error {
 	replacements := replacements(event)
 	endpoint := replaceTemplate(config.URL, replacements, true)
+	if strings.TrimSpace(endpoint) == "" {
+		return errors.New("webhook URL is required")
+	}
 	if strings.EqualFold(config.Provider, "dingtalk") && config.Secret != "" {
 		timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
 		mac := hmac.New(sha256.New, []byte(config.Secret))
@@ -286,6 +367,9 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 			payload = replaceTemplate(payload, replacements, strings.EqualFold(config.Type, "FORM"))
 		}
 		body = strings.NewReader(payload)
+	}
+	if err := ValidateCallbackURL(endpoint); err != nil {
+		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
@@ -385,4 +469,13 @@ func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 		}
 		buffer.Write(line)
 	}
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

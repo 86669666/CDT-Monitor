@@ -488,6 +488,34 @@ func TestAccountSecretsIncludesDeletedAccounts(t *testing.T) {
 	}
 }
 
+func TestMetadataWebhookURLIsRejected(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts:      []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{URL: "http://100.100.100.200/latest/meta-data/"}},
+	}
+	if err = st.Setup(ctx, config); err == nil {
+		t.Fatal("expected metadata webhook URL to be rejected")
+	}
+	config.Notifications.Webhook.URL = "https://example.test/hook"
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Webhook.URL = "file:///etc/passwd"
+	if err = st.SaveConfig(ctx, config); err == nil {
+		t.Fatal("expected file webhook URL to be rejected")
+	}
+}
+
 func TestInvalidTimezoneIsRejected(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
