@@ -391,6 +391,16 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 	return nil
 }
 
+func ValidateOutboxItem(channel string, event domain.NotificationEvent) error {
+	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
+		return errors.New("notification event id is invalid")
+	}
+	if !validOutboxChannel(channel) {
+		return errors.New("notification channel is invalid")
+	}
+	return validateNotificationEvent(event)
+}
+
 func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, channels []string) error {
 	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
 		return errors.New("notification event id is invalid")
