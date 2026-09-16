@@ -290,6 +290,22 @@ func TestGitHubDialContextRejectsPrivateResolvedIPs(t *testing.T) {
 	}
 }
 
+func TestGitHubDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupGitHubIPs
+	lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxGitHubResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupGitHubIPs = original })
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("too many answers err=%v", err)
+	}
+}
+
 func TestGitHubDialContextRejectsNonTLSDestinations(t *testing.T) {
 	_, err := githubDialContext(context.Background(), "udp", net.JoinHostPort("api.github.com", "443"))
 	if !errors.Is(err, errGitHubForbiddenHost) {
