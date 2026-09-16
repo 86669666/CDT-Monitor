@@ -272,3 +272,28 @@ func TestAllowRateExpiresStaleWindows(t *testing.T) {
 		t.Fatalf("limits = %#v", server.limits)
 	}
 }
+
+func TestSavePasskeySessionCapsLiveCeremonies(t *testing.T) {
+	server := &Server{passkeys: make(map[string]passkeySession)}
+	ids := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	for _, id := range ids {
+		if !server.savePasskeySession(id, passkeySession{kind: "login", expires: time.Now().Add(time.Minute)}) {
+			t.Fatalf("session %s rejected before cap", id)
+		}
+	}
+	if server.savePasskeySession("overflow", passkeySession{kind: "login", expires: time.Now().Add(time.Minute)}) {
+		t.Fatal("expected passkey ceremony cap")
+	}
+	session := server.passkeys["a"]
+	session.expires = time.Now().Add(-time.Second)
+	server.passkeys["a"] = session
+	if !server.savePasskeySession("after-expire", passkeySession{kind: "login", expires: time.Now().Add(time.Minute)}) {
+		t.Fatal("expired ceremony should free a slot")
+	}
+	if _, ok := server.passkeys["a"]; ok {
+		t.Fatal("expired ceremony must be collected")
+	}
+	if len(server.passkeys) != maxPasskeySessions {
+		t.Fatalf("passkeys = %d", len(server.passkeys))
+	}
+}
