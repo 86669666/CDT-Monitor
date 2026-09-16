@@ -266,3 +266,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Automatic Release 的 tag job 名 `Create tag (gated)`、版本必须匹配 `vMAJOR.MINOR.PATCH`、tagger 为 `github-actions[bot]`
 - 这仍不是已经打 tag，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T01:48Z` / 2026-09-16 09:48 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `12c29c1` 再加 Compose stop_signal/memswap/data 扫描：
+
+- Publish Guard 现要求 `stop_signal: SIGTERM`、`memswap_limit: 512m`、`CDT_DATA_DIR: /data`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
