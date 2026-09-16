@@ -621,10 +621,7 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 		return "", err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	if version == "" {
-		version = "dev"
-	}
-	request.Header.Set("User-Agent", "CDT-Monitor/"+version)
+	request.Header.Set("User-Agent", githubUserAgent(version))
 	response, err := githubHTTPClient.Do(request)
 	if err != nil {
 		return "", err
@@ -634,6 +631,23 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 		return "", fmt.Errorf("github HTTP %d", response.StatusCode)
 	}
 	return decodeGitHubReleaseTag(response.Body)
+}
+
+func githubUserAgent(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "dev"
+	}
+	for _, r := range version {
+		if r == '\r' || r == '\n' || r == 0 {
+			version = "dev"
+			break
+		}
+	}
+	if runes := []rune(version); len(runes) > maxGitHubTagRunes {
+		version = string(runes[:maxGitHubTagRunes])
+	}
+	return "CDT-Monitor/" + version
 }
 
 func decodeGitHubReleaseTag(body io.Reader) (string, error) {

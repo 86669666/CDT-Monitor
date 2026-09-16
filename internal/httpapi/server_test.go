@@ -260,6 +260,22 @@ func TestDecodeGitHubReleaseTagRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestGitHubUserAgentSanitizesVersion(t *testing.T) {
+	if got := githubUserAgent(""); got != "CDT-Monitor/dev" {
+		t.Fatalf("empty=%q", got)
+	}
+	if got := githubUserAgent("1.2.3"); got != "CDT-Monitor/1.2.3" {
+		t.Fatalf("normal=%q", got)
+	}
+	if got := githubUserAgent("1.2.3\r\nHost: evil.example"); got != "CDT-Monitor/dev" {
+		t.Fatalf("header break=%q", got)
+	}
+	got := githubUserAgent(strings.Repeat("v", maxGitHubTagRunes+8))
+	if got != "CDT-Monitor/"+strings.Repeat("v", maxGitHubTagRunes) {
+		t.Fatalf("oversized=%q", got)
+	}
+}
+
 func TestFetchLatestReleaseRejectsOversizedTags(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"tag_name":"` + strings.Repeat("v", maxGitHubTagRunes+1) + `"}`))
