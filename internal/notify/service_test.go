@@ -466,6 +466,35 @@ func TestValidateWebhookPayloadRejectsOversizedValues(t *testing.T) {
 	}
 }
 
+func TestValidateWebhookHeadersRejectsHopByHopNames(t *testing.T) {
+	if err := ValidateWebhookHeaders(`{"Authorization":"Bearer token-value"}`); err != nil {
+		t.Fatalf("authorization header err=%v", err)
+	}
+	if err := ValidateWebhookHeaders("not-json"); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("non-json headers err=%v", err)
+	}
+	if err := ValidateWebhookHeaders(`{"Host":"169.254.169.254"}`); !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("host header err=%v", err)
+	}
+	if err := ValidateWebhookHeaders(`{"Content-Length":"0"}`); !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("content-length header err=%v", err)
+	}
+	if err := ValidateWebhookHeaders(`{"":"x"}`); !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("empty header err=%v", err)
+	}
+}
+
+func TestValidateWebhookHeadersRejectsTooManyFields(t *testing.T) {
+	fields := make([]string, 0, maxWebhookHeaderFields+1)
+	for i := 0; i < maxWebhookHeaderFields+1; i++ {
+		fields = append(fields, `"h`+strconv.Itoa(i)+`":"v"`)
+	}
+	raw := `{` + strings.Join(fields, ",") + `}`
+	if err := ValidateWebhookHeaders(raw); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("too many headers err=%v", err)
+	}
+}
+
 func TestValidateSMTPIdentityRejectsOversizedMailbox(t *testing.T) {
 	long := strings.Repeat("a", maxNotifyEmailRunes+1) + "@example.test"
 	if err := ValidateSMTPIdentity(long, "ops@example.test"); !errors.Is(err, errInvalidNotifyIdentity) {
