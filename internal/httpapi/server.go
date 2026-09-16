@@ -1048,13 +1048,21 @@ func trustedProxyAllowlistContains(ip net.IP) bool {
 	return false
 }
 
+const (
+	maxTrustedProxyEnvBytes = 4096
+	maxTrustedProxyNetworks = 32
+)
+
 func trustedProxyNetworks() []*net.IPNet {
 	raw := strings.TrimSpace(os.Getenv("CDT_TRUSTED_PROXIES"))
-	if raw == "" {
+	if raw == "" || len(raw) > maxTrustedProxyEnvBytes {
 		return nil
 	}
 	networks := make([]*net.IPNet, 0, 4)
 	for _, part := range strings.Split(raw, ",") {
+		if len(networks) >= maxTrustedProxyNetworks {
+			break
+		}
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue

@@ -1693,6 +1693,31 @@ func TestTrustedProxyAllowlistParsesCIDRsAndBareIPs(t *testing.T) {
 	}
 }
 
+func TestTrustedProxyAllowlistIgnoresOversizedEnv(t *testing.T) {
+	t.Setenv("CDT_TRUSTED_PROXIES", strings.Repeat("10.0.0.1,", (maxTrustedProxyEnvBytes/9)+2)+"10.0.0.0/8")
+	if trustedProxy("10.1.2.3") || trustedProxy("10.0.0.1") {
+		t.Fatal("oversized allowlist must not trust proxies")
+	}
+	if !trustedProxy("127.0.0.1") {
+		t.Fatal("loopback must stay trusted")
+	}
+}
+
+func TestTrustedProxyAllowlistCapsEntryCount(t *testing.T) {
+	entries := make([]string, 0, maxTrustedProxyNetworks+8)
+	for i := 0; i < maxTrustedProxyNetworks; i++ {
+		entries = append(entries, "11.0.0."+strconv.Itoa(i))
+	}
+	entries = append(entries, "10.0.0.0/8")
+	t.Setenv("CDT_TRUSTED_PROXIES", strings.Join(entries, ","))
+	if !trustedProxy("11.0.0.0") || !trustedProxy("11.0.0.31") {
+		t.Fatal("capped allowlist should keep the first entries")
+	}
+	if trustedProxy("10.1.2.3") {
+		t.Fatal("entries beyond cap must be ignored")
+	}
+}
+
 func TestCreatePasskeyRejectsOversizedNameHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
