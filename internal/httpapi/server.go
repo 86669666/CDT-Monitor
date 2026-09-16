@@ -306,6 +306,10 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 数据加载失败")
 		return
 	}
+	if len(credentials) >= maxPasskeySessions {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "too many passkeys")
+		return
+	}
 	creation, session, err := s.webAuthn(r).BeginRegistration(&adminWebAuthnUser{credentials: credentials})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
@@ -349,7 +353,7 @@ func (s *Server) completePasskeyRegistration(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err = s.store.SavePasskey(r.Context(), ceremony.name, *credential); err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 保存失败")
+		writeStoreValidationError(w, "passkey_failed", "Passkey 保存失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "创建管理员 Passkey")
@@ -799,7 +803,7 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	key, token, err := s.store.CreateAPIKey(r.Context(), request.Name, request.Scopes, request.ExpiresAt)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 创建失败")
+		writeStoreValidationError(w, "api_key_failed", "API Key 创建失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "创建 API Key: "+request.Name)
@@ -1155,6 +1159,10 @@ func safeStoreValidationMessage(msg string) bool {
 		"notification option is invalid",
 		"account max traffic is invalid",
 		"too many accounts",
+		"too many api keys",
+		"too many passkeys",
+		"passkey credential is too large",
+		"passkey credential is invalid",
 		"notification identity is too long",
 		"notification payload is too long":
 		return true

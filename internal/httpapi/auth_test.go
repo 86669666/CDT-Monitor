@@ -708,6 +708,25 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsWhenAtCapHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	for i := 0; i < 16; i++ {
+		body := `{"name":"key-` + strconv.Itoa(i) + `","scopes":["widget:read"]}`
+		got := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", body, cookies, headers)
+		if got.Code != http.StatusCreated {
+			t.Fatalf("create %d status = %d body = %s", i, got.Code, got.Body.String())
+		}
+	}
+	overflow := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"overflow","scopes":["widget:read"]}`, cookies, headers)
+	if overflow.Code != http.StatusBadRequest || !strings.Contains(overflow.Body.String(), "too many api keys") {
+		t.Fatalf("overflow status = %d body = %s", overflow.Code, overflow.Body.String())
+	}
+}
+
 func TestCreateAPIKeyRejectsOversizedNameHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
@@ -1391,6 +1410,16 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 		t.Fatalf("accounts status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "api_key_failed", "API Key 创建失败", errors.New("too many api keys"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "too many api keys") {
+		t.Fatalf("api keys status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "passkey_failed", "Passkey 保存失败", errors.New("too many passkeys"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "too many passkeys") {
+		t.Fatalf("passkeys status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification identity is too long"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification identity is too long") {
 		t.Fatalf("identity status = %d body = %s", rec.Code, rec.Body.String())
@@ -1747,6 +1776,23 @@ func TestClientIPTakesFirstForwardedHopAndClips(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "198.51.100.20")
 	if got := clientIP(req); got != "203.0.113.10" {
 		t.Fatalf("untrusted proxy hop = %q", got)
+	}
+}
+
+func TestBeginPasskeyRegistrationRejectsWhenAtCapHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	for i := 0; i < maxPasskeySessions; i++ {
+		credential := webauthn.Credential{ID: []byte("credential-" + strconv.Itoa(i)), PublicKey: []byte("public-key")}
+		if err := st.SavePasskey(ctx, "key-"+strconv.Itoa(i), credential); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/begin", `{"name":"overflow"}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "too many passkeys") {
+		t.Fatalf("cap status = %d body = %s", got.Code, got.Body.String())
 	}
 }
 

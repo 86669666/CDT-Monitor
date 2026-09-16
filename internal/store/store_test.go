@@ -1688,6 +1688,33 @@ func TestExpiredAPIKeyIsRejected(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsWhenAtCap(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for i := 0; i < maxAPIKeys; i++ {
+		if _, _, err = st.CreateAPIKey(ctx, "key-"+strconv.Itoa(i), []string{"widget:read"}, nil); err != nil {
+			t.Fatalf("create %d err=%v", i, err)
+		}
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "overflow", []string{"widget:read"}, nil); err == nil || !strings.Contains(err.Error(), "too many api keys") {
+		t.Fatalf("cap err=%v", err)
+	}
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil || len(keys) != maxAPIKeys {
+		t.Fatalf("listed %d err=%v", len(keys), err)
+	}
+	if err = st.RevokeAPIKey(ctx, keys[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = st.CreateAPIKey(ctx, "replacement", []string{"widget:read"}, nil); err != nil {
+		t.Fatalf("after revoke err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1882,6 +1909,48 @@ func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
 	}
 	if lastUsed.Valid {
 		t.Fatal("corrupt key must not record last_used_at")
+	}
+}
+
+func TestSavePasskeyRejectsWhenAtCap(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for i := 0; i < maxPasskeys; i++ {
+		credential := webauthn.Credential{ID: []byte("credential-" + strconv.Itoa(i)), PublicKey: []byte("public-key")}
+		if err = st.SavePasskey(ctx, "key-"+strconv.Itoa(i), credential); err != nil {
+			t.Fatalf("create %d err=%v", i, err)
+		}
+	}
+	if err = st.SavePasskey(ctx, "overflow", webauthn.Credential{ID: []byte("overflow"), PublicKey: []byte("public-key")}); err == nil || !strings.Contains(err.Error(), "too many passkeys") {
+		t.Fatalf("cap err=%v", err)
+	}
+	items, err := st.ListPasskeys(ctx)
+	if err != nil || len(items) != maxPasskeys {
+		t.Fatalf("listed %d err=%v", len(items), err)
+	}
+}
+
+func TestSavePasskeyRejectsOversizedCredential(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.SavePasskey(ctx, "empty", webauthn.Credential{}); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("empty err=%v", err)
+	}
+	huge := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte(strings.Repeat("k", maxPasskeyJSONBytes))}
+	if err = st.SavePasskey(ctx, "huge", huge); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("json err=%v", err)
+	}
+	items, err := st.ListPasskeys(ctx)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("rejected passkeys=%#v err=%v", items, err)
 	}
 }
 

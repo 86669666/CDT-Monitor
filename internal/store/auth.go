@@ -58,6 +58,9 @@ const (
 	maxLogRunes         = 4096
 	maxAPIKeyNameRunes  = 64
 	maxPasskeyNameRunes = 64
+	maxAPIKeys          = 16
+	maxPasskeys         = 8
+	maxPasskeyJSONBytes = 8192
 )
 
 func clipUserAgent(value string) string {
@@ -150,6 +153,13 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	}
 	if expiresAt != nil && !expiresAt.UTC().After(time.Now().UTC()) {
 		return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL`).Scan(&count); err != nil {
+		return domain.APIKey{}, "", err
+	}
+	if count >= maxAPIKeys {
+		return domain.APIKey{}, "", errors.New("too many api keys")
 	}
 	secret, err := security.NewToken(32)
 	if err != nil {
@@ -285,6 +295,20 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 	return credentials, rows.Err()
 }
 
+func encodePasskeyCredential(credential webauthn.Credential) (string, error) {
+	if len(credential.ID) == 0 {
+		return "", errors.New("passkey credential is invalid")
+	}
+	encoded, err := json.Marshal(credential)
+	if err != nil {
+		return "", err
+	}
+	if len(encoded) > maxPasskeyJSONBytes {
+		return "", errors.New("passkey credential is too large")
+	}
+	return string(encoded), nil
+}
+
 func (s *Store) SavePasskey(ctx context.Context, name string, credential webauthn.Credential) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -293,20 +317,27 @@ func (s *Store) SavePasskey(ctx context.Context, name string, credential webauth
 	if len([]rune(name)) > maxPasskeyNameRunes {
 		return errors.New("passkey name is too long")
 	}
-	encoded, err := json.Marshal(credential)
+	encoded, err := encodePasskeyCredential(credential)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES(?,?,?,unixepoch())`, name, credential.ID, string(encoded))
+	var count int
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passkeys`).Scan(&count); err != nil {
+		return err
+	}
+	if count >= maxPasskeys {
+		return errors.New("too many passkeys")
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES(?,?,?,unixepoch())`, name, credential.ID, encoded)
 	return err
 }
 
 func (s *Store) UpdatePasskeyCredential(ctx context.Context, credential webauthn.Credential) error {
-	encoded, err := json.Marshal(credential)
+	encoded, err := encodePasskeyCredential(credential)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE passkeys SET credential_json=?,last_used_at=unixepoch() WHERE credential_id=?`, string(encoded), credential.ID)
+	_, err = s.db.ExecContext(ctx, `UPDATE passkeys SET credential_json=?,last_used_at=unixepoch() WHERE credential_id=?`, encoded, credential.ID)
 	return err
 }
 
