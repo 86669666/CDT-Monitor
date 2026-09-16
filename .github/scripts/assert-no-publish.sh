@@ -583,6 +583,15 @@ scan_compose() {
   if ! grep -Eq 'stop_grace_period:[[:space:]]*15s' <<<"$body"; then
     bad "$f: stop_grace_period must stay 15s"
   fi
+  if ! grep -Eq 'stop_signal:[[:space:]]*SIGTERM' <<<"$body"; then
+    bad "$f: stop_signal must stay SIGTERM"
+  fi
+  if ! grep -Eq 'memswap_limit:[[:space:]]*512m' <<<"$body"; then
+    bad "$f: memswap_limit must stay 512m"
+  fi
+  if ! grep -Eq 'CDT_DATA_DIR:[[:space:]]*/data' <<<"$body"; then
+    bad "$f: CDT_DATA_DIR must stay /data"
+  fi
 }
 
 scan_vars() {
