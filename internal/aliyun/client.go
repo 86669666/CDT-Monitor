@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -59,12 +60,16 @@ type balanceCacheEntry struct {
 }
 
 var errAliyunRedirect = errors.New("aliyun redirects are not allowed")
+var errAliyunForbiddenHost = errors.New("aliyun host is not allowed")
 
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout:   18 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+			Timeout: 18 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+				DialContext:     aliyunDialContext,
+			},
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return errAliyunRedirect
 			},
@@ -72,6 +77,52 @@ func NewClient() *Client {
 		traffic: make(map[string]trafficCacheEntry),
 		balance: make(map[string]balanceCacheEntry),
 	}
+}
+
+func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			if addr.IP != nil {
+				ips = append(ips, addr.IP)
+			}
+		}
+	}
+	if len(ips) == 0 {
+		return nil, errAliyunForbiddenHost
+	}
+	for _, ip := range ips {
+		if forbiddenAliyunIP(ip) {
+			return nil, errAliyunForbiddenHost
+		}
+	}
+	dialer := &net.Dialer{Timeout: 18 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func forbiddenAliyunIP(ip net.IP) bool {
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	return ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254"))
 }
 
 func validECSRegion(region string) bool {

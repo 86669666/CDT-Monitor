@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -806,5 +807,19 @@ func TestClientRequiresTLS12(t *testing.T) {
 	transport, ok := NewClient().httpClient.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("aliyun transport TLS = %#v", NewClient().httpClient.Transport)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("aliyun HTTP dialer must pin destinations at connect time")
+	}
+}
+
+func TestAliyunDialContextRejectsMetadataIP(t *testing.T) {
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("link-local dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("metadata dial err=%v", err)
 	}
 }
