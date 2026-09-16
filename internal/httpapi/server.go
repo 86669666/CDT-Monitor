@@ -1016,12 +1016,28 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 	return true
 }
 
+const maxClientIPRunes = 64
+
 func clientIP(r *http.Request) string {
 	host := remoteIP(r)
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" && trustedProxy(host) {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		if len(forwarded) > 256 {
+			forwarded = forwarded[:256]
+		}
+		if i := strings.IndexByte(forwarded, ','); i >= 0 {
+			forwarded = forwarded[:i]
+		}
+		host = strings.TrimSpace(forwarded)
 	}
-	return host
+	return clipClientIP(host)
+}
+
+func clipClientIP(value string) string {
+	runes := []rune(value)
+	if len(runes) > maxClientIPRunes {
+		return string(runes[:maxClientIPRunes])
+	}
+	return value
 }
 
 func remoteIP(r *http.Request) string {

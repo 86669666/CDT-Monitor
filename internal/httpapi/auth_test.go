@@ -1732,6 +1732,24 @@ func TestTrustedProxyAllowlistCapsEntryCount(t *testing.T) {
 	}
 }
 
+func TestClientIPTakesFirstForwardedHopAndClips(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/", nil)
+	req.RemoteAddr = "127.0.0.1:8080"
+	req.Header.Set("X-Forwarded-For", "198.51.100.20, 10.0.0.2, 192.168.1.1")
+	if got := clientIP(req); got != "198.51.100.20" {
+		t.Fatalf("first hop = %q", got)
+	}
+	req.Header.Set("X-Forwarded-For", strings.Repeat("9", maxClientIPRunes+8)+", 10.0.0.2")
+	if got := clientIP(req); got != strings.Repeat("9", maxClientIPRunes) {
+		t.Fatalf("clipped hop = %q", got)
+	}
+	req.RemoteAddr = "203.0.113.10:443"
+	req.Header.Set("X-Forwarded-For", "198.51.100.20")
+	if got := clientIP(req); got != "203.0.113.10" {
+		t.Fatalf("untrusted proxy hop = %q", got)
+	}
+}
+
 func TestCreatePasskeyRejectsOversizedNameHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
