@@ -401,3 +401,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `cap_add`、`devices`、`sysctls`（保持 `cap_drop: ALL`）
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T06:38Z` / 2026-09-16 14:38 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e976c9e` 再加 Compose extra_hosts/tty 扫描：
+
+- Publish Guard 现禁止 `extra_hosts`、`stdin_open: true`、`tty: true`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
