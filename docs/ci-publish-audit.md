@@ -441,3 +441,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `networks`、`expose`、`depends_on` 和 `external: true`。发布面只留 loopback `127.0.0.1:43210`，数据卷仍是本地 `cdt-data`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:10Z` / 2026-09-16 16:10 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b0f1a7e` 再加 continue-on-error / toJSON(secrets) 扫描：
+
+- Publish Guard 现禁止 `continue-on-error: true` 和 `toJSON(secrets)`。不要把校验失败吞掉，也不要把仓库 secret 图打进日志
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

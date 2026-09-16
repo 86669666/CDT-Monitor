@@ -83,6 +83,12 @@ scan_workflows() {
     if grep -Eq 'permissions:[[:space:]]*write-all' <<<"$body"; then
       bad "$f: permissions: write-all is forbidden on this fork"
     fi
+    if grep -Eq 'continue-on-error:[[:space:]]*true' <<<"$body"; then
+      bad "$f: continue-on-error: true is forbidden; do not mask publish/verify failures"
+    fi
+    if grep -Eiq 'tojson[[:space:]]*\([[:space:]]*secrets[[:space:]]*\)' <<<"$body"; then
+      bad "$f: toJSON(secrets) is forbidden; do not dump the secret map into logs"
+    fi
   done
 }
 
