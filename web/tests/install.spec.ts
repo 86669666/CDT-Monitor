@@ -6685,3 +6685,51 @@ test('admin password update surfaces the invalid_request envelope', async ({ pag
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
   expect(updateCalls).toBe(1)
 })
+
+test('settings API key create surfaces the empty name api_key_failed envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'api_key_failed', message: 'API Key 名称和权限不能为空' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 名称和权限不能为空' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
+
+test('settings API key create surfaces the invalid_request envelope', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'invalid_request', message: '请求体无效' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请求体无效' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
