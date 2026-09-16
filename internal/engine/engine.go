@@ -212,6 +212,9 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil {
 			return "", err
 		}
+		if len([]rune(payload.Source)) > maxControlSourceRunes {
+			return "", errors.New("control source is too long")
+		}
 		return e.control(ctx, job.AccountID, payload.Action, payload.Source)
 	case JobTestNotify:
 		var payload struct {
