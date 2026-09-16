@@ -9313,3 +9313,26 @@ test('admin passkey delete surfaces the live unauthorized envelope', async ({ pa
   await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
   expect(deleteCalls).toBe(1)
 })
+
+test('admin passkey delete surfaces the live forbidden envelope', async ({ page }) => {
+  const existing = { id: 10, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
