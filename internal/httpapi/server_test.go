@@ -243,3 +243,10 @@ func TestFetchLatestReleaseReadsTag(t *testing.T) {
 		t.Fatalf("got=%q err=%v", got, err)
 	}
 }
+
+func TestGitHubHTTPClientRequiresTLS12(t *testing.T) {
+	transport, ok := githubHTTPClient.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("github transport TLS = %#v", githubHTTPClient.Transport)
+	}
+}
