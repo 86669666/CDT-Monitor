@@ -164,6 +164,7 @@ var (
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
 	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
+	errInvalidNotifyPayload    = errors.New("notification payload is too long")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -274,8 +275,10 @@ func containsHeaderBreak(value string) bool {
 }
 
 const (
-	maxNotifyEmailRunes  = 254
-	maxTelegramChatRunes = 64
+	maxNotifyEmailRunes    = 254
+	maxTelegramChatRunes   = 64
+	maxWebhookHeadersRunes = 4096
+	maxWebhookBodyRunes    = 8192
 )
 
 func ValidateSMTPIdentity(username, to string) error {
@@ -303,6 +306,9 @@ func ValidateWebhookHeaders(raw string) error {
 	if raw == "" || raw == domain.ClearSecretSentinel {
 		return nil
 	}
+	if len([]rune(raw)) > maxWebhookHeadersRunes {
+		return errInvalidNotifyPayload
+	}
 	var headers map[string]string
 	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
 		if containsHeaderBreak(raw) {
@@ -314,6 +320,16 @@ func ValidateWebhookHeaders(raw string) error {
 		if containsHeaderBreak(key) || containsHeaderBreak(value) {
 			return errInvalidNotifyHeader
 		}
+	}
+	return nil
+}
+
+func ValidateWebhookBody(raw string) error {
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	if len([]rune(raw)) > maxWebhookBodyRunes {
+		return errInvalidNotifyPayload
 	}
 	return nil
 }
@@ -560,6 +576,9 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 }
 
 func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, event domain.NotificationEvent) error {
+	if err := ValidateWebhookBody(config.Body); err != nil {
+		return err
+	}
 	replacements := replacements(event)
 	endpoint := replaceTemplate(config.URL, replacements, true)
 	if strings.TrimSpace(endpoint) == "" {
