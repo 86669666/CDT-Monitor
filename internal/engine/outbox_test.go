@@ -79,6 +79,38 @@ func TestFlushOutboxRejectsUnknownEventFields(t *testing.T) {
 	}
 }
 
+func TestFlushOutboxRejectsOversizedEvent(t *testing.T) {
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits++
+	}))
+	defer server.Close()
+	st, _ := setupAccount(t, func(config *domain.Config) {
+		config.Notifications.Webhook.Enabled = true
+		config.Notifications.Webhook.URL = server.URL
+		config.Notifications.Webhook.Method = "POST"
+		config.Notifications.Webhook.Type = "JSON"
+	})
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	payload := `{"id":"evt-long","type":"threshold","title":"` + strings.Repeat("t", 129) + `","summary":"s"}`
+	if _, err := st.DB().ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',unixepoch(),unixepoch(),unixepoch())`, "evt-long:webhook", "evt-long", "webhook", payload); err != nil {
+		t.Fatal(err)
+	}
+	eng.flushOutbox(ctx)
+	if hits != 0 {
+		t.Fatalf("oversized event must not send webhook, hits=%d", hits)
+	}
+	var status, lastError string
+	if err := st.DB().QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE event_id='evt-long'`).Scan(&status, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || !strings.Contains(lastError, "too long") {
+		t.Fatalf("status=%q last_error=%q", status, lastError)
+	}
+}
+
 func TestFlushOutboxRetriesFailedWebhook(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
