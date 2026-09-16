@@ -9290,3 +9290,26 @@ test('admin passkeys surface the live internal_error envelope', async ({ page })
   await expect(page.getByText('尚未创建管理员 Passkey')).toBeVisible()
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
 })
+
+test('admin passkey delete surfaces the live unauthorized envelope', async ({ page }) => {
+  const existing = { id: 9, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
