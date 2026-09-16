@@ -88,7 +88,7 @@ INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,max_t
 	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='admin_password'`).Scan(&hash); err != nil {
 		t.Fatal(err)
 	}
-	if !security.IsArgon2id(hash) || hash == "legacy-password" {
+	if !security.IsCurrentPasswordHash(hash) || hash == "legacy-password" {
 		t.Fatalf("legacy password was not upgraded during migrate: %q", hash)
 	}
 	valid, err := st.VerifyAdminPassword(context.Background(), "legacy-password")
@@ -117,6 +117,68 @@ func TestCorruptAdminPasswordHashIsRejected(t *testing.T) {
 	valid, err = st.VerifyAdminPassword(context.Background(), "Strong-Password-42!")
 	if err != nil || valid {
 		t.Fatalf("original password must not verify a corrupt hash, valid=%v err=%v", valid, err)
+	}
+}
+
+func TestOpenRejectsUnsupportedArgon2idParams(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(context.Background(), config); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(dir, "data.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE settings SET value='$argon2id$v=19$m=8,t=1,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' WHERE key='admin_password'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Open(dir); err == nil || !strings.Contains(err.Error(), "supported argon2id encoding") {
+		t.Fatalf("unsupported hash must fail closed on open, err=%v", err)
+	}
+}
+
+func TestSaveConfigDoesNotKeepUnsupportedPasswordHash(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	injected := "$argon2id$v=19$m=8,t=1,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	config.AdminPassword = injected
+	config.Accounts[0].AccessKeySecret = ""
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='admin_password'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored == injected || !security.IsCurrentPasswordHash(stored) {
+		t.Fatalf("unsupported hash was stored: %q", stored)
+	}
+	valid, err := st.VerifyAdminPassword(ctx, injected)
+	if err != nil || !valid {
+		t.Fatalf("injected hash string should be hashed as a new password, valid=%v err=%v", valid, err)
+	}
+	valid, err = st.VerifyAdminPassword(ctx, "Strong-Password-42!")
+	if err != nil || valid {
+		t.Fatalf("original password must not verify after replacement, valid=%v err=%v", valid, err)
 	}
 }
 
@@ -1199,6 +1261,22 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 	if _, _, err = st.CreateAPIKey(ctx, "widget", []string{}, nil); err == nil {
 		t.Fatal("expected empty scope list to be rejected")
+	}
+}
+
+func TestCreateAPIKeyRejectsOversizedName(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, _, err = st.CreateAPIKey(ctx, strings.Repeat("n", maxAPIKeyNameRunes+1), []string{"widget:read"}, nil); err == nil {
+		t.Fatal("expected oversized name to be rejected")
+	}
+	key, _, err := st.CreateAPIKey(ctx, strings.Repeat("n", maxAPIKeyNameRunes), []string{"widget:read"}, nil)
+	if err != nil || key.Name != strings.Repeat("n", maxAPIKeyNameRunes) {
+		t.Fatalf("max-length name key=%#v err=%v", key, err)
 	}
 }
 

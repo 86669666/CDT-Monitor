@@ -294,7 +294,7 @@ func (s *Store) saveSensitiveSetting(ctx context.Context, tx *sql.Tx, key, value
 }
 
 func hashOrKeepPassword(password string) (string, error) {
-	if len(password) > 14 && strings.HasPrefix(password, "$argon2id$") {
+	if security.IsCurrentPasswordHash(password) {
 		return password, nil
 	}
 	return hashPassword(password)

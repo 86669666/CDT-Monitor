@@ -305,11 +305,17 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 		}
 		var password string
 		err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='admin_password'`).Scan(&password)
-		if err == sql.ErrNoRows || password == "" || security.IsArgon2id(password) {
+		if err == sql.ErrNoRows || password == "" {
 			return nil
 		}
 		if err != nil {
 			return err
+		}
+		if security.IsCurrentPasswordHash(password) {
+			return nil
+		}
+		if security.IsArgon2id(password) {
+			return fmt.Errorf("admin password hash is not a supported argon2id encoding")
 		}
 		hash, err := security.HashLegacyPassword(password)
 		if err != nil {

@@ -181,39 +181,75 @@ func HashLegacyPassword(password string) (string, error) {
 	return hashPassword(password)
 }
 
+const (
+	argon2Version     = 19
+	argon2Memory      = uint32(64 * 1024)
+	argon2Iterations  = uint32(3)
+	argon2Parallelism = uint8(2)
+	argon2KeyLen      = uint32(32)
+	argon2SaltLen     = 16
+)
+
 func hashPassword(password string) (string, error) {
-	salt := make([]byte, 16)
+	salt := make([]byte, argon2SaltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	memory, iterations, parallelism, keyLen := uint32(64*1024), uint32(3), uint8(2), uint32(32)
-	hash := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, keyLen)
-	return fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", memory, iterations, parallelism,
-		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(hash)), nil
+	hash := argon2.IDKey([]byte(password), salt, argon2Iterations, argon2Memory, argon2Parallelism, argon2KeyLen)
+	return encodeArgon2id(salt, hash), nil
+}
+
+func encodeArgon2id(salt, hash []byte) string {
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2Version, argon2Memory, argon2Iterations, argon2Parallelism,
+		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(hash))
+}
+
+type argon2idHash struct {
+	memory      uint32
+	iterations  uint32
+	parallelism uint8
+	salt        []byte
+	hash        []byte
+}
+
+func parseArgon2id(encoded string) (argon2idHash, bool) {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != fmt.Sprintf("v=%d", argon2Version) {
+		return argon2idHash{}, false
+	}
+	var memory, iterations uint32
+	var parallelism uint8
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil {
+		return argon2idHash{}, false
+	}
+	if fmt.Sprintf("m=%d,t=%d,p=%d", memory, iterations, parallelism) != parts[3] {
+		return argon2idHash{}, false
+	}
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil || len(salt) != argon2SaltLen {
+		return argon2idHash{}, false
+	}
+	hash, err := base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil || len(hash) != int(argon2KeyLen) {
+		return argon2idHash{}, false
+	}
+	return argon2idHash{memory: memory, iterations: iterations, parallelism: parallelism, salt: salt, hash: hash}, true
 }
 
 func IsArgon2id(encoded string) bool {
 	return strings.HasPrefix(encoded, "$argon2id$")
 }
 
+func IsCurrentPasswordHash(encoded string) bool {
+	parsed, ok := parseArgon2id(encoded)
+	return ok && parsed.memory == argon2Memory && parsed.iterations == argon2Iterations && parsed.parallelism == argon2Parallelism
+}
+
 func VerifyPassword(encoded, password string) bool {
-	parts := strings.Split(encoded, "$")
-	if len(parts) != 6 || parts[1] != "argon2id" {
+	parsed, ok := parseArgon2id(encoded)
+	if !ok || parsed.memory != argon2Memory || parsed.iterations != argon2Iterations || parsed.parallelism != argon2Parallelism {
 		return false
 	}
-	var memory, iterations uint32
-	var parallelism uint8
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil {
-		return false
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return false
-	}
-	expected, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil {
-		return false
-	}
-	actual := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expected)))
-	return subtle.ConstantTimeCompare(actual, expected) == 1
+	actual := argon2.IDKey([]byte(password), parsed.salt, parsed.iterations, parsed.memory, parsed.parallelism, uint32(len(parsed.hash)))
+	return subtle.ConstantTimeCompare(actual, parsed.hash) == 1
 }

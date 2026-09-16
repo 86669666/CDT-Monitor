@@ -708,6 +708,22 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsOversizedNameHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	name := strings.Repeat("n", 65)
+	body := `{"name":"` + name + `","scopes":["widget:read"]}`
+	got := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", body, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "api_key_failed") {
+		t.Fatalf("oversized name status = %d body = %s", got.Code, got.Body.String())
+	}
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", []*http.Cookie{session, csrf}, nil)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"keys":[]`) {
+		t.Fatalf("oversized name must not persist, status = %d body = %s", listed.Code, listed.Body.String())
+	}
+}
+
 func TestLegacyAdminAPIKeyCannotAccessAdminOrWidget(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
