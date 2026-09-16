@@ -446,3 +446,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `continue-on-error: true` 和 `toJSON(secrets)`。不要把校验失败吞掉，也不要把仓库 secret 图打进日志
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T08:19Z` / 2026-09-16 16:19 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `1d203a6` 再加 Dockerfile curl/ONBUILD/SHELL 扫描：
+
+- Publish Guard 现禁止 Dockerfile 里的 `curl`/`wget`、`ONBUILD` 和 `SHELL`。CA 仍只走一次 `apk add --no-cache ca-certificates`，不要再加管道安装器
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

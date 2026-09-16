@@ -597,6 +597,15 @@ scan_dockerfile() {
   if ! grep -Eq '^CMD \["serve"\]$' <<<"$body"; then
     bad "$f: CMD must stay serve"
   fi
+  if grep -Eq '(^|[[:space:]])(curl|wget)([[:space:]|;]|$)' <<<"$body"; then
+    bad "$f: curl/wget is forbidden; keep apk ca-certificates only"
+  fi
+  if grep -Eq '^ONBUILD ' <<<"$body"; then
+    bad "$f: ONBUILD is forbidden"
+  fi
+  if grep -Eq '^SHELL ' <<<"$body"; then
+    bad "$f: SHELL overrides are forbidden"
+  fi
   if grep -Eq 'FROM[[:space:]].*:latest' <<<"$body"; then
     bad "$f: :latest base tags are forbidden"
   fi
