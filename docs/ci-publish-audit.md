@@ -646,3 +646,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 Compose `cap_drop: ALL`。不要再列其它 capability
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T23:49Z` / 2026-09-17 07:49 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `531e886` 再加 checkout LFS 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `lfs:`（含 gated auto-release）。不要拉 Git LFS 对象
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
