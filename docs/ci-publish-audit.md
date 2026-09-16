@@ -411,3 +411,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 apt/yum/dnf，且只允许一次 `apk add --no-cache ca-certificates`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T06:54Z` / 2026-09-16 14:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `d8235bf` 再加 Dockerfile VERSION/COMMIT/BUILT_AT 默认值扫描：
+
+- Publish Guard 现要求 `ARG VERSION=dev`、`COMMIT=unknown`、`BUILT_AT=unknown`，本地构建不必 docker login 填版本
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
