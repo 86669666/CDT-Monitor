@@ -491,3 +491,23 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 `secrets.ANDROID_KEYSTORE_*` / `ANDROID_KEY_*`。其它 `secrets.*`（含云 AK）不得出现在 workflow YAML
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T11:40Z` / 2026-09-16 19:40 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `547a7bb` 再加 Compose profiles/dns/mac 扫描：
+
+- Publish Guard 现禁止 Compose `profiles`、`dns`/`dns_search`/`dns_opt` 和 `mac_address`。不要用 profile 叠一层发布面，也不要自定义 DNS/MAC
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T11:46Z` / 2026-09-16 19:46 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e24d16b` 再加 github-script 扫描：
+
+- Publish Guard 现禁止 `actions/github-script`。不要用它拿 `GITHUB_TOKEN` 跑任意 JS 去打 tag / 改仓库
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T11:54Z` / 2026-09-16 19:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e97bbec` 再加 Compose hostname/domainname 扫描：
+
+- Publish Guard 现禁止 Compose `hostname` 和 `domainname`。本地容器不要伪装成别的主机名
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:03Z` / 2026-09-16 20:03 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b6317b6` 再加 gh release CLI / npm publish 扫描：
+
+- Publish Guard 现禁止 `gh release create`、`gh auth login`、`actions/create-release` 和 `npm publish`。GitHub Release 只走已加开关的 draft action
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

@@ -11,6 +11,8 @@ name: Publish Guard
 # Do not add job services: sidecars or type=gha/registry build cache.
 # Do not add GitHub Environment jobs (production, staging, or otherwise).
 # Workflow secrets.* allowlist is the optional Android keystore names only.
+# Do not add actions/github-script.
+# Do not add gh release create, actions/create-release, or npm publish.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 

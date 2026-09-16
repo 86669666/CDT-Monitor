@@ -114,6 +114,18 @@ scan_workflows() {
     if [ -n "$extra" ]; then
       bad "$f: unexpected secret reference: $extra"
     fi
+    if grep -Fq 'actions/github-script' <<<"$body"; then
+      bad "$f: actions/github-script is forbidden on this fork"
+    fi
+    if grep -Eq 'gh[[:space:]]+release[[:space:]]+create|gh[[:space:]]+auth[[:space:]]+login' <<<"$body"; then
+      bad "$f: gh release/auth CLI is forbidden; keep the gated draft action"
+    fi
+    if grep -Fq 'actions/create-release' <<<"$body"; then
+      bad "$f: actions/create-release is forbidden; keep the gated draft action"
+    fi
+    if grep -Eq 'npm[[:space:]]+publish' <<<"$body"; then
+      bad "$f: npm publish is forbidden on this fork"
+    fi
   done
 }
 
@@ -899,6 +911,21 @@ scan_compose() {
   fi
   if grep -Eq '^[[:space:]]+extra_hosts:' <<<"$body"; then
     bad "$f: extra_hosts is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]*profiles:' <<<"$body"; then
+    bad "$f: Compose profiles are forbidden; keep the single local cdt-monitor service"
+  fi
+  if grep -Eq '^[[:space:]]+dns(_search|_opt)?:' <<<"$body"; then
+    bad "$f: custom dns/dns_search/dns_opt is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+mac_address:' <<<"$body"; then
+    bad "$f: mac_address is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+hostname:' <<<"$body"; then
+    bad "$f: hostname overrides are forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+domainname:' <<<"$body"; then
+    bad "$f: domainname overrides are forbidden"
   fi
   if grep -Eq 'stdin_open:[[:space:]]*true' <<<"$body"; then
     bad "$f: stdin_open: true is forbidden on this local daemon Compose"
