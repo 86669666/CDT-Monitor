@@ -53,16 +53,17 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 }
 
 const (
-	maxUserAgentRunes   = 256
-	maxIPRunes          = 64
-	maxLogRunes         = 4096
-	maxAPIKeyNameRunes  = 64
-	maxPasskeyNameRunes = 64
-	maxAPIKeys          = 16
-	maxAPIKeyScopes     = 8
-	maxPasskeys         = 8
-	maxPasskeyJSONBytes = 8192
-	maxAuthTokenBytes   = 128
+	maxUserAgentRunes        = 256
+	maxIPRunes               = 64
+	maxLogRunes              = 4096
+	maxAPIKeyNameRunes       = 64
+	maxPasskeyNameRunes      = 64
+	maxAPIKeys               = 16
+	maxAPIKeyScopes          = 8
+	maxPasskeys              = 8
+	maxPasskeyJSONBytes      = 8192
+	maxAPIKeyScopesJSONBytes = 512
+	maxAuthTokenBytes        = 128
 )
 
 func clipUserAgent(value string) string {
@@ -117,6 +118,17 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash=?`, security.TokenHash(token))
 	return err
+}
+
+func parseAPIKeyScopes(raw string) ([]string, error) {
+	if len(raw) > maxAPIKeyScopesJSONBytes {
+		return nil, errors.New("api key scopes are too large")
+	}
+	var result []string
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func allowedAPIKeyScope(scope string) bool {
@@ -208,7 +220,11 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		if err = rows.Scan(&key.ID, &key.Name, &scopes, &created, &lastUsed, &expires, &revoked); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(scopes), &key.Scopes)
+		parsed, parseErr := parseAPIKeyScopes(scopes)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		key.Scopes = parsed
 		key.CreatedAt = time.Unix(created, 0).UTC()
 		key.LastUsedAt, key.ExpiresAt, key.RevokedAt = nullTime(lastUsed), nullTime(expires), nullTime(revoked)
 		keys = append(keys, key)
@@ -230,8 +246,8 @@ func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	var result []string
-	if err = json.Unmarshal([]byte(scopes), &result); err != nil {
+	result, err := parseAPIKeyScopes(scopes)
+	if err != nil {
 		return nil, err
 	}
 	filtered := make([]string, 0, len(result))
