@@ -631,3 +631,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `token:` 覆盖。不要把 PAT 交给 checkout
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T23:33Z` / 2026-09-17 07:33 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `47c116c` 再加 Compose build 白名单扫描：
+
+- Publish Guard 现只允许 Compose `build` 的 `context` / `dockerfile` / `args`，且 args 只有 VERSION/COMMIT/BUILT_AT/IMAGE_SOURCE。不要加 cache_from、secrets 或额外 ARG
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
