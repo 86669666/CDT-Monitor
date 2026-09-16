@@ -5,6 +5,7 @@ export type JobStatus = 'queued' | 'running' | 'completed' | 'failed'
 export type APIKeyScope = 'widget:read' | 'instance:control' | 'cron:run'
 
 export const CLEAR_SECRET_SENTINEL = '__clear__'
+export const MAX_ACCOUNTS = 32
 
 export type Account = {
   id: number

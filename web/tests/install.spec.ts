@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
+import { MAX_ACCOUNTS } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -7379,4 +7380,66 @@ test('settings webhook variable picker inserts threshold and time aliases', asyn
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(savedWebhook).toMatchObject({ body: '#THRESHOLD_PERCENT#\n#TIME#' })
   expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+})
+
+test('settings save surfaces the live too many accounts envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'too many accounts' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'too many accounts' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
+test('wizard surfaces the live too many accounts setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'too many accounts' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('too many accounts')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
+
+test('settings add instance stops at the live account cap', async ({ page }) => {
+  const cappedConfig = {
+    ...dashboardConfig,
+    accounts: Array.from({ length: MAX_ACCOUNTS }, (_, index) => ({
+      ...dashboardConfig.accounts[0],
+      id: index + 1,
+      access_key_id: `LTAI5cap${index + 1}`,
+      instance_id: `i-cap${index + 1}`,
+      remark: `节点 ${index + 1}`,
+      secret_configured: true,
+    })),
+  }
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, cappedConfig)
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  await expect(page.locator('.account-editor')).toHaveCount(MAX_ACCOUNTS)
+  await expect(page.getByRole('button', { name: '添加实例' })).toBeDisabled()
 })
