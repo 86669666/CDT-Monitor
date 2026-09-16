@@ -1350,6 +1350,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account remark is too long") {
 		t.Fatalf("remark status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account region_id is invalid"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account region_id is invalid") {
+		t.Fatalf("region status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {
@@ -1837,6 +1842,31 @@ func TestClearLogsRequiresAdminCSRF(t *testing.T) {
 	listed := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=action", "", []*http.Cookie{session, csrf}, nil)
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"logs":[]`) {
 		t.Fatalf("cleared logs status = %d body = %s", listed.Code, listed.Body.String())
+	}
+}
+
+func TestSaveConfigRejectsMalformedRegionIDHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	var config domain.Config
+	if err := json.Unmarshal(got.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.Accounts[0].RegionID = "cn-hongkong.evil.com"
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "account region_id is invalid") {
+		t.Fatalf("malformed region status = %d body = %s", bad.Code, bad.Body.String())
 	}
 }
 

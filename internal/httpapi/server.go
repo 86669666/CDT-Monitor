@@ -1065,6 +1065,9 @@ func safeStoreValidationMessage(msg string) bool {
 		"administrator password must be at least 10 characters",
 		"administrator password is required",
 		"account access_key_id and region_id are required",
+		"account access_key_id is invalid",
+		"account region_id is invalid",
+		"account instance_id is invalid",
 		"account remark is too long":
 		return true
 	default:
