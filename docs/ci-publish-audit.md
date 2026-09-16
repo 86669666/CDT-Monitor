@@ -276,3 +276,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `distribution: temurin` 与 `gradle-home-cache-cleanup: true`
 - 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:08Z` / 2026-09-16 10:08 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `9da70b5` 再加 CI npm run build 扫描：
+
+- Publish Guard 现要求 CI 在 `web/` 里 `npm run build`，并用 `web/package-lock.json` 做 npm cache
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
