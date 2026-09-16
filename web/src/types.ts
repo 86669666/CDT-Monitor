@@ -12,6 +12,12 @@ export const MAX_ACCESS_KEY_ID_CHARS = 64
 export const MAX_INSTANCE_ID_CHARS = 64
 export const MAX_TELEGRAM_CHAT_RUNES = 64
 export const MAX_NOTIFY_EMAIL_RUNES = 254
+export const MAX_NOTIFY_TCP_PORT = 65535
+
+export function liveNotifyPort(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  return Math.min(MAX_NOTIFY_TCP_PORT, Math.floor(value))
+}
 
 export function liveScheduleClock(value: string) {
   const trimmed = value.trim()
