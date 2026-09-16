@@ -428,6 +428,18 @@ scan_dockerfile() {
   if ! grep -Fq '/etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt' <<<"$body"; then
     bad "$f: scratch image must copy ca-certificates.crt"
   fi
+  if ! grep -Eq -- 'npm ci --ignore-scripts' <<<"$body"; then
+    bad "$f: frontend stage must npm ci --ignore-scripts"
+  fi
+  if ! grep -Eq 'npm run build' <<<"$body"; then
+    bad "$f: frontend stage must npm run build"
+  fi
+  if ! grep -Eq 'CGO_ENABLED=0' <<<"$body"; then
+    bad "$f: Go build must stay CGO_ENABLED=0"
+  fi
+  if ! grep -Fq './cmd/cdt-monitor' "$f"; then
+    bad "$f: Go build target must stay ./cmd/cdt-monitor"
+  fi
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
