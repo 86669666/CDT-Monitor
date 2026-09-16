@@ -102,7 +102,6 @@ export type SystemInfo = { version: string; commit: string; built_at: string; re
 export const emptyAccount = (): Account => ({
   id: 0,
   access_key_id: '',
-  access_key_secret: '',
   secret_configured: false,
   region_id: 'cn-hongkong',
   instance_id: '',
