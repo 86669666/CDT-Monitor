@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, liveScheduleClock } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -7985,4 +7985,75 @@ test('settings telegram proxy port posts at the live TCP cap', async ({ page }) 
   await expect(page.getByText('配置已安全保存')).toBeVisible()
   expect(saveCalls).toBe(1)
   expect(proxyPort).toBe(String(MAX_NOTIFY_TCP_PORT))
+})
+
+test('settings save surfaces the live notification header envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'notification header fields must not contain line breaks' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'notification header fields must not contain line breaks' }).first()).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
+
+test('wizard surfaces the live notification header setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'notification header fields must not contain line breaks' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('notification header fields must not contain line breaks')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
+
+test('settings webhook headers strip live header line breaks', async ({ page }) => {
+  let saveCalls = 0
+  let headers = ''
+  const broken = '{"X-Test":"a\nb"}'
+  const stripped = liveNotifyHeaderText(broken)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: { headers?: string } } }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      headers = body.notifications?.webhook?.headers || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByLabel(/自定义 Headers/).fill(broken)
+  await expect(page.getByLabel(/自定义 Headers/)).toHaveValue(stripped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect(headers).toBe(stripped)
+  expect(headers).not.toMatch(/[\r\n\u0000]/)
 })

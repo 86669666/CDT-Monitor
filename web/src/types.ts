@@ -28,6 +28,11 @@ export function liveNotifyPortString(value: string) {
   return String(Math.min(MAX_NOTIFY_TCP_PORT, port))
 }
 
+export function liveNotifyHeaderText(value: string) {
+  if (value === CLEAR_SECRET_SENTINEL) return value
+  return Array.from(value).filter((ch) => ch !== '\r' && ch !== '\n' && ch !== '\u0000').join('')
+}
+
 export function liveScheduleClock(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return ''
