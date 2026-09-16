@@ -10085,3 +10085,24 @@ test('settings email test surfaces the live not_found envelope', async ({ page }
   await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings email test surfaces the live internal_error envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
