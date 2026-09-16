@@ -9440,3 +9440,32 @@ test('settings API key revoke surfaces the live forbidden envelope', async ({ pa
   await expect(page.locator('.key-row')).toContainText('桌面小组件')
   expect(revokeCalls).toBe(1)
 })
+
+test('settings API key revoke surfaces the live not_found envelope', async ({ page }) => {
+  const existing = {
+    id: 15,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
