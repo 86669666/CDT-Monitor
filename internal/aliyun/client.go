@@ -806,6 +806,9 @@ func trafficFromResponse(result map[string]any, class string) (float64, error) {
 			continue
 		}
 		region := stringValue(obj["BusinessRegionId"])
+		if !validECSRegion(region) {
+			continue
+		}
 		if trafficClass(region) == class {
 			amount, err := parseFiniteNumber(obj["Traffic"])
 			if err != nil {
