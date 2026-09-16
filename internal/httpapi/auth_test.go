@@ -1663,6 +1663,24 @@ func TestCreatePasskeyRejectsOversizedNameHTTP(t *testing.T) {
 	}
 }
 
+func TestPasskeyLoginBeginIsRateLimited(t *testing.T) {
+	st := initializedAuthStore(t)
+	if err := st.SavePasskey(t.Context(), "laptop", webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")}); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	for i := 0; i < 8; i++ {
+		got := doRequest(t, handler, http.MethodPost, "/api/v1/auth/passkeys/begin", `{}`, nil, nil)
+		if got.Code != http.StatusOK {
+			t.Fatalf("begin %d status = %d body = %s", i+1, got.Code, got.Body.String())
+		}
+	}
+	limited := doRequest(t, handler, http.MethodPost, "/api/v1/auth/passkeys/begin", `{}`, nil, nil)
+	if limited.Code != http.StatusTooManyRequests || !strings.Contains(limited.Body.String(), "rate_limited") {
+		t.Fatalf("passkey begin rate limit status = %d body = %s", limited.Code, limited.Body.String())
+	}
+}
+
 func TestPasskeyLoginRequiresHTTPS(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)

@@ -69,6 +69,8 @@ type passkeySession struct {
 
 const adminWebAuthnID = "cdt-monitor-admin-v1"
 
+const maxPasskeySessions = 8
+
 type rateWindow struct {
 	start   time.Time
 	count   int
@@ -310,7 +312,10 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
-	s.savePasskeySession(id, passkeySession{kind: "registration", name: name, session: *session, expires: time.Now().Add(5 * time.Minute)})
+	if !s.savePasskeySession(id, passkeySession{kind: "registration", name: name, session: *session, expires: time.Now().Add(5 * time.Minute)}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Passkey 挑战过多，请稍后再试")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "public_key": creation})
 }
 
@@ -352,6 +357,10 @@ func (s *Server) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "https_required", "Passkey 登录只能在 HTTPS 安全上下文中使用")
 		return
 	}
+	if !s.allowRate("passkey:"+clientIP(r), 8, 15*time.Minute) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Passkey 尝试过多，请稍后再试")
+		return
+	}
 	credentials, err := s.store.LoadPasskeyCredentials(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 数据加载失败")
@@ -372,7 +381,10 @@ func (s *Server) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
-	s.savePasskeySession(id, passkeySession{kind: "login", session: *session, expires: time.Now().Add(5 * time.Minute)})
+	if !s.savePasskeySession(id, passkeySession{kind: "login", session: *session, expires: time.Now().Add(5 * time.Minute)}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Passkey 挑战过多，请稍后再试")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "public_key": assertion})
 }
 
@@ -454,16 +466,20 @@ func requestOrigin(r *http.Request) string {
 	return scheme + "://" + host
 }
 
-func (s *Server) savePasskeySession(id string, session passkeySession) {
+func (s *Server) savePasskeySession(id string, session passkeySession) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	for key, item := range s.passkeys {
-		if item.expires.Before(now) {
+		if !item.expires.After(now) {
 			delete(s.passkeys, key)
 		}
 	}
+	if len(s.passkeys) >= maxPasskeySessions {
+		return false
+	}
 	s.passkeys[id] = session
+	return true
 }
 
 func (s *Server) takePasskeySession(id, kind string) (passkeySession, bool) {
