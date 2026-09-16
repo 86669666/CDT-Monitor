@@ -320,9 +320,21 @@ func validBillingCycle(cycle string) error {
 	return nil
 }
 
+func allowedAliyunAction(action string) bool {
+	switch action {
+	case "ListCdtInternetTraffic", "DescribeInstanceStatus", "StartInstance", "StopInstance", "QueryAccountBalance", "DescribeInstanceBill":
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
 	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
 		return nil, errors.New("access key is required")
+	}
+	if !allowedAliyunAction(action) {
+		return nil, errors.New("aliyun action is invalid")
 	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {

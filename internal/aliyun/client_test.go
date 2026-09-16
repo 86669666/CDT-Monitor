@@ -85,6 +85,25 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	}
 }
 
+func TestCallRejectsUnknownActions(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DeleteInstance", map[string]string{"InstanceId": "i-test"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun action is invalid") {
+		t.Fatalf("delete err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown action must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunAction("StartInstance") || allowedAliyunAction("RebootInstance") {
+		t.Fatal("action allowlist mismatch")
+	}
+}
+
 func TestCallRequiresAccessKey(t *testing.T) {
 	var hits int
 	client := NewClient()
