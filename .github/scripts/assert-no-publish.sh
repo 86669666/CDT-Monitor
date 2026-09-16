@@ -268,6 +268,12 @@ scan_widget() {
   if grep -Eq 'app/build/outputs/.*\.jks|app/build/outputs/.*\.keystore' <<<"$body"; then
     bad "$f: keystore files must not be uploaded as artifacts"
   fi
+  if ! grep -Eq 'working-directory:[[:space:]]*android-widget' <<<"$body"; then
+    bad "$f: Gradle must run with working-directory android-widget"
+  fi
+  if ! grep -Eq 'android-actions/setup-android@' <<<"$body"; then
+    bad "$f: setup-android is required"
+  fi
 }
 
 scan_checkout_credentials() {
