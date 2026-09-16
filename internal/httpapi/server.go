@@ -785,7 +785,7 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	action := strings.ToLower(r.PathValue("action"))
+	action := strings.ToLower(strings.TrimSpace(r.PathValue("action")))
 	if action != "start" && action != "stop" {
 		writeError(w, http.StatusBadRequest, "invalid_action", "action must be start or stop")
 		return
@@ -834,7 +834,7 @@ func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
-	channel := r.PathValue("channel")
+	channel := strings.ToLower(strings.TrimSpace(r.PathValue("channel")))
 	if channel != "email" && channel != "telegram" && channel != "webhook" {
 		writeError(w, http.StatusBadRequest, "invalid_channel", "invalid notification channel")
 		return

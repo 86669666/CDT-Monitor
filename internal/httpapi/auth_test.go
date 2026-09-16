@@ -50,7 +50,7 @@ func initializedAuthStore(t *testing.T) *store.Store {
 		Notifications: domain.NotificationConfig{
 			Email:    domain.EmailConfig{Password: "smtp-password-value"},
 			Telegram: domain.TelegramConfig{Token: "telegram-token-value"},
-			Webhook:  domain.WebhookConfig{Secret: "webhook-secret-value", Headers: "X-Auth: leak-me"},
+			Webhook:  domain.WebhookConfig{Secret: "webhook-secret-value", Headers: `{"X-Auth":"leak-me"}`},
 		},
 	}
 	if err = st.Setup(t.Context(), config); err != nil {
@@ -203,7 +203,7 @@ func TestWebhookHeadersStayUntilClearedOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Notifications.Webhook.Headers != "X-Auth: leak-me" || loaded.Notifications.Webhook.Secret != "webhook-secret-value" {
+	if loaded.Notifications.Webhook.Headers != `{"X-Auth":"leak-me"}` || loaded.Notifications.Webhook.Secret != "webhook-secret-value" {
 		t.Fatalf("empty scrubbed PUT must keep webhook secrets: %#v", loaded.Notifications.Webhook)
 	}
 
@@ -1351,6 +1351,10 @@ func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 	if reboot.Code != http.StatusBadRequest || !strings.Contains(reboot.Body.String(), "invalid_action") {
 		t.Fatalf("reboot status = %d body = %s", reboot.Code, reboot.Body.String())
 	}
+	start := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+itoa(accounts[0].ID)+"/actions/START", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	if start.Code != http.StatusAccepted {
+		t.Fatalf("START action status = %d body = %s", start.Code, start.Body.String())
+	}
 }
 
 func TestSetupHidesDatabaseErrors(t *testing.T) {
@@ -1604,6 +1608,10 @@ func TestTestNotificationRequiresAdminAndValidChannel(t *testing.T) {
 	ok := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/webhook", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if ok.Code != http.StatusAccepted {
 		t.Fatalf("admin test notify status = %d body = %s", ok.Code, ok.Body.String())
+	}
+	mixed := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/Telegram", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if mixed.Code != http.StatusAccepted {
+		t.Fatalf("mixed-case channel status = %d body = %s", mixed.Code, mixed.Body.String())
 	}
 	invalid := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/sms", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if invalid.Code != http.StatusBadRequest {
