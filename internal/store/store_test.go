@@ -654,6 +654,25 @@ func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	}
 }
 
+func TestAddLogMessageIsClipped(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.AddLog(ctx, "error", strings.Repeat("x", maxLogRunes+128)); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("logs=%#v err=%v", entries, err)
+	}
+	if got := []rune(entries[0].Message); len(got) != maxLogRunes || string(got) != strings.Repeat("x", maxLogRunes) {
+		t.Fatalf("stored log len = %d", len(got))
+	}
+}
+
 func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -55,6 +55,7 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 const (
 	maxUserAgentRunes = 256
 	maxIPRunes        = 64
+	maxLogRunes       = 4096
 )
 
 func clipUserAgent(value string) string {
