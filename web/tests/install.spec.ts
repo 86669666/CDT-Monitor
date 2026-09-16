@@ -9166,3 +9166,67 @@ test('settings logs surface the live internal_error envelope', async ({ page }) 
   await expect(page.getByText('暂无日志')).toBeVisible()
   await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
 })
+
+test('settings API keys surface the live unauthorized envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.inline-error')).toContainText('请登录或提供有效 API Key')
+  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'API Key' })).toBeVisible()
+})
+
+test('settings API keys surface the live forbidden envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.inline-error')).toContainText('API Key 权限不足')
+  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'API Key' })).toBeVisible()
+})
+
+test('settings API keys surface the live not_found envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.inline-error')).toContainText('接口不存在')
+  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'API Key' })).toBeVisible()
+})
+
+test('settings API keys surface the live internal_error envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await expect(page.locator('.inline-error')).toContainText('服务暂时不可用')
+  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'API Key' })).toBeVisible()
+})
