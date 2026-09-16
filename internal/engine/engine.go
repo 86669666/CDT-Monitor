@@ -724,8 +724,18 @@ func RegionName(region string) string {
 	return region
 }
 
+const maxControlSourceRunes = 32
+
 func ParseControlPayload(action, source string) string {
-	payload, _ := json.Marshal(map[string]string{"action": strings.ToLower(action), "source": source})
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action != "start" && action != "stop" {
+		action = ""
+	}
+	source = strings.TrimSpace(source)
+	if runes := []rune(source); len(runes) > maxControlSourceRunes {
+		source = string(runes[:maxControlSourceRunes])
+	}
+	payload, _ := json.Marshal(map[string]string{"action": action, "source": source})
 	return string(payload)
 }
 
