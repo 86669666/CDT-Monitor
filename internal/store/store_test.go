@@ -2176,8 +2176,30 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 		t.Fatalf("empty id err=%v", err)
 	}
 	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
-	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("payload err=%v", err)
+	}
+	event.Summary = "s"
+	event.Type = "unknown"
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event type is invalid") {
+		t.Fatalf("type err=%v", err)
+	}
+	event.Type = "threshold"
+	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("title err=%v", err)
+	}
+	event.Title = "t"
+	event.Fields = map[string]string{strings.Repeat("k", maxNotificationFieldRunes+1): "v"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("field err=%v", err)
+	}
+	event.Fields = map[string]string{}
+	for i := 0; i < maxNotificationFields+1; i++ {
+		event.Fields[strconv.Itoa(i)] = "v"
+	}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("field count err=%v", err)
 	}
 	var count int
 	if err = st.db.QueryRow(`SELECT COUNT(*) FROM notification_outbox`).Scan(&count); err != nil || count != 0 {

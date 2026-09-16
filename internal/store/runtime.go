@@ -334,9 +334,13 @@ func (s *Store) DeleteActionEvent(ctx context.Context, key string) error {
 }
 
 const (
-	maxOutboxPayloadRunes = 8192
-	maxOutboxEventIDRunes = 64
-	maxOutboxChannels     = 3
+	maxOutboxPayloadRunes       = 8192
+	maxOutboxEventIDRunes       = 64
+	maxOutboxChannels           = 3
+	maxNotificationTitleRunes   = 128
+	maxNotificationSummaryRunes = 1024
+	maxNotificationFields       = 16
+	maxNotificationFieldRunes   = 128
 )
 
 func validOutboxChannel(channel string) bool {
@@ -348,9 +352,39 @@ func validOutboxChannel(channel string) bool {
 	}
 }
 
+func validNotificationEventType(eventType string) bool {
+	switch eventType {
+	case "test", "threshold", "keepalive", "schedule":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateNotificationEvent(event domain.NotificationEvent) error {
+	if !validNotificationEventType(event.Type) {
+		return errors.New("notification event type is invalid")
+	}
+	if len([]rune(event.Title)) > maxNotificationTitleRunes || len([]rune(event.Summary)) > maxNotificationSummaryRunes {
+		return errors.New("notification event is too long")
+	}
+	if len(event.Fields) > maxNotificationFields {
+		return errors.New("notification event is too long")
+	}
+	for key, value := range event.Fields {
+		if len([]rune(key)) > maxNotificationFieldRunes || len([]rune(value)) > maxNotificationFieldRunes {
+			return errors.New("notification event is too long")
+		}
+	}
+	return nil
+}
+
 func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, channels []string) error {
 	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
 		return errors.New("notification event id is invalid")
+	}
+	if err := validateNotificationEvent(event); err != nil {
+		return err
 	}
 	if len(channels) > maxOutboxChannels {
 		return errors.New("too many notification channels")
