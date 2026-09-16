@@ -223,6 +223,10 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
 		}
+		payload.Channel = strings.ToLower(strings.TrimSpace(payload.Channel))
+		if !allowedNotifyChannel(payload.Channel) {
+			return "", fmt.Errorf("unsupported notification channel %q", payload.Channel)
+		}
 		config, err := e.store.GetConfig(ctx)
 		if err != nil {
 			return "", err
@@ -769,11 +773,18 @@ func ParseControlPayload(action, source string) string {
 	return string(payload)
 }
 
-func ParseNotifyPayload(channel string) string {
-	channel = strings.ToLower(strings.TrimSpace(channel))
+func allowedNotifyChannel(channel string) bool {
 	switch channel {
 	case "email", "telegram", "webhook":
+		return true
 	default:
+		return false
+	}
+}
+
+func ParseNotifyPayload(channel string) string {
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	if !allowedNotifyChannel(channel) {
 		channel = ""
 	}
 	payload, _ := json.Marshal(map[string]string{"channel": channel})

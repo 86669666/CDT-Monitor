@@ -92,6 +92,19 @@ func TestParseNotifyPayloadAllowlistsChannels(t *testing.T) {
 	}
 }
 
+func TestRunJobRejectsUnknownNotifyChannel(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(context.Background(), domain.Job{
+		Type:    JobTestNotify,
+		Payload: `{"channel":"sms"}`,
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported notification channel") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestManualStartAllowedWhenStatusUnknown(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()
