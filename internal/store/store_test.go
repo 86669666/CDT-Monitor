@@ -1242,6 +1242,30 @@ func TestFailedJobRetriesThenReleasesUniqueKey(t *testing.T) {
 	}
 }
 
+func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.EnqueueJob(ctx, "", 1, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("empty type err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes+1), 1, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("long type err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 0); err == nil || !strings.Contains(err.Error(), "attempts are invalid") {
+		t.Fatalf("zero attempts err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", maxJobAttempts+1); err == nil || !strings.Contains(err.Error(), "attempts are invalid") {
+		t.Fatalf("max attempts err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err != nil {
+		t.Fatalf("max job type err=%v", err)
+	}
+}
+
 func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

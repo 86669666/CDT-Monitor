@@ -149,9 +149,17 @@ func (s *Store) SetLastMonitorRun(ctx context.Context, at time.Time) error {
 const (
 	maxJobPayloadRunes   = 4096
 	maxJobUniqueKeyRunes = 256
+	maxJobTypeRunes      = 64
+	maxJobAttempts       = 8
 )
 
 func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
+	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes {
+		return domain.Job{}, errors.New("job type is invalid")
+	}
+	if maxAttempts < 1 || maxAttempts > maxJobAttempts {
+		return domain.Job{}, errors.New("job attempts are invalid")
+	}
 	if len([]rune(payload)) > maxJobPayloadRunes {
 		return domain.Job{}, errors.New("job payload is too long")
 	}
