@@ -9290,3 +9290,361 @@ test('admin passkeys surface the live internal_error envelope', async ({ page })
   await expect(page.getByText('尚未创建管理员 Passkey')).toBeVisible()
   await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
 })
+
+test('admin passkey delete surfaces the live unauthorized envelope', async ({ page }) => {
+  const existing = { id: 9, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
+
+test('admin passkey delete surfaces the live forbidden envelope', async ({ page }) => {
+  const existing = { id: 10, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
+
+test('admin passkey delete surfaces the live not_found envelope', async ({ page }) => {
+  const existing = { id: 11, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
+
+test('admin passkey delete surfaces the live internal_error envelope', async ({ page }) => {
+  const existing = { id: 12, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
+
+test('settings API key revoke surfaces the live unauthorized envelope', async ({ page }) => {
+  const existing = {
+    id: 13,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('settings API key revoke surfaces the live forbidden envelope', async ({ page }) => {
+  const existing = {
+    id: 14,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('settings API key revoke surfaces the live not_found envelope', async ({ page }) => {
+  const existing = {
+    id: 15,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('settings API key revoke surfaces the live internal_error envelope', async ({ page }) => {
+  const existing = {
+    id: 16,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('log clear surfaces the live unauthorized envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
+
+test('log clear surfaces the live internal_error envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 500,
+        json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
+
+test('admin password update surfaces the live unauthorized envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
+
+test('admin password update surfaces the live forbidden envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
+
+test('admin password update surfaces the live not_found envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
+
+test('admin password update surfaces the live internal_error envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
