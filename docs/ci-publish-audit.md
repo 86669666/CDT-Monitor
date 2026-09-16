@@ -481,3 +481,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 GitHub Environment job（不只是 `production`）。staging/prod 保护环境会带部署密钥，本 fork 不要接
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T09:40Z` / 2026-09-16 17:40 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `f99b66e` 再加 Compose 本地 build context 扫描：
+
+- Publish Guard 现要求 Compose `context: .`、`dockerfile: Dockerfile`，并禁止 `additional_contexts` 与 build `ssh`。不要从邻仓或 SSH agent 掺进构建上下文
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
