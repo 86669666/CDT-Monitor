@@ -443,6 +443,14 @@ scan_dockerfile() {
   if ! grep -Fq 'apk add --no-cache ca-certificates' <<<"$body"; then
     bad "$f: certificates stage must install ca-certificates"
   fi
+  if grep -Eq 'apt-get |yum |dnf |microdnf ' <<<"$body"; then
+    bad "$f: apt/yum/dnf is forbidden; keep alpine apk for CA certs only"
+  fi
+  local apk
+  apk="$(grep -c 'apk add' <<<"$body" || true)"
+  if [ "$apk" -ne 1 ]; then
+    bad "$f: only one apk add is allowed (ca-certificates), found $apk"
+  fi
   if ! grep -Fq '/etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt' <<<"$body"; then
     bad "$f: scratch image must copy ca-certificates.crt"
   fi

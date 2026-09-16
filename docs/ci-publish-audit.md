@@ -406,3 +406,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `extra_hosts`、`stdin_open: true`、`tty: true`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T06:49Z` / 2026-09-16 14:49 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e960ed3` 再加 Dockerfile apk-only CA 扫描：
+
+- Publish Guard 现禁止 apt/yum/dnf，且只允许一次 `apk add --no-cache ca-certificates`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
