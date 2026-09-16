@@ -2261,6 +2261,25 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	long := strings.Repeat("o", maxOutboxIDBytes+1)
+	if err = st.CompleteOutbox(ctx, ""); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("empty complete err=%v", err)
+	}
+	if err = st.CompleteOutbox(ctx, long); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("oversized complete err=%v", err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: long}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("oversized fail err=%v", err)
+	}
+}
+
 func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

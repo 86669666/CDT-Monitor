@@ -226,14 +226,19 @@ func (c *Client) ControlInstance(ctx context.Context, account domain.Account, se
 		return err
 	}
 	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
-	action = strings.ToLower(action)
-	apiAction := "StartInstance"
-	if action == "stop" {
+	action = strings.ToLower(strings.TrimSpace(action))
+	var apiAction string
+	switch action {
+	case "start":
+		apiAction = "StartInstance"
+	case "stop":
 		apiAction = "StopInstance"
 		if shutdownMode != "StopCharging" {
 			shutdownMode = "KeepCharging"
 		}
 		params["StoppedMode"] = shutdownMode
+	default:
+		return errors.New("instance action is invalid")
 	}
 	_, err := c.call(ctx, account.AccessKeyID, secret, account.RegionID, "ecs."+account.RegionID+".aliyuncs.com", "2014-05-26", apiAction, params)
 	return err
