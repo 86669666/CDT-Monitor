@@ -112,6 +112,23 @@ export function liveGetWebhook(
   }
 }
 
+/** Live GET /api/v1/config telegram after scrubConfig: token/proxy_url/proxy_pass omitted. */
+export function liveGetTelegram(
+  telegram: Partial<Config['notifications']['telegram']> = {},
+): Config['notifications']['telegram'] {
+  return {
+    enabled: telegram.enabled ?? false,
+    token_configured: telegram.token_configured ?? false,
+    chat_id: telegram.chat_id ?? '',
+    proxy_type: telegram.proxy_type ?? 'none',
+    proxy_url_configured: telegram.proxy_url_configured ?? false,
+    proxy_ip: telegram.proxy_ip ?? '',
+    proxy_port: telegram.proxy_port ?? '',
+    proxy_user: telegram.proxy_user ?? '',
+    proxy_password_configured: telegram.proxy_password_configured ?? false,
+  }
+}
+
 export function jobFixture(id: string, status: JobStatus, accountId = 1): Job {
   const now = new Date().toISOString()
   return {

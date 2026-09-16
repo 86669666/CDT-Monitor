@@ -266,7 +266,7 @@ function Login({ onComplete }: { onComplete: () => Promise<void> }) {
           <PasswordField label="管理员密码" value={password} visible={visible} onVisible={() => setVisible(!visible)} onChange={setPassword} autoComplete="current-password" />
           {error && <div className="inline-error"><AlertTriangle size={16} />{error}</div>}
           <button className="button button--primary button--full" disabled={busy || !password}>{busy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}安全登录</button>
-          {passkeyAvailable() && <button type="button" className="button button--secondary button--full" disabled={passkeyBusy} onClick={() => void loginWithPasskey()}>{passkeyBusy ? <LoaderCircle className="spin" size={18} /> : <Fingerprint size={18} />}使用 Passkey 登录</button>}
+          {passkeyAvailable() ? <button type="button" className="button button--secondary button--full" disabled={passkeyBusy} onClick={() => void loginWithPasskey()}>{passkeyBusy ? <LoaderCircle className="spin" size={18} /> : <Fingerprint size={18} />}使用 Passkey 登录</button> : <p className="inline-hint">{PASSKEY_LOGIN_HTTPS_REQUIRED}</p>}
         </form>
       </div>
     </main>
@@ -852,6 +852,7 @@ function formatTime(value: string, timeZone?: string) { return new Date(value).t
 function formatDate(value: string, timeZone?: string) { return new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: resolveTimeZone(timeZone) }) }
 function formatBuiltAt(value: string, timeZone?: string) { if (!value || value === 'unknown') return value || 'unknown'; if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return value; const parsed = Date.parse(value); return Number.isNaN(parsed) ? value : formatDate(value, timeZone) }
 const PASSKEY_HTTPS_REQUIRED = 'Passkey 只能在 HTTPS 安全上下文中创建'
+const PASSKEY_LOGIN_HTTPS_REQUIRED = 'Passkey 登录只能在 HTTPS 安全上下文中使用'
 const PASSKEY_NOT_CONFIGURED = '尚未创建管理员 Passkey'
 function passkeyAvailable() { return location.protocol === 'https:' && window.isSecureContext && 'PublicKeyCredential' in window && 'credentials' in navigator }
 function decodeBase64(value: unknown) { if (typeof value !== 'string') return value; const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)); return Uint8Array.from(binary, (character) => character.charCodeAt(0)).buffer }
