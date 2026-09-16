@@ -53,9 +53,10 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 }
 
 const (
-	maxUserAgentRunes = 256
-	maxIPRunes        = 64
-	maxLogRunes       = 4096
+	maxUserAgentRunes  = 256
+	maxIPRunes         = 64
+	maxLogRunes        = 4096
+	maxAPIKeyNameRunes = 64
 )
 
 func clipUserAgent(value string) string {
@@ -135,8 +136,12 @@ func uniqueAPIKeyScopes(scopes []string) []string {
 }
 
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
-	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
+	name = strings.TrimSpace(name)
+	if name == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
+	}
+	if len([]rune(name)) > maxAPIKeyNameRunes {
+		return domain.APIKey{}, "", errors.New("api key name is too long")
 	}
 	scopes = uniqueAPIKeyScopes(scopes)
 	if !validAPIKeyScopes(scopes) {

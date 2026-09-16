@@ -55,6 +55,32 @@ func TestVerifyPasswordRejectsPlaintext(t *testing.T) {
 	}
 }
 
+func TestVerifyPasswordRejectsUnexpectedParameters(t *testing.T) {
+	encoded := "$argon2id$v=19$m=8,t=1,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	if VerifyPassword(encoded, "Correct-Horse-42!") {
+		t.Fatal("unexpected argon2id parameters must not verify")
+	}
+	if IsCurrentPasswordHash(encoded) {
+		t.Fatal("low-cost hash must not be treated as current")
+	}
+	if !IsArgon2id(encoded) {
+		t.Fatal("PHC prefix must still be detected as argon2id")
+	}
+}
+
+func TestIsCurrentPasswordHashAcceptsCanonicalEncoding(t *testing.T) {
+	hash, err := HashPassword("Correct-Horse-42!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsCurrentPasswordHash(hash) {
+		t.Fatalf("canonical hash rejected: %s", hash)
+	}
+	if IsCurrentPasswordHash("$argon2id$v=19$m=65536,t=3,p=2$short$short") {
+		t.Fatal("truncated hash must not be current")
+	}
+}
+
 func TestCipherPersistsMasterKey(t *testing.T) {
 	dir := t.TempDir()
 	first, err := LoadOrCreateCipher(dir)
