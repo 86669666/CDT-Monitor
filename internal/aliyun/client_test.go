@@ -703,6 +703,26 @@ func TestCallStopsAfterMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestCallRejectsDeeplyNestedJSON(t *testing.T) {
+	nested := `{"Code":"200"}`
+	for i := 0; i < maxAliyunJSONDepth; i++ {
+		nested = `{"k":` + nested + `}`
+	}
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(nested)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "nesting is too deep") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("deep json must not retry, hits=%d", hits)
+	}
+}
+
 func TestCallRejectsOversizedAliyunCodes(t *testing.T) {
 	hits := 0
 	client := NewClient()
@@ -1076,5 +1096,13 @@ func TestAliyunDialContextRejectsNonTLSDestinations(t *testing.T) {
 	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("evil.example.test", "443"))
 	if !errors.Is(err, errAliyunForbiddenHost) {
 		t.Fatalf("unknown host dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("1.1.1.1", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("ipv4 literal dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("::1", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("ipv6 literal dial err=%v", err)
 	}
 }
