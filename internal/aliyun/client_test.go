@@ -1084,6 +1084,29 @@ func TestAliyunDialContextRejectsMetadataIP(t *testing.T) {
 	}
 }
 
+func TestForbiddenAliyunIPIncludesPrivateAndLoopback(t *testing.T) {
+	for _, raw := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.8", "100.64.0.1", "100.100.100.200", "fd00:ec2::254", "224.0.0.1"} {
+		if !forbiddenAliyunIP(net.ParseIP(raw)) {
+			t.Fatalf("%s must be forbidden", raw)
+		}
+	}
+	if forbiddenAliyunIP(net.ParseIP("8.8.8.8")) {
+		t.Fatal("public IP must remain allowed after DNS")
+	}
+}
+
+func TestAliyunDialContextRejectsPrivateResolvedIPs(t *testing.T) {
+	original := lookupAliyunIPs
+	lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	t.Cleanup(func() { lookupAliyunIPs = original })
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("loopback rebind err=%v", err)
+	}
+}
+
 func TestAliyunDialContextRejectsNonTLSDestinations(t *testing.T) {
 	_, err := aliyunDialContext(context.Background(), "udp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
 	if !errors.Is(err, errAliyunForbiddenHost) {

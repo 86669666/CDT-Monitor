@@ -95,15 +95,9 @@ func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, 
 	if net.ParseIP(host) != nil || !allowedAliyunHost(host) {
 		return nil, errAliyunForbiddenHost
 	}
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	ips, err := lookupAliyunIPs(ctx, host)
 	if err != nil {
 		return nil, err
-	}
-	var ips []net.IP
-	for _, addr := range addrs {
-		if addr.IP != nil {
-			ips = append(ips, addr.IP)
-		}
 	}
 	if len(ips) == 0 {
 		return nil, errAliyunForbiddenHost
@@ -125,8 +119,25 @@ func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, 
 	return nil, lastErr
 }
 
+var lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
+		}
+	}
+	return ips, nil
+}
+
 func forbiddenAliyunIP(ip net.IP) bool {
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
 		return true
 	}
 	return ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254"))
