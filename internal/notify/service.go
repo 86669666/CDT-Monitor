@@ -163,6 +163,7 @@ var (
 	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
+	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -272,9 +273,27 @@ func containsHeaderBreak(value string) bool {
 	return false
 }
 
+const (
+	maxNotifyEmailRunes  = 254
+	maxTelegramChatRunes = 64
+)
+
 func ValidateSMTPIdentity(username, to string) error {
 	if containsHeaderBreak(username) || containsHeaderBreak(to) {
 		return errInvalidNotifyHeader
+	}
+	if len([]rune(username)) > maxNotifyEmailRunes || len([]rune(to)) > maxNotifyEmailRunes {
+		return errInvalidNotifyIdentity
+	}
+	return nil
+}
+
+func ValidateTelegramChatID(id string) error {
+	if containsHeaderBreak(id) {
+		return errInvalidNotifyHeader
+	}
+	if len([]rune(id)) > maxTelegramChatRunes {
+		return errInvalidNotifyIdentity
 	}
 	return nil
 }
@@ -488,6 +507,9 @@ func renderEmail(event domain.NotificationEvent) string {
 }
 
 func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig, event domain.NotificationEvent) error {
+	if err := ValidateTelegramChatID(config.ChatID); err != nil {
+		return err
+	}
 	baseURL := "https://api.telegram.org"
 	if config.ProxyType == "custom" && config.ProxyURL != "" {
 		baseURL = strings.TrimRight(config.ProxyURL, "/")

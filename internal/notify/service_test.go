@@ -385,6 +385,22 @@ func TestSendTelegramRejectsInvalidSOCKSPort(t *testing.T) {
 	}
 }
 
+func TestValidateSMTPIdentityRejectsOversizedMailbox(t *testing.T) {
+	long := strings.Repeat("a", maxNotifyEmailRunes+1) + "@example.test"
+	if err := ValidateSMTPIdentity(long, "ops@example.test"); !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("username err=%v", err)
+	}
+	if err := ValidateSMTPIdentity("monitor@example.test", strings.Repeat("b", maxNotifyEmailRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("to err=%v", err)
+	}
+	if err := ValidateTelegramChatID(strings.Repeat("1", maxTelegramChatRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("chat id err=%v", err)
+	}
+	if err := ValidateTelegramChatID("-100123"); err != nil {
+		t.Fatalf("normal chat id err=%v", err)
+	}
+}
+
 func TestSendEmailRejectsHeaderInjection(t *testing.T) {
 	config := domain.Config{}
 	config.Notifications.Email.Enabled = true
