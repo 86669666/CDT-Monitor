@@ -8429,3 +8429,41 @@ test('settings telegram proxy user posts at the live secret rune cap', async ({ 
   expect([...proxyUser]).toHaveLength(MAX_NOTIFY_SECRET_RUNES)
   expect(proxyUser).toBe(capped)
 })
+
+test('settings webhook secret posts at the live secret rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let secret = ''
+  const overflow = `${'s'.repeat(MAX_NOTIFY_SECRET_RUNES)}超`
+  const capped = 's'.repeat(MAX_NOTIFY_SECRET_RUNES)
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: liveGetWebhook({ provider: 'dingtalk' }),
+    },
+  }
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: { secret?: string } } }
+      expectKnownKeys(payload as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      secret = payload.notifications?.webhook?.secret || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByLabel('钉钉加签密钥').fill(overflow)
+  await expect(page.getByLabel('钉钉加签密钥')).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...secret]).toHaveLength(MAX_NOTIFY_SECRET_RUNES)
+  expect(secret).toBe(capped)
+})
