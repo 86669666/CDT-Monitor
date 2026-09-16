@@ -1170,6 +1170,24 @@ func TestFailedJobRetriesThenReleasesUniqueKey(t *testing.T) {
 	}
 }
 
+func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, strings.Repeat("x", maxJobPayloadRunes+1), "", 3); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("payload err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, strings.Repeat("k", maxJobUniqueKeyRunes+1), 3); err == nil || !strings.Contains(err.Error(), "unique key is too long") {
+		t.Fatalf("unique key err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, strings.Repeat("x", maxJobPayloadRunes), strings.Repeat("k", maxJobUniqueKeyRunes), 3); err != nil {
+		t.Fatalf("max job fields err=%v", err)
+	}
+}
+
 func TestMonitorJobKeepsMinuteDeduplicationAfterCompletion(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
