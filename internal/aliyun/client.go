@@ -575,6 +575,9 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	if err = json.Unmarshal(body, &result); err != nil {
 		return nil, resp.StatusCode >= 500, fmt.Errorf("aliyun %s invalid response: %w", action, err)
 	}
+	if jsonDepth(result) > maxAliyunJSONDepth {
+		return nil, false, fmt.Errorf("aliyun %s invalid response: nesting is too deep", action)
+	}
 	if resp.StatusCode >= 400 {
 		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
 	}
@@ -587,6 +590,31 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 		}
 	}
 	return result, false, nil
+}
+
+const maxAliyunJSONDepth = 16
+
+func jsonDepth(value any) int {
+	switch nested := value.(type) {
+	case map[string]any:
+		max := 0
+		for _, child := range nested {
+			if depth := jsonDepth(child); depth > max {
+				max = depth
+			}
+		}
+		return max + 1
+	case []any:
+		max := 0
+		for _, child := range nested {
+			if depth := jsonDepth(child); depth > max {
+				max = depth
+			}
+		}
+		return max + 1
+	default:
+		return 0
+	}
 }
 
 func isSuccessCode(code string) bool {
