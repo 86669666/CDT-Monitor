@@ -1911,6 +1911,13 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 	if strings.Contains(unknown.Body.String(), "unknown field") {
 		t.Fatalf("login JSON error leaked parser details: %s", unknown.Body.String())
 	}
+	trailing := doRequest(t, handler, http.MethodPost, "/api/v1/auth/login", `{"password":"x"}{"extra":true}`, nil, nil)
+	if trailing.Code != http.StatusBadRequest || !strings.Contains(trailing.Body.String(), "invalid_request") {
+		t.Fatalf("trailing json login status = %d body = %s", trailing.Code, trailing.Body.String())
+	}
+	if strings.Contains(trailing.Body.String(), "request body is invalid") {
+		t.Fatalf("login JSON error leaked parser details: %s", trailing.Body.String())
+	}
 }
 
 func TestHealthzAndInitStatusArePublic(t *testing.T) {
