@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -8236,4 +8236,35 @@ test('settings webhook body posts at the live rune cap', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect([...bodyText]).toHaveLength(MAX_WEBHOOK_BODY_RUNES)
   expect(bodyText).toBe(capped)
+})
+
+test('settings webhook url posts at the live rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let url = ''
+  const overflow = `${'u'.repeat(MAX_NOTIFY_URL_RUNES)}超`
+  const capped = 'u'.repeat(MAX_NOTIFY_URL_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: { url?: string } } }
+      expectKnownKeys(payload as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      url = payload.notifications?.webhook?.url || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByLabel(/Webhook URL/).fill(overflow)
+  await expect(page.getByLabel(/Webhook URL/)).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...url]).toHaveLength(MAX_NOTIFY_URL_RUNES)
+  expect(url).toBe(capped)
 })
