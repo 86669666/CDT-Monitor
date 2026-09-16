@@ -1044,6 +1044,21 @@ func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	}
 }
 
+func TestAddLogRejectsUnknownType(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err = st.AddLog(context.Background(), "debug", "should not store"); err == nil || !strings.Contains(err.Error(), "log type is invalid") {
+		t.Fatalf("unknown type err=%v", err)
+	}
+	entries, err := st.ListLogs(context.Background(), "action", 10)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("unknown type stored logs=%#v err=%v", entries, err)
+	}
+}
+
 func TestAddLogMessageIsClipped(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

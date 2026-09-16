@@ -13,7 +13,19 @@ import (
 	"github.com/wang4386/CDT-Monitor/internal/security"
 )
 
+func validLogType(logType string) bool {
+	switch logType {
+	case "info", "warning", "error", "audit", "heartbeat":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
+	if !validLogType(logType) {
+		return errors.New("log type is invalid")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, clipRunes(message, maxLogRunes))
 	return err
 }
