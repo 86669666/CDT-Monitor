@@ -9498,3 +9498,28 @@ test('settings API key revoke surfaces the live internal_error envelope', async 
   await expect(page.locator('.key-row')).toContainText('桌面小组件')
   expect(revokeCalls).toBe(1)
 })
+
+test('log clear surfaces the live unauthorized envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
