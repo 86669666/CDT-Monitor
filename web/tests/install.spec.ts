@@ -9984,3 +9984,22 @@ test('refresh-all surfaces the live forbidden envelope', async ({ page }) => {
   await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('refresh-all surfaces the live not_found envelope', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
