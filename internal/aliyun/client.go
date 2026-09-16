@@ -206,10 +206,19 @@ func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, 
 		return domain.StatusUnknown, nil
 	}
 	status, _ := first["Status"].(string)
-	if status == "" {
-		return domain.StatusUnknown, nil
+	return normalizeInstanceStatus(status), nil
+}
+
+func normalizeInstanceStatus(status string) string {
+	if len(status) > 32 {
+		return domain.StatusUnknown
 	}
-	return status, nil
+	switch status {
+	case domain.StatusUnknown, domain.StatusRunning, domain.StatusStopped, domain.StatusStarting, domain.StatusStopping, "Pending":
+		return status
+	default:
+		return domain.StatusUnknown
+	}
 }
 
 func (c *Client) ControlInstance(ctx context.Context, account domain.Account, secret, action, shutdownMode string) error {
