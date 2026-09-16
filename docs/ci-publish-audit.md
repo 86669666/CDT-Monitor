@@ -616,3 +616,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 Compose logging `driver: json-file` 和 options `max-size`/`max-file`。不要加 syslog-address 或其它远程日志字段
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T22:54Z` / 2026-09-17 06:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `90420ad` 再加 SSH deploy action 扫描：
+
+- Publish Guard 现禁止 `webfactory/ssh-agent`、`appleboy/scp-action` / `ssh-action` 和 `ssh-key:`。本 fork 不要用 SSH 把产物拷到生产机
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
