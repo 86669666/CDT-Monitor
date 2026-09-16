@@ -520,6 +520,9 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if len([]rune(a.Remark)) > maxAccountRemarkRunes {
 			return nil, errors.New("account remark is too long")
 		}
+		if !validInstanceStatus(a.InstanceStatus) {
+			return nil, errors.New("instance status is invalid")
+		}
 		a.SecretConfigured = secret != ""
 		a.ScheduleEnabled = schedule == 1
 		if updated > 0 {
