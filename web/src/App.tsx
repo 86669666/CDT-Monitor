@@ -13,7 +13,7 @@ import { DEFAULT_TIME_ZONE, resolveTimeZone } from './timezone'
 import {
   APIKeyRecord, APIKeysResponse, APIKeyScope, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyRequest, CreateAPIKeyResponse,
   History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
-  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, defaultConfig, emptyAccount,
+  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, defaultConfig, emptyAccount, liveScheduleClock,
 } from './types'
 
 type Phase = 'loading' | 'setup' | 'login' | 'dashboard' | 'fatal'
@@ -474,7 +474,7 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
     <SelectField label="站点类型" value={account.site_type} options={[{ value: 'china', label: '中国站', meta: 'CNY' }, { value: 'international', label: '国际站', meta: 'USD' }]} onChange={(value) => onChange({ ...account, site_type: value as Account['site_type'] })} />
     <Field label="备注"><input value={account.remark} maxLength={MAX_ACCOUNT_REMARK_RUNES} onChange={(event) => onChange({ ...account, remark: Array.from(event.target.value).slice(0, MAX_ACCOUNT_REMARK_RUNES).join('') })} placeholder="香港主节点" /></Field>
     <ToggleRow title="每日定时开关机" icon={<Clock3 />} checked={account.schedule_enabled} onChange={(checked) => onChange({ ...account, schedule_enabled: checked })} />
-    {account.schedule_enabled && <><Field label="开机时间"><input type="time" value={account.start_time} onChange={(event) => onChange({ ...account, start_time: event.target.value })} /></Field><Field label="关机时间"><input type="time" value={account.stop_time} onChange={(event) => onChange({ ...account, stop_time: event.target.value })} /></Field></>}
+    {account.schedule_enabled && <><Field label="开机时间"><input type="time" value={account.start_time} onChange={(event) => onChange({ ...account, start_time: liveScheduleClock(event.target.value) })} /></Field><Field label="关机时间"><input type="time" value={account.stop_time} onChange={(event) => onChange({ ...account, stop_time: liveScheduleClock(event.target.value) })} /></Field></>}
   </div>
 }
 
