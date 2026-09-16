@@ -11,6 +11,7 @@ export const MAX_ACCOUNT_TRAFFIC_GB = 1_000_000
 export const MAX_ACCESS_KEY_ID_CHARS = 64
 export const MAX_INSTANCE_ID_CHARS = 64
 export const MAX_TELEGRAM_CHAT_RUNES = 64
+export const MAX_NOTIFY_EMAIL_RUNES = 254
 
 export function liveScheduleClock(value: string) {
   const trimmed = value.trim()
