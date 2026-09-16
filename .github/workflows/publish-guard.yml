@@ -17,6 +17,7 @@ name: Publish Guard
 # Do not add deployments/pages/statuses/checks write permissions.
 # upload-artifact stays on widget CI and gated Release Binaries only.
 # download-artifact stays on gated Release Binaries only.
+# Do not add standalone actions/cache; setup-go/setup-node caches stay.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
