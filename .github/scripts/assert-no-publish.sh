@@ -135,6 +135,9 @@ scan_workflows() {
     if grep -Eq 'actions/cache(@|/save|/restore)' <<<"$body"; then
       bad "$f: standalone actions/cache is forbidden; keep setup-go/setup-node caches"
     fi
+    if grep -Eq 'peaceiris/actions-gh-pages|actions/deploy-pages|actions/configure-pages|actions/upload-pages-artifact' <<<"$body"; then
+      bad "$f: GitHub Pages deploy actions are forbidden on this fork"
+    fi
   done
 }
 
