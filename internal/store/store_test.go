@@ -2220,6 +2220,46 @@ func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
 	}
 }
 
+func TestAddTrafficStatsRejectsNonFiniteValues(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, value := range []float64{-1, math.NaN(), math.Inf(1), maxAccountTrafficGB + 1} {
+		if err = st.AddTrafficStats(ctx, 1, value, now); err == nil || !strings.Contains(err.Error(), "traffic sample is invalid") {
+			t.Fatalf("traffic=%v err=%v", value, err)
+		}
+	}
+	if err = st.AddTrafficStats(ctx, 1, 0, now); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateRuntimeRejectsInvalidStatusAndTraffic(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err = st.UpdateRuntime(ctx, 1, math.NaN(), domain.StatusRunning, now); err == nil || !strings.Contains(err.Error(), "traffic sample is invalid") {
+		t.Fatalf("nan traffic err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, "exploded", now); err == nil || !strings.Contains(err.Error(), "instance status is invalid") {
+		t.Fatalf("status err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, "Pending", now); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

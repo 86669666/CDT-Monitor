@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -86,7 +87,23 @@ DELETE FROM notification_outbox WHERE status IN ('sent','failed') AND updated_at
 	return err
 }
 
+func validTrafficSample(traffic float64) bool {
+	return !math.IsNaN(traffic) && !math.IsInf(traffic, 0) && traffic >= 0 && traffic <= maxAccountTrafficGB
+}
+
+func validInstanceStatus(status string) bool {
+	switch status {
+	case domain.StatusUnknown, domain.StatusRunning, domain.StatusStopped, domain.StatusStarting, domain.StatusStopping, "Pending":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic float64, now time.Time) error {
+	if !validTrafficSample(traffic) {
+		return errors.New("traffic sample is invalid")
+	}
 	hour := now.Truncate(time.Hour).Unix()
 	year, month, day := now.Date()
 	daily := time.Date(year, month, day, 0, 0, 0, 0, now.Location()).Unix()
