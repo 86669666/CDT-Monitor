@@ -15,7 +15,10 @@ import (
 	"github.com/wang4386/CDT-Monitor/internal/security"
 )
 
-const minAPIIntervalSeconds = 30
+const (
+	minAPIIntervalSeconds = 30
+	maxAccountRemarkRunes = 64
+)
 
 var sensitiveSettings = map[string]bool{
 	"notify_password":      true,
@@ -336,6 +339,10 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 	for _, account := range accounts {
 		if strings.TrimSpace(account.AccessKeyID) == "" || strings.TrimSpace(account.RegionID) == "" {
 			return errors.New("account access_key_id and region_id are required")
+		}
+		account.Remark = strings.TrimSpace(account.Remark)
+		if len([]rune(account.Remark)) > maxAccountRemarkRunes {
+			return errors.New("account remark is too long")
 		}
 		row, found := byID[account.ID]
 		if !found {

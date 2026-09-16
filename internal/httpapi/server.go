@@ -1048,7 +1048,8 @@ func safeStoreValidationMessage(msg string) bool {
 		"invalid timezone",
 		"administrator password must be at least 10 characters",
 		"administrator password is required",
-		"account access_key_id and region_id are required":
+		"account access_key_id and region_id are required",
+		"account remark is too long":
 		return true
 	default:
 		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")
