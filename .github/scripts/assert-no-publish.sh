@@ -471,6 +471,12 @@ scan_compose() {
   if ! grep -Eq 'restart:[[:space:]]*on-failure' <<<"$body"; then
     bad "$f: restart must stay on-failure"
   fi
+  if ! grep -Eq '/tmp:size=16m,mode=1777,noexec,nosuid,nodev' <<<"$body"; then
+    bad "$f: /tmp tmpfs must stay noexec,nosuid,nodev"
+  fi
+  if ! grep -Fq '/cdt-monitor", "healthcheck"' <<<"$body"; then
+    bad "$f: healthcheck must stay /cdt-monitor healthcheck"
+  fi
 }
 
 scan_vars() {
