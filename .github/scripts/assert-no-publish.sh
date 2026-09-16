@@ -458,6 +458,12 @@ scan_dockerfile() {
   if ! grep -Fq './cmd/cdt-monitor' "$f"; then
     bad "$f: Go build target must stay ./cmd/cdt-monitor"
   fi
+  if ! grep -Fq -- 'COPY --from=frontend /src/internal/web/dist ./internal/web/dist' <<<"$body"; then
+    bad "$f: embedded UI must come from the frontend stage, not a host dist/"
+  fi
+  if ! grep -Fq -- 'COPY --from=builder /cdt-monitor /cdt-monitor' <<<"$body"; then
+    bad "$f: scratch image must copy /cdt-monitor from the builder stage"
+  fi
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
