@@ -80,9 +80,20 @@ func NewClient() *Client {
 }
 
 func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errAliyunForbiddenHost
+	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
+	}
+	if port != "443" {
+		return nil, errAliyunForbiddenHost
+	}
+	if net.ParseIP(host) == nil && !allowedAliyunHost(host) {
+		return nil, errAliyunForbiddenHost
 	}
 	var ips []net.IP
 	if ip := net.ParseIP(host); ip != nil {
@@ -396,9 +407,27 @@ func allowedAliyunExtraForAction(action, key string) bool {
 	}
 }
 
+func requiredAliyunExtras(action string) []string {
+	switch action {
+	case "DescribeInstanceStatus", "StartInstance":
+		return []string{"RegionId", "InstanceId"}
+	case "StopInstance":
+		return []string{"RegionId", "InstanceId", "StoppedMode"}
+	case "DescribeInstanceBill":
+		return []string{"BillingCycle", "InstanceID", "Granularity"}
+	default:
+		return nil
+	}
+}
+
 func validateAliyunExtras(action string, extras map[string]string) error {
 	if len(extras) > 8 {
 		return errors.New("aliyun extras are invalid")
+	}
+	for _, key := range requiredAliyunExtras(action) {
+		if extras[key] == "" {
+			return errors.New("aliyun extras are invalid")
+		}
 	}
 	for key, value := range extras {
 		if !allowedAliyunExtra(key) || !allowedAliyunExtraForAction(action, key) || !allowedAliyunExtraValue(key, value) {
@@ -417,6 +446,17 @@ func allowedAliyunVersion(version string) bool {
 	}
 }
 
+func aliyunRequestURL(host string) (string, error) {
+	if !allowedAliyunHost(host) {
+		return "", errors.New("aliyun host is invalid")
+	}
+	endpoint := url.URL{Scheme: "https", Host: host, Path: "/"}
+	if endpoint.Scheme != "https" || endpoint.Hostname() != host || endpoint.Port() != "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return "", errors.New("aliyun host is invalid")
+	}
+	return endpoint.String(), nil
+}
+
 func allowedAliyunHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" || strings.ContainsAny(host, "/:@") {
@@ -433,6 +473,11 @@ func allowedAliyunHost(host string) bool {
 	return validECSRegion(strings.TrimSuffix(strings.TrimPrefix(host, prefix), suffix))
 }
 
+const (
+	maxAliyunAttempts      = 3
+	maxAliyunResponseBytes = 1 << 20
+)
+
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
 	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
 		return nil, errors.New("access key is required")
@@ -446,20 +491,20 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	if !allowedAliyunVersion(version) {
 		return nil, errors.New("aliyun version is invalid")
 	}
-	if err := validateAliyunExtras(action, extras); err != nil {
-		return nil, err
-	}
 	if !allowedAliyunEndpoint(host, version, action) {
 		return nil, errors.New("aliyun endpoint is invalid")
 	}
+	if err := validateAliyunExtras(action, extras); err != nil {
+		return nil, err
+	}
 	var last error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < maxAliyunAttempts; attempt++ {
 		result, retry, err := c.callOnce(ctx, accessKeyID, secret, region, host, version, action, extras)
 		if err == nil {
 			return result, nil
 		}
 		last = err
-		if !retry || attempt == 2 {
+		if !retry || attempt == maxAliyunAttempts-1 {
 			break
 		}
 		select {
@@ -512,7 +557,11 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	for key, value := range params {
 		form.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+host+"/", strings.NewReader(form.Encode()))
+	endpoint, err := aliyunRequestURL(host)
+	if err != nil {
+		return nil, false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, true, err
 	}
@@ -522,7 +571,7 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 		return nil, true, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAliyunResponseBytes))
 	if err != nil {
 		return nil, resp.StatusCode >= 500, err
 	}
@@ -533,8 +582,13 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	if resp.StatusCode >= 400 {
 		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
 	}
-	if code := stringValue(result["Code"]); code != "" && !isSuccessCode(code) {
-		return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, stringValue(result["Message"]))
+	if code := stringValue(result["Code"]); code != "" {
+		if len([]rune(code)) > maxAliyunCodeRunes {
+			return nil, false, fmt.Errorf("aliyun %s invalid response: code is too long", action)
+		}
+		if !isSuccessCode(code) {
+			return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, clipAliyunErrorText(stringValue(result["Message"])))
+		}
 	}
 	return result, false, nil
 }
@@ -548,15 +602,25 @@ func isSuccessCode(code string) bool {
 	}
 }
 
-func compactMessage(result map[string]any, raw []byte) string {
-	if message := stringValue(result["Message"]); message != "" {
-		return message
-	}
-	text := strings.TrimSpace(string(raw))
-	if len(text) > 240 {
-		return text[:240] + "..."
+const (
+	maxAliyunErrorRunes = 240
+	maxAliyunCodeRunes  = 64
+)
+
+func clipAliyunErrorText(text string) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) > maxAliyunErrorRunes {
+		return string(runes[:maxAliyunErrorRunes]) + "..."
 	}
 	return text
+}
+
+func compactMessage(result map[string]any, raw []byte) string {
+	if message := stringValue(result["Message"]); message != "" {
+		return clipAliyunErrorText(message)
+	}
+	return clipAliyunErrorText(string(raw))
 }
 
 func sign(values map[string]string, secret string) string {
