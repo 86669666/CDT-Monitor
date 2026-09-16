@@ -87,6 +87,15 @@ scan_auto_release() {
   if [ "$gates" -lt 3 ]; then
     bad "$f: tag, release, and container jobs must each gate on ENABLE_PRODUCTION_PUBLISH (found $gates)"
   fi
+  if ! grep -Fq 'name: Create tag (gated)' "$f"; then
+    bad "$f: tag job must stay named Create tag (gated)"
+  fi
+  if ! grep -Fq 'v[0-9]+\.[0-9]+\.[0-9]+$' "$f"; then
+    bad "$f: tag job must keep the vMAJOR.MINOR.PATCH version regex"
+  fi
+  if ! grep -Fq 'github-actions[bot]' "$f"; then
+    bad "$f: tagger must stay github-actions[bot]"
+  fi
 }
 
 scan_release_binaries() {

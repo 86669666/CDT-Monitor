@@ -261,3 +261,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Release Binaries 只有 `{ goos: linux, goarch: amd64 }`，禁止 windows/darwin/arm，publish job 名保持 draft / not latest
 - 这仍不是已经打 GitHub Release，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T01:37Z` / 2026-09-16 09:37 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `2bd87cb` 再加 auto-release version regex 扫描：
+
+- Publish Guard 现要求 Automatic Release 的 tag job 名 `Create tag (gated)`、版本必须匹配 `vMAJOR.MINOR.PATCH`、tagger 为 `github-actions[bot]`
+- 这仍不是已经打 tag，也不是 PR#2 可以合进未加开关 `main`
