@@ -539,6 +539,27 @@ scan_compose() {
   if ! grep -Eq 'max-file:[[:space:]]*"3"' <<<"$body"; then
     bad "$f: json-file logs must stay max-file 3"
   fi
+  if ! grep -Eq 'init:[[:space:]]*true' <<<"$body"; then
+    bad "$f: init: true is required so PID 1 can reap"
+  fi
+  if ! grep -Eq 'pids_limit:[[:space:]]*256' <<<"$body"; then
+    bad "$f: pids_limit must stay 256"
+  fi
+  if ! grep -Eq 'mem_limit:[[:space:]]*512m' <<<"$body"; then
+    bad "$f: mem_limit must stay 512m"
+  fi
+  if ! grep -Eq 'cpus:[[:space:]]*1\.0' <<<"$body"; then
+    bad "$f: cpus must stay 1.0"
+  fi
+  if ! grep -Eq 'CDT_LISTEN:[[:space:]]*:8080' <<<"$body"; then
+    bad "$f: CDT_LISTEN must stay :8080"
+  fi
+  if ! grep -Eq 'TZ:[[:space:]]*Asia/Taipei' <<<"$body"; then
+    bad "$f: default TZ must stay Asia/Taipei"
+  fi
+  if ! grep -Eq 'stop_grace_period:[[:space:]]*15s' <<<"$body"; then
+    bad "$f: stop_grace_period must stay 15s"
+  fi
 }
 
 scan_vars() {
