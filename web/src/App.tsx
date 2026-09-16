@@ -13,7 +13,7 @@ import { DEFAULT_TIME_ZONE, resolveTimeZone } from './timezone'
 import {
   APIKeyRecord, APIKeysResponse, APIKeyScope, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyRequest, CreateAPIKeyResponse,
   History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
-  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, defaultConfig, emptyAccount,
+  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, defaultConfig, emptyAccount,
 } from './types'
 
 type Phase = 'loading' | 'setup' | 'login' | 'dashboard' | 'fatal'
@@ -466,7 +466,7 @@ function AccountSettings({ config, onChange }: { config: Config; onChange: (conf
 
 function AccountFields({ account, onChange, compact = false }: { account: Account; onChange: (account: Account) => void; compact?: boolean }) {
   return <div className={`form-grid account-fields ${compact ? 'compact' : ''}`}>
-    <Field label="AccessKey ID"><input autoComplete="off" value={account.access_key_id} onChange={(event) => onChange({ ...account, access_key_id: event.target.value })} placeholder="LTAI5t…" /></Field>
+    <Field label="AccessKey ID"><input autoComplete="off" value={account.access_key_id} maxLength={MAX_ACCESS_KEY_ID_CHARS} onChange={(event) => onChange({ ...account, access_key_id: event.target.value.replace(/[^A-Za-z0-9-]/g, '').slice(0, MAX_ACCESS_KEY_ID_CHARS) })} placeholder="LTAI5t…" /></Field>
     <Field label={`AccessKey Secret${account.secret_configured ? ' · 已配置' : ''}`}><input type="password" autoComplete="new-password" value={account.access_key_secret || ''} onChange={(event) => onChange({ ...account, access_key_secret: event.target.value })} placeholder={account.secret_configured ? '留空保持不变' : '输入 Secret'} /></Field>
     <Field label="实例 ID"><input value={account.instance_id} onChange={(event) => onChange({ ...account, instance_id: event.target.value })} placeholder="i-bp…" /></Field>
     <SelectField label="地域" value={account.region_id} options={regions} searchable searchPlaceholder="搜索地域名称或代码" onChange={(value) => onChange({ ...account, region_id: value })} />
