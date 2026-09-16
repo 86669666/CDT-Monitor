@@ -804,7 +804,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt
+  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -990,6 +990,14 @@ scan_compose() {
   fi
   if ! grep -Eq '^[[:space:]]+-[[:space:]]*cdt-data:/data$' <<<"$body"; then
     bad "$f: data volume must stay named cdt-data:/data"
+  fi
+  extra_vol="$(awk '
+    $0 ~ /^    volumes:[[:space:]]*$/ { in_v=1; next }
+    in_v && $0 ~ /^    [A-Za-z]/ { in_v=0 }
+    in_v && $0 ~ /^      - / { print }
+  ' <<<"$body" | grep -Ev '^      - cdt-data:/data$' || true)"
+  if [ -n "$extra_vol" ]; then
+    bad "$f: extra service volumes are forbidden; keep only cdt-data:/data"
   fi
   if grep -Fq './data:/data' <<<"$body"; then
     bad "$f: do not bind-mount host ./data (master.key would sit on the host path)"
