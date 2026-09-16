@@ -531,3 +531,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `deployments`/`statuses`/`checks`/`pages`/`repository-projects: write`。本 fork 不要用这些权限做 GitHub Pages 或部署环境
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T13:35Z` / 2026-09-16 21:35 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `6214a7d` 再加 Compose restart on-failure:3 扫描：
+
+- Publish Guard 现要求 Compose `restart: on-failure:3`，并禁止 `always`。本地 daemon 不要无限拉起重启失败的容器
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

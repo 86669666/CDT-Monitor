@@ -816,8 +816,11 @@ scan_compose() {
   if grep -Eq 'unless-stopped' <<<"$body"; then
     bad "$f: unless-stopped is forbidden on this local-only Compose"
   fi
-  if ! grep -Eq 'restart:[[:space:]]*on-failure' <<<"$body"; then
-    bad "$f: restart must stay on-failure"
+  if grep -Eq 'restart:[[:space:]]*always' <<<"$body"; then
+    bad "$f: restart: always is forbidden on this local-only Compose"
+  fi
+  if ! grep -Eq 'restart:[[:space:]]*on-failure:3$' <<<"$body"; then
+    bad "$f: restart must stay on-failure:3"
   fi
   if ! grep -Eq '/tmp:size=16m,mode=1777,noexec,nosuid,nodev' <<<"$body"; then
     bad "$f: /tmp tmpfs must stay noexec,nosuid,nodev"
