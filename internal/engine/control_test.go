@@ -44,6 +44,24 @@ func TestParseControlPayloadUnknownActionDoesNotCallProvider(t *testing.T) {
 	}
 }
 
+func TestRunJobRejectsOversizedControlSource(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	payload, err := json.Marshal(map[string]string{"action": "start", "source": strings.Repeat("s", maxControlSourceRunes+1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = eng.runJob(context.Background(), domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: string(payload)})
+	if err == nil || !strings.Contains(err.Error(), "control source is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("oversized source must not call Aliyun, controls=%#v", got)
+	}
+}
+
 func TestParseNotifyPayloadAllowlistsChannels(t *testing.T) {
 	var payload struct {
 		Channel string `json:"channel"`
