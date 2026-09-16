@@ -1042,3 +1042,18 @@ func TestAliyunDialContextRejectsMetadataIP(t *testing.T) {
 		t.Fatalf("metadata dial err=%v", err)
 	}
 }
+
+func TestAliyunDialContextRejectsNonTLSDestinations(t *testing.T) {
+	_, err := aliyunDialContext(context.Background(), "udp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "80"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("port 80 dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("evil.example.test", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("unknown host dial err=%v", err)
+	}
+}

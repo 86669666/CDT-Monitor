@@ -80,9 +80,20 @@ func NewClient() *Client {
 }
 
 func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errAliyunForbiddenHost
+	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
+	}
+	if port != "443" {
+		return nil, errAliyunForbiddenHost
+	}
+	if net.ParseIP(host) == nil && !allowedAliyunHost(host) {
+		return nil, errAliyunForbiddenHost
 	}
 	var ips []net.IP
 	if ip := net.ParseIP(host); ip != nil {
