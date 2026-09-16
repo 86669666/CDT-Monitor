@@ -7038,3 +7038,99 @@ test('settings webhook test surfaces the csrf_failed envelope', async ({ page })
   await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('instance refresh surfaces the csrf_failed envelope', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
+
+test('settings API key revoke surfaces the csrf_failed envelope', async ({ page }) => {
+  const existing = {
+    id: 9,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('admin passkey delete surfaces the csrf_failed envelope', async ({ page }) => {
+  const existing = { id: 8, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
+
+test('admin password update surfaces the csrf_failed envelope', async ({ page }) => {
+  let updateCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'csrf_failed', message: 'CSRF 校验失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill('Rotated-Password-42!')
+  await page.getByLabel('确认新密码').fill('Rotated-Password-42!')
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'CSRF 校验失败' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+  expect(updateCalls).toBe(1)
+})
