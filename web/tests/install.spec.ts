@@ -9032,3 +9032,17 @@ test('about settings surfaces the live not_found envelope', async ({ page }) => 
   await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
   expect(infoCalls).toBeGreaterThan(0)
 })
+
+test('history chart surfaces the live unauthorized envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('alert')).toContainText('请登录或提供有效 API Key')
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
