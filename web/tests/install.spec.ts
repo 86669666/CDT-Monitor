@@ -9788,3 +9788,85 @@ test('settings save surfaces the live internal_error envelope', async ({ page })
   await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
   expect(saveCalls).toBe(1)
 })
+
+test('instance start surfaces the live unauthorized envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
+
+test('instance stop surfaces the live unauthorized envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
+
+test('instance start surfaces the live internal_error envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
+
+test('instance stop surfaces the live internal_error envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
