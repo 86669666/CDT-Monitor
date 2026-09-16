@@ -356,3 +356,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求阶段名 `AS frontend` / `AS builder` / `AS certificates`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T04:49Z` / 2026-09-16 12:49 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `6076872` 再加 OCI source/licenses LABEL 扫描：
+
+- Publish Guard 现要求 `org.opencontainers.image.source` 使用 `IMAGE_SOURCE`，`licenses` 为 MIT
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
