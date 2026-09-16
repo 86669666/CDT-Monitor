@@ -10,6 +10,7 @@ import {
   emptyHistory,
   expectKnownKeys,
   jobFixture,
+  liveGetEmail,
   liveGetTelegram,
   liveGetWebhook,
   mockDashboardReads,
@@ -4375,7 +4376,7 @@ test('settings email keeps configured password when left empty', async ({ page }
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      email: {
+      email: liveGetEmail({
         enabled: true,
         to: 'ops@example.invalid',
         host: 'smtp.example.invalid',
@@ -4383,7 +4384,7 @@ test('settings email keeps configured password when left empty', async ({ page }
         username: 'ops',
         password_configured: true,
         security: 'ssl',
-      },
+      }),
     },
   }
   let savedEmail: Record<string, unknown> | undefined
@@ -4422,7 +4423,7 @@ test('settings email clears configured password with the live sentinel', async (
     ...dashboardConfig,
     notifications: {
       ...dashboardConfig.notifications,
-      email: {
+      email: liveGetEmail({
         enabled: true,
         to: 'ops@example.invalid',
         host: 'smtp.example.invalid',
@@ -4430,7 +4431,7 @@ test('settings email clears configured password with the live sentinel', async (
         username: 'ops',
         password_configured: true,
         security: 'ssl',
-      },
+      }),
     },
   }
   let savedEmail: Record<string, unknown> | undefined

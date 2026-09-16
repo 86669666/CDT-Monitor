@@ -129,6 +129,21 @@ export function liveGetTelegram(
   }
 }
 
+/** Live GET /api/v1/config email after scrubConfig: password omitted. */
+export function liveGetEmail(
+  email: Partial<Config['notifications']['email']> = {},
+): Config['notifications']['email'] {
+  return {
+    enabled: email.enabled ?? false,
+    to: email.to ?? '',
+    host: email.host ?? '',
+    port: email.port ?? 465,
+    username: email.username ?? '',
+    password_configured: email.password_configured ?? false,
+    security: email.security ?? 'ssl',
+  }
+}
+
 export function jobFixture(id: string, status: JobStatus, accountId = 1): Job {
   const now = new Date().toISOString()
   return {
