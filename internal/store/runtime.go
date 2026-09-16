@@ -264,7 +264,37 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 	return current == owner && expires >= now.Unix(), nil
 }
 
+const (
+	maxActionEventKeyRunes    = 128
+	maxActionEventDetailRunes = 256
+)
+
+func validActionEventType(eventType string) bool {
+	switch eventType {
+	case "threshold", "threshold_stop", "keepalive", "schedule_start", "schedule_stop":
+		return true
+	default:
+		return false
+	}
+}
+
+func validActionEventStatus(status string) bool {
+	switch status {
+	case "attempting", "detected":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {
+	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
+		return false, errors.New("action event key is invalid")
+	}
+	if !validActionEventType(eventType) || !validActionEventStatus(status) {
+		return false, errors.New("action event type is invalid")
+	}
+	detail = clipRunes(detail, maxActionEventDetailRunes)
 	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(event_key,account_id,type,status,detail,created_at,updated_at) VALUES(?,?,?,?,?,unixepoch(),unixepoch())`, key, accountID, eventType, status, detail)
 	if err != nil {
 		return false, err

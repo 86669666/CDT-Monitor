@@ -1136,6 +1136,38 @@ func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
 	}
 }
 
+func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.RecordActionEvent(ctx, "", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("empty key err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1), 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("long key err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, "threshold:1:active", 1, "unknown", "detected", ""); err == nil || !strings.Contains(err.Error(), "type is invalid") {
+		t.Fatalf("type err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, "threshold:1:active", 1, "threshold", "nope", ""); err == nil || !strings.Contains(err.Error(), "type is invalid") {
+		t.Fatalf("status err=%v", err)
+	}
+	fresh, err := st.RecordActionEvent(ctx, "threshold:1:active", 1, "threshold", "detected", strings.Repeat("d", maxActionEventDetailRunes+8))
+	if err != nil || !fresh {
+		t.Fatalf("clipped detail = %v err=%v", fresh, err)
+	}
+	var detail string
+	if err = st.db.QueryRow(`SELECT detail FROM action_events WHERE event_key='threshold:1:active'`).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if got := []rune(detail); len(got) != maxActionEventDetailRunes {
+		t.Fatalf("stored detail len = %d", len(got))
+	}
+}
+
 func TestActionEventCanBeReleasedAfterFailure(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
