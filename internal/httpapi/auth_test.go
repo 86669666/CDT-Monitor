@@ -146,6 +146,9 @@ func TestLoginCookiesAndConfigRedaction(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("config status = %d, body = %s", response.Code, response.Body.String())
 	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("config Cache-Control = %q", response.Header().Get("Cache-Control"))
+	}
 	body := response.Body.String()
 	for _, secret := range []string{testAdminPassword, "super-secret-ak", "smtp-password-value", "telegram-token-value", "webhook-secret-value", "leak-me"} {
 		if strings.Contains(body, secret) {
@@ -1349,6 +1352,9 @@ func TestWidgetSummaryOmitsSecretsAndStatusSupportsETag(t *testing.T) {
 	if summary.Code != http.StatusOK {
 		t.Fatalf("widget summary status = %d body = %s", summary.Code, summary.Body.String())
 	}
+	if summary.Header().Get("Cache-Control") != "private, max-age=30" {
+		t.Fatalf("widget summary Cache-Control = %q", summary.Header().Get("Cache-Control"))
+	}
 	body := summary.Body.String()
 	for _, secret := range []string{testAdminPassword, "super-secret-ak", "smtp-password-value", "telegram-token-value", "webhook-secret-value"} {
 		if strings.Contains(body, secret) {
@@ -1362,6 +1368,9 @@ func TestWidgetSummaryOmitsSecretsAndStatusSupportsETag(t *testing.T) {
 	status := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, headers)
 	if status.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", status.Code, status.Body.String())
+	}
+	if status.Header().Get("Cache-Control") != "private, max-age=15" {
+		t.Fatalf("status Cache-Control = %q", status.Header().Get("Cache-Control"))
 	}
 	etag := status.Result().Header.Get("ETag")
 	if etag == "" {

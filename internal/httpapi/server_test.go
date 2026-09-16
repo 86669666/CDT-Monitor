@@ -34,6 +34,15 @@ func TestSecurityHeadersAllowFaviconEndpoint(t *testing.T) {
 	if !strings.Contains(csp, "connect-src 'self' https://api.github.com") {
 		t.Fatalf("GitHub API endpoint missing from CSP: %s", csp)
 	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
+	}
+	if response.Header().Get("Cross-Origin-Resource-Policy") != "same-origin" {
+		t.Fatalf("CORP = %q", response.Header().Get("Cross-Origin-Resource-Policy"))
+	}
+	if response.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
+		t.Fatalf("COOP = %q", response.Header().Get("Cross-Origin-Opener-Policy"))
+	}
 }
 
 func TestBeginPasskeyLoginIncludesRegisteredCredentialIDs(t *testing.T) {
