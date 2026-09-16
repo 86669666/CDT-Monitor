@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, MAX_PASSWORD_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -8559,4 +8559,74 @@ test('settings timezone posts at the live rune cap', async ({ page }) => {
   expect(saveCalls).toBe(1)
   expect([...timezone]).toHaveLength(MAX_TIMEZONE_RUNES)
   expect(timezone).toBe(capped)
+})
+
+test('wizard surfaces the live password is too long setup_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 400,
+    json: { error: { code: 'setup_failed', message: 'password is too long' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('password is too long')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+})
+
+test('admin password update surfaces the live password too long envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    expect(route.request().method()).toBe('PUT')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_password', message: '新密码过长' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill(`${TEST_PASSWORD}extra`)
+  await page.getByLabel('确认新密码').fill(`${TEST_PASSWORD}extra`)
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByText('新密码过长')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '管理员设置' })).toBeVisible()
+})
+
+test('admin new password posts at the live rune cap', async ({ page }) => {
+  let updateCalls = 0
+  let newPassword = ''
+  const overflow = `${'P'.repeat(MAX_PASSWORD_RUNES)}超`
+  const capped = 'P'.repeat(MAX_PASSWORD_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [] } }))
+  await page.route('**/api/v1/admin/password', (route) => {
+    updateCalls += 1
+    const payload = JSON.parse(route.request().postData() || '{}') as { current_password?: string; new_password?: string }
+    expect(payload.current_password).toBe(TEST_PASSWORD)
+    newPassword = payload.new_password || ''
+    return route.fulfill({ json: { success: true } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByLabel('当前密码').fill(TEST_PASSWORD)
+  await page.getByLabel('新密码', { exact: true }).fill(overflow)
+  await page.getByLabel('确认新密码').fill(overflow)
+  await expect(page.getByLabel('新密码', { exact: true })).toHaveValue(capped)
+  await expect(page.getByLabel('确认新密码')).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存新密码' }).click()
+  await expect(page.getByText('管理员密码已更新')).toBeVisible()
+  expect(updateCalls).toBe(1)
+  expect([...newPassword]).toHaveLength(MAX_PASSWORD_RUNES)
+  expect(newPassword).toBe(capped)
 })
