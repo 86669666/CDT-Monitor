@@ -385,6 +385,18 @@ func TestSendTelegramRejectsInvalidSOCKSPort(t *testing.T) {
 	}
 }
 
+func TestValidateWebhookPayloadRejectsOversizedValues(t *testing.T) {
+	if err := ValidateWebhookHeaders(strings.Repeat("h", maxWebhookHeadersRunes+1)); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("headers err=%v", err)
+	}
+	if err := ValidateWebhookBody(strings.Repeat("b", maxWebhookBodyRunes+1)); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("body err=%v", err)
+	}
+	if err := ValidateWebhookBody(strings.Repeat("b", maxWebhookBodyRunes)); err != nil {
+		t.Fatalf("max body err=%v", err)
+	}
+}
+
 func TestValidateSMTPIdentityRejectsOversizedMailbox(t *testing.T) {
 	long := strings.Repeat("a", maxNotifyEmailRunes+1) + "@example.test"
 	if err := ValidateSMTPIdentity(long, "ops@example.test"); !errors.Is(err, errInvalidNotifyIdentity) {

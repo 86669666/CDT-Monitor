@@ -224,6 +224,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	if err := notify.ValidateWebhookHeaders(config.Notifications.Webhook.Headers); err != nil {
 		return err
 	}
+	if err := notify.ValidateWebhookBody(config.Notifications.Webhook.Body); err != nil {
+		return err
+	}
 	if err := notify.ValidateTCPPort(config.Notifications.Email.Port); err != nil {
 		return err
 	}

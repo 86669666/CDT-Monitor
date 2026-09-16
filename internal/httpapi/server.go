@@ -1125,7 +1125,8 @@ func safeStoreValidationMessage(msg string) bool {
 		"notification option is invalid",
 		"account max traffic is invalid",
 		"too many accounts",
-		"notification identity is too long":
+		"notification identity is too long",
+		"notification payload is too long":
 		return true
 	default:
 		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")
