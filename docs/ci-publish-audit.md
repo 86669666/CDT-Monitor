@@ -251,3 +251,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `./gradlew --no-daemon`、非交互 `sdkmanager --licenses`、以及 `platforms;android-35`
 - 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T01:21Z` / 2026-09-16 09:21 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `1a54ecc` 再加 Compose init/limits/TZ 扫描：
+
+- Publish Guard 现要求 `init: true`、`pids_limit: 256`、`mem_limit: 512m`、`cpus: 1.0`、`CDT_LISTEN: :8080`、`TZ: Asia/Taipei`、`stop_grace_period: 15s`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
