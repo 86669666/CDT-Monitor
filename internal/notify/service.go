@@ -292,6 +292,7 @@ const (
 	maxWebhookBodyRunes        = 8192
 	maxNotifyURLRunes          = 2048
 	maxNotifySecretRunes       = 255
+	maxNotifyErrorRunes        = 240
 )
 
 func ValidateSMTPIdentity(username, to string) error {
@@ -677,7 +678,7 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram HTTP %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("telegram HTTP %d: %s", resp.StatusCode, clipNotifyErrorText(string(body)))
 	}
 	return nil
 }
@@ -774,7 +775,7 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 	defer resp.Body.Close()
 	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webhook HTTP %d: %s", resp.StatusCode, string(responseBody))
+		return fmt.Errorf("webhook HTTP %d: %s", resp.StatusCode, clipNotifyErrorText(string(responseBody)))
 	}
 	return nil
 }
@@ -849,6 +850,15 @@ func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 		}
 		buffer.Write(line)
 	}
+}
+
+func clipNotifyErrorText(text string) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) > maxNotifyErrorRunes {
+		return string(runes[:maxNotifyErrorRunes]) + "..."
+	}
+	return text
 }
 
 func contains(values []string, target string) bool {
