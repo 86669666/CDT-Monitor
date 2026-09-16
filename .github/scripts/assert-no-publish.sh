@@ -109,6 +109,20 @@ scan_release_binaries() {
   if ! grep -Eq 'generate_release_notes:[[:space:]]*false' <<<"$body"; then
     bad "$f: generate_release_notes must stay false"
   fi
+  if ! grep -Fq 'name: Draft GitHub Release (gated, not latest)' "$f"; then
+    bad "$f: publish job must stay named Draft GitHub Release (gated, not latest)"
+  fi
+  if ! grep -Eq '\{ goos: linux, goarch: amd64 \}' <<<"$body"; then
+    bad "$f: release matrix must keep linux/amd64"
+  fi
+  local os_count
+  os_count="$(grep -c 'goos:' <<<"$body" || true)"
+  if [ "$os_count" -ne 1 ]; then
+    bad "$f: this fork must not restore a multi-OS release matrix (goos count=$os_count)"
+  fi
+  if grep -Eq 'goos:[[:space:]]*(windows|darwin)|goarch:[[:space:]]*arm|goarm:' <<<"$body"; then
+    bad "$f: windows/darwin/arm release targets are forbidden on this fork"
+  fi
 }
 
 scan_container() {
