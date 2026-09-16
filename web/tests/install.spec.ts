@@ -2235,7 +2235,7 @@ test('admin passkeys surface the passkeys_failed envelope', async ({ page }) => 
   await page.goto('/')
   await page.getByRole('button', { name: '管理员' }).click()
   await expect(page.locator('.toast--error').filter({ hasText: 'Passkey 列表加载失败' }).first()).toBeVisible()
-  await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
+  await expect(page.getByText('尚未创建管理员 Passkey')).toBeVisible()
 })
 
 test('admin passkey delete posts the live success contract', async ({ page }) => {
@@ -2258,7 +2258,7 @@ test('admin passkey delete posts the live success contract', async ({ page }) =>
   await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
   await page.getByRole('button', { name: '删除 Passkey' }).click()
   await expect(page.getByText('Passkey 已删除')).toBeVisible()
-  await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
+  await expect(page.getByText('尚未创建管理员 Passkey')).toBeVisible()
   expect(deleteCalls).toBe(1)
 })
 
@@ -5217,7 +5217,7 @@ test('admin passkeys treat a null passkeys array as empty', async ({ page }) => 
 
   await page.goto('/')
   await page.getByRole('button', { name: '管理员' }).click()
-  await expect(page.getByText('尚未创建 Passkey')).toBeVisible()
+  await expect(page.getByText('尚未创建管理员 Passkey')).toBeVisible()
 })
 
 test('settings API keys show loading while the list request is in flight', async ({ page }) => {
