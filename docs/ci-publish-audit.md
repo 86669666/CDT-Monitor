@@ -281,3 +281,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 CI 在 `web/` 里 `npm run build`，并用 `web/package-lock.json` 做 npm cache
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:12Z` / 2026-09-16 10:12 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c08ae19` 再加 Compose named volume cdt-data 扫描：
+
+- Publish Guard 现要求 named volume `cdt-data:/data`，禁止把宿主机 `./data` bind-mount 进容器
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

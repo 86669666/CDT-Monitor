@@ -607,6 +607,15 @@ scan_compose() {
   if ! grep -Eq 'CDT_DATA_DIR:[[:space:]]*/data' <<<"$body"; then
     bad "$f: CDT_DATA_DIR must stay /data"
   fi
+  if ! grep -Eq '^[[:space:]]+-[[:space:]]*cdt-data:/data$' <<<"$body"; then
+    bad "$f: data volume must stay named cdt-data:/data"
+  fi
+  if grep -Fq './data:/data' <<<"$body"; then
+    bad "$f: do not bind-mount host ./data (master.key would sit on the host path)"
+  fi
+  if grep -Eq '^[[:space:]]+-[[:space:]]+"?/data:' <<<"$body"; then
+    bad "$f: do not bind-mount host /data into the container"
+  fi
 }
 
 scan_vars() {
