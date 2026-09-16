@@ -521,3 +521,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现对所有 workflow 禁止 `setup-qemu-action` 和 `docker-container` Buildx。多架构/特权 builder 不要回来；container verify 仍用 `driver: docker`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T12:56Z` / 2026-09-16 20:56 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `572170f` 再加 Compose pid/ipc sharing 扫描：
+
+- Publish Guard 现禁止 Compose `pid`/`ipc` 的 `host`、`shareable`、`service:`、`container:` 共享。不要把本地容器接到别的 PID/IPC 命名空间
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

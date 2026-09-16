@@ -897,11 +897,11 @@ scan_compose() {
   if grep -Eq 'network_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: network_mode: host is forbidden; keep loopback publish"
   fi
-  if grep -Eq 'pid:[[:space:]]*host' <<<"$body"; then
-    bad "$f: pid: host is forbidden"
+  if grep -Eq 'pid:[[:space:]]*(host|shareable|service:|container:)' <<<"$body"; then
+    bad "$f: pid namespace sharing is forbidden; keep loopback publish"
   fi
-  if grep -Eq 'ipc:[[:space:]]*host' <<<"$body"; then
-    bad "$f: ipc: host is forbidden"
+  if grep -Eq 'ipc:[[:space:]]*(host|shareable|service:|container:)' <<<"$body"; then
+    bad "$f: ipc namespace sharing is forbidden"
   fi
   if grep -Eq 'cgroup:[[:space:]]*host|cgroupns:[[:space:]]*host|cgroupns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: host cgroup namespace is forbidden"
