@@ -2687,13 +2687,13 @@ test('settings telegram socks5 proxy posts the live notify contract', async ({ p
     token_configured: false,
     chat_id: '-1001',
     proxy_type: 'socks5',
-    proxy_url: '',
     proxy_ip: '127.0.0.1',
     proxy_port: '1080',
     proxy_user: 'proxy-user',
     proxy_pass: 'proxy-pass',
     proxy_password_configured: false,
   })
+  expect(savedTelegram).not.toHaveProperty('proxy_url')
 })
 
 test('settings telegram keeps configured proxy password when left empty', async ({ page }) => {
