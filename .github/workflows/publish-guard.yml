@@ -20,6 +20,7 @@ name: Publish Guard
 # Do not add standalone actions/cache; setup-go/setup-node caches stay.
 # Do not add GitHub Pages deploy actions.
 # Buildx/build-push-action stays on Container Images verify only.
+# action-gh-release stays on gated Release Binaries only.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 

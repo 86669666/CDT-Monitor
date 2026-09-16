@@ -586,3 +586,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许一条发布端口 `127.0.0.1:43210:8080`。不要再挂 8081 或其他 loopback 口
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T21:57Z` / 2026-09-17 05:57 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `690bfbd` 再加 action-gh-release 白名单扫描：
+
+- Publish Guard 现只允许 gated `release.yml` 使用 `softprops/action-gh-release`。CI / widget / Publish Guard 不要打 GitHub Release
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
