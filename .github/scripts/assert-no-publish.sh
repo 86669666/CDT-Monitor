@@ -473,6 +473,15 @@ scan_ci_verify() {
   if ! grep -Eq 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64' <<<"$body"; then
     bad "$f: Linux build must stay CGO_ENABLED=0 linux/amd64"
   fi
+  if ! grep -Eq 'npm run build' <<<"$body"; then
+    bad "$f: verify must keep npm run build"
+  fi
+  if ! grep -Eq 'working-directory:[[:space:]]*web' <<<"$body"; then
+    bad "$f: frontend build must stay in web/"
+  fi
+  if ! grep -Eq 'cache-dependency-path:[[:space:]]*web/package-lock.json' <<<"$body"; then
+    bad "$f: npm cache must use web/package-lock.json"
+  fi
 }
 
 scan_npm_ci() {
