@@ -807,7 +807,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol
+  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -854,6 +854,23 @@ scan_compose() {
   fi
   if ! grep -Eq '^[[:space:]]+dockerfile:[[:space:]]*Dockerfile$' <<<"$body"; then
     bad "$f: dockerfile must stay Dockerfile"
+  fi
+  extra_build="$(awk '
+    $0 ~ /^    build:[[:space:]]*$/ { in_b=1; next }
+    in_b && $0 ~ /^    [A-Za-z]/ { in_b=0 }
+    in_b && $0 ~ /^      [A-Za-z0-9_-]+:/ { print }
+  ' <<<"$body" | grep -Ev '^      (context|dockerfile|args):' || true)"
+  if [ -n "$extra_build" ]; then
+    bad "$f: extra Compose build keys are forbidden; keep context/dockerfile/args"
+  fi
+  extra_barg="$(awk '
+    $0 ~ /^      args:[[:space:]]*$/ { in_a=1; next }
+    in_a && $0 ~ /^      [A-Za-z]/ { in_a=0 }
+    in_a && $0 ~ /^    [A-Za-z]/ { in_a=0 }
+    in_a && $0 ~ /^        [A-Za-z0-9_]+:/ { print }
+  ' <<<"$body" | grep -Ev '^        (VERSION|COMMIT|BUILT_AT|IMAGE_SOURCE):' || true)"
+  if [ -n "$extra_barg" ]; then
+    bad "$f: extra Compose build args are forbidden; keep VERSION/COMMIT/BUILT_AT/IMAGE_SOURCE"
   fi
   if grep -Eq '^[[:space:]]+additional_contexts:' <<<"$body"; then
     bad "$f: additional_contexts is forbidden; keep a single local context"
