@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, liveScheduleClock } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, liveScheduleClock } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -7853,4 +7853,38 @@ test('settings telegram chat id posts at the live rune cap', async ({ page }) =>
   expect(saveCalls).toBe(1)
   expect([...chatID]).toHaveLength(MAX_TELEGRAM_CHAT_RUNES)
   expect(chatID).toBe('1'.repeat(MAX_TELEGRAM_CHAT_RUNES))
+})
+
+test('settings email identity posts at the live rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let email: { to?: string; username?: string } | undefined
+  const overflow = `${'a'.repeat(MAX_NOTIFY_EMAIL_RUNES)}超`
+  const capped = 'a'.repeat(MAX_NOTIFY_EMAIL_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { notifications?: { email?: { to?: string; username?: string } } }
+      expectKnownKeys(body as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      email = body.notifications?.email
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Email' }).click()
+  await page.getByLabel('接收邮箱').fill(overflow)
+  await page.getByLabel('用户名').fill(overflow)
+  await expect(page.getByLabel('接收邮箱')).toHaveValue(capped)
+  await expect(page.getByLabel('用户名')).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...email?.to || '']).toHaveLength(MAX_NOTIFY_EMAIL_RUNES)
+  expect([...email?.username || '']).toHaveLength(MAX_NOTIFY_EMAIL_RUNES)
+  expect(email).toMatchObject({ to: capped, username: capped })
 })
