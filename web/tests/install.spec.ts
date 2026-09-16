@@ -8975,3 +8975,22 @@ test('about update check falls back after the live check_error contract', async 
   await expect(page.getByText('GitHub 最新版本：v2.0.3')).toBeVisible()
   expect(checkCalls).toBe(1)
 })
+
+test('about settings surfaces the live unauthorized envelope', async ({ page }) => {
+  let infoCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', (route) => {
+    infoCalls += 1
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  expect(infoCalls).toBeGreaterThan(0)
+})
