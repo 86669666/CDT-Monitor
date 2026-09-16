@@ -238,6 +238,39 @@ func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Accounts[0].RegionID = "cn-hongkong.evil.com"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "region_id is invalid") {
+		t.Fatalf("dotted region err=%v", err)
+	}
+	config.Accounts[0].RegionID = "cn-hongkong"
+	config.Accounts[0].AccessKeyID = "LTAI/test"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "access_key_id is invalid") {
+		t.Fatalf("access key err=%v", err)
+	}
+	config.Accounts[0].AccessKeyID = "LTAItest"
+	config.Accounts[0].InstanceID = "i-test.evil"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "instance_id is invalid") {
+		t.Fatalf("instance err=%v", err)
+	}
+	config.Accounts[0].InstanceID = "i-test"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWebhookHeadersStayUntilCleared(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -74,9 +74,27 @@ func NewClient() *Client {
 	}
 }
 
+func validECSRegion(region string) bool {
+	region = strings.TrimSpace(region)
+	if region == "" || len(region) > 32 {
+		return false
+	}
+	for i := 0; i < len(region); i++ {
+		c := region[i]
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (c *Client) GetTraffic(ctx context.Context, account domain.Account, secret string) (float64, error) {
 	if strings.TrimSpace(account.RegionID) == "" {
 		return 0, errors.New("region_id is required")
+	}
+	if !validECSRegion(account.RegionID) {
+		return 0, errors.New("region_id is invalid")
 	}
 	key := account.AccessKeyID + ":" + trafficClass(account.RegionID)
 	c.trafficMu.Lock()
@@ -112,6 +130,9 @@ func ecsTargetError(account domain.Account) error {
 	}
 	if strings.TrimSpace(account.RegionID) == "" {
 		return errors.New("region_id is required")
+	}
+	if !validECSRegion(account.RegionID) {
+		return errors.New("region_id is invalid")
 	}
 	return nil
 }

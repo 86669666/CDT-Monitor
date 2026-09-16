@@ -18,6 +18,9 @@ import (
 const (
 	minAPIIntervalSeconds = 30
 	maxAccountRemarkRunes = 64
+	maxAccessKeyIDRunes   = 64
+	maxRegionIDRunes      = 32
+	maxInstanceIDRunes    = 64
 )
 
 var sensitiveSettings = map[string]bool{
@@ -313,6 +316,23 @@ func putSettingTx(ctx context.Context, tx *sql.Tx, key, value string) error {
 	return err
 }
 
+func validAccountToken(value string, max int, extra string) bool {
+	if value == "" || len(value) > max {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+		if extra != "" && strings.ContainsRune(extra, rune(c)) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain.Account) error {
 	activeRows, err := tx.QueryContext(ctx, `SELECT id, access_key_id, region_id, instance_id, access_key_secret FROM accounts WHERE deleted_at=0`)
 	if err != nil {
@@ -337,8 +357,20 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 	activeRows.Close()
 	kept := make(map[int64]bool)
 	for _, account := range accounts {
-		if strings.TrimSpace(account.AccessKeyID) == "" || strings.TrimSpace(account.RegionID) == "" {
+		account.AccessKeyID = strings.TrimSpace(account.AccessKeyID)
+		account.RegionID = strings.TrimSpace(account.RegionID)
+		account.InstanceID = strings.TrimSpace(account.InstanceID)
+		if account.AccessKeyID == "" || account.RegionID == "" {
 			return errors.New("account access_key_id and region_id are required")
+		}
+		if !validAccountToken(account.AccessKeyID, maxAccessKeyIDRunes, "-") {
+			return errors.New("account access_key_id is invalid")
+		}
+		if !validAccountToken(account.RegionID, maxRegionIDRunes, "-") {
+			return errors.New("account region_id is invalid")
+		}
+		if account.InstanceID != "" && !validAccountToken(account.InstanceID, maxInstanceIDRunes, "-_") {
+			return errors.New("account instance_id is invalid")
 		}
 		account.Remark = strings.TrimSpace(account.Remark)
 		if len([]rune(account.Remark)) > maxAccountRemarkRunes {
