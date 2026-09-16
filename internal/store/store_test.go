@@ -1242,6 +1242,30 @@ func TestFailedJobRetriesThenReleasesUniqueKey(t *testing.T) {
 	}
 }
 
+func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.EnqueueJob(ctx, "", 1, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("empty type err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes+1), 1, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("long type err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 0); err == nil || !strings.Contains(err.Error(), "attempts are invalid") {
+		t.Fatalf("zero attempts err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", maxJobAttempts+1); err == nil || !strings.Contains(err.Error(), "attempts are invalid") {
+		t.Fatalf("max attempts err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err != nil {
+		t.Fatalf("max job type err=%v", err)
+	}
+}
+
 func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1749,6 +1773,25 @@ func TestCreateAPIKeyRejectsOversizedName(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsOversizedScopeList(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	scopes := make([]string, maxAPIKeyScopes+1)
+	for i := range scopes {
+		scopes[i] = "widget:read"
+	}
+	if _, _, err = st.CreateAPIKey(context.Background(), "widget", scopes, nil); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("scope list err=%v", err)
+	}
+	keys, err := st.ListAPIKeys(context.Background())
+	if err != nil || len(keys) != 0 {
+		t.Fatalf("listed %d err=%v", len(keys), err)
+	}
+}
+
 func TestCreateAPIKeyRejectsUnknownScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2174,6 +2217,46 @@ func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
 	_, err = st.ClaimOutbox(ctx)
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected no remaining outbox, err=%v", err)
+	}
+}
+
+func TestAddTrafficStatsRejectsNonFiniteValues(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, value := range []float64{-1, math.NaN(), math.Inf(1), maxAccountTrafficGB + 1} {
+		if err = st.AddTrafficStats(ctx, 1, value, now); err == nil || !strings.Contains(err.Error(), "traffic sample is invalid") {
+			t.Fatalf("traffic=%v err=%v", value, err)
+		}
+	}
+	if err = st.AddTrafficStats(ctx, 1, 0, now); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateRuntimeRejectsInvalidStatusAndTraffic(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err = st.UpdateRuntime(ctx, 1, math.NaN(), domain.StatusRunning, now); err == nil || !strings.Contains(err.Error(), "traffic sample is invalid") {
+		t.Fatalf("nan traffic err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, "exploded", now); err == nil || !strings.Contains(err.Error(), "instance status is invalid") {
+		t.Fatalf("status err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, "Pending", now); err != nil {
+		t.Fatal(err)
 	}
 }
 

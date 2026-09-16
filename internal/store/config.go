@@ -569,6 +569,12 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 }
 
 func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {
+	if !validTrafficSample(traffic) {
+		return errors.New("traffic sample is invalid")
+	}
+	if !validInstanceStatus(status) {
+		return errors.New("instance status is invalid")
+	}
 	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET traffic_used=?,instance_status=?,updated_at=? WHERE id=? AND deleted_at=0`, traffic, status, updatedAt.Unix(), id)
 	return err
 }

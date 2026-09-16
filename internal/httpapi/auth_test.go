@@ -761,6 +761,21 @@ func TestLegacyAdminAPIKeyCannotAccessAdminOrWidget(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsOversizedScopeListHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	scopes := `["widget:read","widget:read","widget:read","widget:read","widget:read","widget:read","widget:read","widget:read","widget:read"]`
+	got := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":`+scopes+`}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "invalid_scope") {
+		t.Fatalf("scope list status = %d body = %s", got.Code, got.Body.String())
+	}
+	listed := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", []*http.Cookie{session, csrf}, nil)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"keys":[]`) {
+		t.Fatalf("oversized scope list must not persist, status = %d body = %s", listed.Code, listed.Body.String())
+	}
+}
+
 func TestCreateAPIKeyRejectsUnknownScopesHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
