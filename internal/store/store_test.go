@@ -1829,6 +1829,34 @@ func TestCreateAPIKeyDeduplicatesScopes(t *testing.T) {
 	}
 }
 
+func TestAuthTokensRejectOversizedValues(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	long := strings.Repeat("a", maxAuthTokenBytes+1)
+	valid, err := st.ValidateSession(ctx, long)
+	if err != nil || valid {
+		t.Fatalf("session valid=%v err=%v", valid, err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, long); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("api key err=%v", err)
+	}
+	if err = st.DeleteSession(ctx, long); err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.CreateSession(ctx, "127.0.0.1", "test", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err = st.ValidateSession(ctx, token)
+	if err != nil || !valid {
+		t.Fatalf("normal session valid=%v err=%v", valid, err)
+	}
+}
+
 func TestValidateAPIKeyIgnoresUnknownScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2176,8 +2204,30 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 		t.Fatalf("empty id err=%v", err)
 	}
 	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
-	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("payload err=%v", err)
+	}
+	event.Summary = "s"
+	event.Type = "unknown"
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event type is invalid") {
+		t.Fatalf("type err=%v", err)
+	}
+	event.Type = "threshold"
+	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("title err=%v", err)
+	}
+	event.Title = "t"
+	event.Fields = map[string]string{strings.Repeat("k", maxNotificationFieldRunes+1): "v"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("field err=%v", err)
+	}
+	event.Fields = map[string]string{}
+	for i := 0; i < maxNotificationFields+1; i++ {
+		event.Fields[strconv.Itoa(i)] = "v"
+	}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("field count err=%v", err)
 	}
 	var count int
 	if err = st.db.QueryRow(`SELECT COUNT(*) FROM notification_outbox`).Scan(&count); err != nil || count != 0 {

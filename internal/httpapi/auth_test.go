@@ -522,6 +522,15 @@ func TestAPIKeyLastUsedIsListedWithoutToken(t *testing.T) {
 	}
 }
 
+func TestOversizedAPIKeyHeaderIsRejected(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": strings.Repeat("a", 129)})
+	if got.Code != http.StatusUnauthorized {
+		t.Fatalf("oversized api key status = %d body = %s", got.Code, got.Body.String())
+	}
+}
+
 func TestJSONAPIsRejectQueryStringAPIKey(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
@@ -2236,6 +2245,10 @@ func TestPasskeyCompleteRequiresLiveSession(t *testing.T) {
 	expired := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/complete?session_id=missing", `{}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if expired.Code != http.StatusBadRequest || !strings.Contains(expired.Body.String(), "passkey_session_expired") {
 		t.Fatalf("expired passkey complete status = %d body = %s", expired.Code, expired.Body.String())
+	}
+	oversized := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/complete?session_id="+strings.Repeat("s", 129), `{}`, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if oversized.Code != http.StatusBadRequest || !strings.Contains(oversized.Body.String(), "passkey_session_expired") {
+		t.Fatalf("oversized passkey session status = %d body = %s", oversized.Code, oversized.Body.String())
 	}
 	listed := doRequest(t, handler, http.MethodGet, "/api/v1/admin/passkeys", "", []*http.Cookie{session, csrf}, nil)
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"passkeys":[]`) {
