@@ -20,6 +20,7 @@ export const MAX_NOTIFY_SECRET_RUNES = 255
 export const MAX_NOTIFY_DIAL_HOST_RUNES = 253
 export const MAX_TIMEZONE_RUNES = 64
 export const MAX_PASSWORD_RUNES = 128
+export const MAX_ACCESS_KEY_SECRET_RUNES = 128
 
 export function liveNotifyPort(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0
