@@ -1829,6 +1829,34 @@ func TestCreateAPIKeyDeduplicatesScopes(t *testing.T) {
 	}
 }
 
+func TestAuthTokensRejectOversizedValues(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	long := strings.Repeat("a", maxAuthTokenBytes+1)
+	valid, err := st.ValidateSession(ctx, long)
+	if err != nil || valid {
+		t.Fatalf("session valid=%v err=%v", valid, err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, long); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("api key err=%v", err)
+	}
+	if err = st.DeleteSession(ctx, long); err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.CreateSession(ctx, "127.0.0.1", "test", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err = st.ValidateSession(ctx, token)
+	if err != nil || !valid {
+		t.Fatalf("normal session valid=%v err=%v", valid, err)
+	}
+}
+
 func TestValidateAPIKeyIgnoresUnknownScopes(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

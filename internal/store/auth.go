@@ -62,6 +62,7 @@ const (
 	maxAPIKeyScopes     = 8
 	maxPasskeys         = 8
 	maxPasskeyJSONBytes = 8192
+	maxAuthTokenBytes   = 128
 )
 
 func clipUserAgent(value string) string {
@@ -97,8 +98,12 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 	return token, err
 }
 
+func validAuthToken(token string) bool {
+	return token != "" && len(token) <= maxAuthTokenBytes
+}
+
 func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error) {
-	if token == "" {
+	if !validAuthToken(token) {
 		return false, nil
 	}
 	var count int
@@ -107,6 +112,9 @@ func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error)
 }
 
 func (s *Store) DeleteSession(ctx context.Context, token string) error {
+	if !validAuthToken(token) {
+		return nil
+	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash=?`, security.TokenHash(token))
 	return err
 }
@@ -214,7 +222,7 @@ func (s *Store) RevokeAPIKey(ctx context.Context, id int64) error {
 }
 
 func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, error) {
-	if token == "" {
+	if !validAuthToken(token) {
 		return nil, sql.ErrNoRows
 	}
 	var scopes string

@@ -905,10 +905,16 @@ func (s *Server) authenticate(r *http.Request) (principal, error) {
 
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
+	token := ""
 	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		return strings.TrimSpace(header[7:])
+		token = strings.TrimSpace(header[7:])
+	} else {
+		token = strings.TrimSpace(r.Header.Get("X-API-Key"))
 	}
-	return strings.TrimSpace(r.Header.Get("X-API-Key"))
+	if len(token) > 128 {
+		return ""
+	}
+	return token
 }
 
 func setAuthCookies(w http.ResponseWriter, r *http.Request, token, csrf string) {
@@ -935,6 +941,9 @@ func validCSRF(r *http.Request) bool {
 	}
 	header := r.Header.Get("X-CDT-CSRF")
 	if header == "" {
+		return false
+	}
+	if len(session.Value) > 128 || len(cookie.Value) > 128 || len(header) > 128 {
 		return false
 	}
 	expected := csrfToken(session.Value)

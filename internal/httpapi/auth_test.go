@@ -522,6 +522,15 @@ func TestAPIKeyLastUsedIsListedWithoutToken(t *testing.T) {
 	}
 }
 
+func TestOversizedAPIKeyHeaderIsRejected(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/status", "", nil, map[string]string{"X-API-Key": strings.Repeat("a", 129)})
+	if got.Code != http.StatusUnauthorized {
+		t.Fatalf("oversized api key status = %d body = %s", got.Code, got.Body.String())
+	}
+}
+
 func TestJSONAPIsRejectQueryStringAPIKey(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
