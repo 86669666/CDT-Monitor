@@ -1190,6 +1190,25 @@ func TestAddLogMessageIsClipped(t *testing.T) {
 	}
 }
 
+func TestListLogsClipsOversizedStoredMessages(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES('error',?,unixepoch())`, strings.Repeat("x", maxLogRunes+64)); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("logs=%#v err=%v", entries, err)
+	}
+	if got := []rune(entries[0].Message); len(got) != maxLogRunes {
+		t.Fatalf("listed log len = %d", len(got))
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
