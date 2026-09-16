@@ -9046,3 +9046,17 @@ test('history chart surfaces the live unauthorized envelope', async ({ page }) =
   await expect(page.getByRole('alert')).toContainText('请登录或提供有效 API Key')
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
+
+test('history chart surfaces the live forbidden envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('alert')).toContainText('API Key 权限不足')
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
