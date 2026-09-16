@@ -220,18 +220,32 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	var available, created, updated int64
 	err := s.db.QueryRowContext(ctx, `SELECT id,type,account_id,payload,status,result,error,attempts,max_attempts,available_at,created_at,updated_at FROM jobs WHERE id=?`, id).
 		Scan(&job.ID, &job.Type, &job.AccountID, &job.Payload, &job.Status, &job.Result, &job.Error, &job.Attempts, &job.MaxAttempts, &available, &created, &updated)
+	if err != nil {
+		return domain.Job{}, err
+	}
+	if len([]rune(job.Payload)) > maxJobPayloadRunes {
+		return domain.Job{}, errors.New("job payload is too long")
+	}
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
-	return job, err
+	return job, nil
 }
 
 func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 	var job domain.Job
+	var oversized bool
 	err := s.WithTx(ctx, func(tx *sql.Tx) error {
 		var available, created, updated int64
 		err := tx.QueryRowContext(ctx, `SELECT id,type,account_id,payload,status,result,error,attempts,max_attempts,available_at,created_at,updated_at FROM jobs WHERE status='queued' AND available_at<=unixepoch() ORDER BY created_at LIMIT 1`).
 			Scan(&job.ID, &job.Type, &job.AccountID, &job.Payload, &job.Status, &job.Result, &job.Error, &job.Attempts, &job.MaxAttempts, &available, &created, &updated)
 		if err != nil {
 			return err
+		}
+		if len([]rune(job.Payload)) > maxJobPayloadRunes {
+			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, "job payload is too long", job.ID); failErr != nil {
+				return failErr
+			}
+			oversized = true
+			return nil
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE jobs SET status='running',locked_at=unixepoch(),attempts=attempts+1,updated_at=unixepoch() WHERE id=? AND status='queued'`, job.ID)
 		if err != nil {
@@ -245,7 +259,13 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 		job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Now().UTC()
 		return nil
 	})
-	return job, err
+	if err != nil {
+		return domain.Job{}, err
+	}
+	if oversized {
+		return domain.Job{}, errors.New("job payload is too long")
+	}
+	return job, nil
 }
 
 func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
