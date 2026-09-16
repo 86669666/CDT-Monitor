@@ -536,3 +536,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Compose `restart: on-failure:3`，并禁止 `always`。本地 daemon 不要无限拉起重启失败的容器
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T13:40Z` / 2026-09-16 21:40 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `bee5561` 再加 upload-artifact 白名单扫描：
+
+- Publish Guard 现只允许 `android-widget.yml` 和 gated `release.yml` 使用 `actions/upload-artifact`。CI / Publish Guard / Container verify 不要上传构建产物
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

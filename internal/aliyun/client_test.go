@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -51,6 +52,16 @@ func TestTrafficResponseAggregation(t *testing.T) {
 	}
 }
 
+func TestTrafficResponseRejectsNonFiniteValues(t *testing.T) {
+	result := map[string]any{"TrafficDetails": []any{
+		map[string]any{"BusinessRegionId": "cn-hangzhou", "Traffic": "NaN"},
+	}}
+	_, err := trafficFromResponse(result, "china")
+	if err == nil || !strings.Contains(err.Error(), "traffic is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestAsSliceSupportsSingleBssItem(t *testing.T) {
 	items := asSlice(map[string]any{"Item": map[string]any{"PretaxAmount": "23.456"}})
 	if len(items) != 1 {
@@ -82,6 +93,27 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
 	if err != nil || balance.Amount != 123.45 || balance.Currency != "CNY" {
 		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+}
+
+func TestGetAccountBalanceRejectsNonFiniteAmounts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"Inf"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "balance is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("non-finite balance must not retry, hits=%d", hits)
 	}
 }
 
@@ -723,6 +755,62 @@ func TestCallRejectsDeeplyNestedJSON(t *testing.T) {
 	}
 }
 
+func TestCallRejectsWideJSON(t *testing.T) {
+	fields := make([]string, 0, maxAliyunJSONBreadth+1)
+	fields = append(fields, `"Code":"200"`)
+	for i := 0; i < maxAliyunJSONBreadth; i++ {
+		fields = append(fields, `"k`+strconv.Itoa(i)+`":1`)
+	}
+	payload := `{` + strings.Join(fields, ",") + `}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "nesting is too wide") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("wide json must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsOversizedJSONKeys(t *testing.T) {
+	payload := `{"Code":"200","` + strings.Repeat("K", maxAliyunJSONKeyRunes+1) + `":1}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "key is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized json key must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsOversizedJSONStrings(t *testing.T) {
+	payload := `{"Code":"200","Pad":"` + strings.Repeat("A", maxAliyunJSONStringRunes+1) + `"}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "string is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized json string must not retry, hits=%d", hits)
+	}
+}
+
 func TestCallRejectsOversizedAliyunCodes(t *testing.T) {
 	hits := 0
 	client := NewClient()
@@ -1104,6 +1192,22 @@ func TestAliyunDialContextRejectsPrivateResolvedIPs(t *testing.T) {
 	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
 	if !errors.Is(err, errAliyunForbiddenHost) {
 		t.Fatalf("loopback rebind err=%v", err)
+	}
+}
+
+func TestAliyunDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupAliyunIPs
+	lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxAliyunResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupAliyunIPs = original })
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("too many answers err=%v", err)
 	}
 }
 

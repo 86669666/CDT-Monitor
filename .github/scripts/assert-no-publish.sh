@@ -462,6 +462,12 @@ scan_workflow_hygiene() {
         ;;
     esac
     if grep -q 'actions/upload-artifact@' <<<"$body"; then
+      case "$base" in
+        android-widget.yml|release.yml) ;;
+        *)
+          bad "$f: upload-artifact is forbidden outside widget CI and gated Release Binaries"
+          ;;
+      esac
       if ! grep -Eq 'retention-days:[[:space:]]*7' <<<"$body"; then
         bad "$f: upload-artifact must set retention-days: 7"
       fi

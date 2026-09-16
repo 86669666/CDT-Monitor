@@ -571,6 +571,29 @@ func TestNotifyDialContextRejectsMetadataIP(t *testing.T) {
 	}
 }
 
+func TestNotifyDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupNotifyIPs
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxNotifyResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+	_, err := notifyDialContext(context.Background(), "tcp", net.JoinHostPort("hooks.example.test", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("too many answers err=%v", err)
+	}
+}
+
+func TestNotifyDialContextRejectsNonTCP(t *testing.T) {
+	_, err := notifyDialContext(context.Background(), "udp", net.JoinHostPort("hooks.example.test", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+}
+
 func TestSOCKSTransportDialContextRejectsMetadataDestination(t *testing.T) {
 	dial := socksTransportDialContext(notifyContextDialer{})
 	_, err := dial(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
@@ -580,6 +603,10 @@ func TestSOCKSTransportDialContextRejectsMetadataDestination(t *testing.T) {
 	_, err = dial(context.Background(), "tcp", net.JoinHostPort("metadata.google.internal", "443"))
 	if !errors.Is(err, errForbiddenNotifyHost) {
 		t.Fatalf("hostname dest err=%v", err)
+	}
+	_, err = dial(context.Background(), "udp", net.JoinHostPort("proxy.example.test", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("udp dest err=%v", err)
 	}
 }
 

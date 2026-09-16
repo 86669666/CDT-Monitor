@@ -246,6 +246,38 @@ func TestFetchLatestReleaseReadsTag(t *testing.T) {
 	}
 }
 
+func TestFetchLatestReleaseRejectsOversizedTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"` + strings.Repeat("v", maxGitHubTagRunes+1) + `"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err == nil || !strings.Contains(err.Error(), "tag is too long") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestFetchLatestReleaseRejectsInvalidTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v1.2.3<script>"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err == nil || !strings.Contains(err.Error(), "tag is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestGitHubHTTPClientRequiresTLS12(t *testing.T) {
 	transport, ok := githubHTTPClient.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
@@ -264,6 +296,68 @@ func TestGitHubDialContextRejectsMetadataIP(t *testing.T) {
 	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "443"))
 	if !errors.Is(err, errGitHubForbiddenHost) {
 		t.Fatalf("aliyun metadata dial err=%v", err)
+	}
+}
+
+func TestForbiddenGitHubIPIncludesPrivateAndLoopback(t *testing.T) {
+	for _, raw := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.8", "100.64.0.1", "100.100.100.200", "fd00:ec2::254", "224.0.0.1"} {
+		if !forbiddenGitHubIP(net.ParseIP(raw)) {
+			t.Fatalf("%s must be forbidden", raw)
+		}
+	}
+	if forbiddenGitHubIP(net.ParseIP("8.8.8.8")) {
+		t.Fatal("public IP must remain allowed after DNS")
+	}
+}
+
+func TestGitHubDialContextRejectsPrivateResolvedIPs(t *testing.T) {
+	original := lookupGitHubIPs
+	lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	t.Cleanup(func() { lookupGitHubIPs = original })
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("loopback rebind err=%v", err)
+	}
+}
+
+func TestGitHubDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupGitHubIPs
+	lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxGitHubResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupGitHubIPs = original })
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("too many answers err=%v", err)
+	}
+}
+
+func TestGitHubDialContextRejectsNonTLSDestinations(t *testing.T) {
+	_, err := githubDialContext(context.Background(), "udp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "80"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("port 80 dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("evil.example.test", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("unknown host dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("1.1.1.1", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("ipv4 literal dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("::1", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("ipv6 literal dial err=%v", err)
 	}
 }
 

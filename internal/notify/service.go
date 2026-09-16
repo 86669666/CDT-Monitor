@@ -372,6 +372,8 @@ func ValidateWebhookBody(raw string) error {
 	return nil
 }
 
+const maxNotifyResolvedIPs = 8
+
 var lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
@@ -409,6 +411,9 @@ func resolveForbiddenHost(ctx context.Context, host string) error {
 	if err != nil {
 		return fmt.Errorf("notification URL host lookup failed: %w", err)
 	}
+	if len(ips) > maxNotifyResolvedIPs {
+		return errForbiddenNotifyHost
+	}
 	for _, ip := range ips {
 		if forbiddenNotifyIP(ip) {
 			return errForbiddenNotifyHost
@@ -429,6 +434,11 @@ func (notifyContextDialer) DialContext(ctx context.Context, network, address str
 
 func socksTransportDialContext(dialer proxy.Dialer) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		switch network {
+		case "tcp", "tcp4", "tcp6":
+		default:
+			return nil, errForbiddenNotifyHost
+		}
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
 			return nil, err
@@ -444,6 +454,11 @@ func socksTransportDialContext(dialer proxy.Dialer) func(context.Context, string
 }
 
 func notifyDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errForbiddenNotifyHost
+	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
@@ -460,7 +475,7 @@ func notifyDialContext(ctx context.Context, network, address string) (net.Conn, 
 			return nil, fmt.Errorf("notification URL host lookup failed: %w", err)
 		}
 	}
-	if len(ips) == 0 {
+	if len(ips) == 0 || len(ips) > maxNotifyResolvedIPs {
 		return nil, errForbiddenNotifyHost
 	}
 	for _, ip := range ips {

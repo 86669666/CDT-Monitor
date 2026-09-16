@@ -525,25 +525,26 @@ var githubHTTPClient = &http.Client{
 }
 
 func githubDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errGitHubForbiddenHost
+	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
-	var ips []net.IP
-	if ip := net.ParseIP(host); ip != nil {
-		ips = []net.IP{ip}
-	} else {
-		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			return nil, err
-		}
-		for _, addr := range addrs {
-			if addr.IP != nil {
-				ips = append(ips, addr.IP)
-			}
-		}
+	if port != "443" {
+		return nil, errGitHubForbiddenHost
 	}
-	if len(ips) == 0 {
+	if net.ParseIP(host) != nil || !allowedGitHubHost(host) {
+		return nil, errGitHubForbiddenHost
+	}
+	ips, err := lookupGitHubIPs(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 || len(ips) > maxGitHubResolvedIPs {
 		return nil, errGitHubForbiddenHost
 	}
 	for _, ip := range ips {
@@ -563,8 +564,48 @@ func githubDialContext(ctx context.Context, network, address string) (net.Conn, 
 	return nil, lastErr
 }
 
+const (
+	maxGitHubResolvedIPs = 8
+	maxGitHubTagRunes    = 64
+)
+
+var lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
+		}
+	}
+	return ips, nil
+}
+
+func allowedGitHubHost(host string) bool {
+	return strings.EqualFold(strings.TrimSuffix(host, "."), "api.github.com")
+}
+
+func validGitHubTag(tag string) bool {
+	if tag == "" || len([]rune(tag)) > maxGitHubTagRunes {
+		return false
+	}
+	for _, r := range tag {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func forbiddenGitHubIP(ip net.IP) bool {
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
 		return true
 	}
 	return ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254"))
@@ -600,6 +641,12 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 	}
 	if payload.TagName == "" {
 		return "", errors.New("latest release has no tag")
+	}
+	if !validGitHubTag(payload.TagName) {
+		if len([]rune(payload.TagName)) > maxGitHubTagRunes {
+			return "", errors.New("latest release tag is too long")
+		}
+		return "", errors.New("latest release tag is invalid")
 	}
 	return payload.TagName, nil
 }
