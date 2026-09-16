@@ -564,7 +564,10 @@ func githubDialContext(ctx context.Context, network, address string) (net.Conn, 
 	return nil, lastErr
 }
 
-const maxGitHubResolvedIPs = 8
+const (
+	maxGitHubResolvedIPs = 8
+	maxGitHubTagRunes    = 64
+)
 
 var lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
@@ -582,6 +585,20 @@ var lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
 
 func allowedGitHubHost(host string) bool {
 	return strings.EqualFold(strings.TrimSuffix(host, "."), "api.github.com")
+}
+
+func validGitHubTag(tag string) bool {
+	if tag == "" || len([]rune(tag)) > maxGitHubTagRunes {
+		return false
+	}
+	for _, r := range tag {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func forbiddenGitHubIP(ip net.IP) bool {
@@ -625,13 +642,14 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 	if payload.TagName == "" {
 		return "", errors.New("latest release has no tag")
 	}
-	if len([]rune(payload.TagName)) > maxGitHubTagRunes {
-		return "", errors.New("latest release tag is too long")
+	if !validGitHubTag(payload.TagName) {
+		if len([]rune(payload.TagName)) > maxGitHubTagRunes {
+			return "", errors.New("latest release tag is too long")
+		}
+		return "", errors.New("latest release tag is invalid")
 	}
 	return payload.TagName, nil
 }
-
-const maxGitHubTagRunes = 64
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("cdt_session"); err == nil {

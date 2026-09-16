@@ -262,6 +262,22 @@ func TestFetchLatestReleaseRejectsOversizedTags(t *testing.T) {
 	}
 }
 
+func TestFetchLatestReleaseRejectsInvalidTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v1.2.3<script>"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err == nil || !strings.Contains(err.Error(), "tag is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestGitHubHTTPClientRequiresTLS12(t *testing.T) {
 	transport, ok := githubHTTPClient.Transport.(*http.Transport)
 	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
