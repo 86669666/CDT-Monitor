@@ -9102,3 +9102,19 @@ test('history chart surfaces the live internal_error envelope', async ({ page })
   await expect(page.getByRole('alert')).toContainText('服务暂时不可用')
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
+
+test('settings logs surface the live unauthorized envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
