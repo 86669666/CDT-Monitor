@@ -11,6 +11,17 @@ export const MAX_ACCOUNT_TRAFFIC_GB = 1_000_000
 export const MAX_ACCESS_KEY_ID_CHARS = 64
 export const MAX_INSTANCE_ID_CHARS = 64
 
+export function liveScheduleClock(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const match = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(trimmed)
+  if (!match) return trimmed
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) return trimmed
+  return `${match[1]}:${match[2]}`
+}
+
 export type Account = {
   id: number
   access_key_id: string
