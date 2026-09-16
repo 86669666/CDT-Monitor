@@ -435,6 +435,17 @@ func allowedAliyunVersion(version string) bool {
 	}
 }
 
+func aliyunRequestURL(host string) (string, error) {
+	if !allowedAliyunHost(host) {
+		return "", errors.New("aliyun host is invalid")
+	}
+	endpoint := url.URL{Scheme: "https", Host: host, Path: "/"}
+	if endpoint.Scheme != "https" || endpoint.Hostname() != host || endpoint.Port() != "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return "", errors.New("aliyun host is invalid")
+	}
+	return endpoint.String(), nil
+}
+
 func allowedAliyunHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" || strings.ContainsAny(host, "/:@") {
@@ -535,7 +546,11 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	for key, value := range params {
 		form.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+host+"/", strings.NewReader(form.Encode()))
+	endpoint, err := aliyunRequestURL(host)
+	if err != nil {
+		return nil, false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, true, err
 	}

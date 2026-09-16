@@ -178,6 +178,22 @@ func TestCallRejectsUnknownVersions(t *testing.T) {
 	}
 }
 
+func TestAliyunRequestURLIsHTTPSWithoutPort(t *testing.T) {
+	got, err := aliyunRequestURL("cdt.aliyuncs.com")
+	if err != nil || got != "https://cdt.aliyuncs.com/" {
+		t.Fatalf("url=%q err=%v", got, err)
+	}
+	if _, err = aliyunRequestURL("cdt.aliyuncs.com:443"); err == nil {
+		t.Fatal("port must be rejected")
+	}
+	if _, err = aliyunRequestURL("user@cdt.aliyuncs.com"); err == nil {
+		t.Fatal("userinfo must be rejected")
+	}
+	if _, err = aliyunRequestURL("evil.example.test"); err == nil {
+		t.Fatal("unknown host must be rejected")
+	}
+}
+
 func TestCallRejectsUnknownHosts(t *testing.T) {
 	hits := 0
 	client := NewClient()
