@@ -8890,3 +8890,22 @@ test('wizard surfaces the live account region_id invalid setup_failed envelope',
   await expect(page.getByText('account region_id is invalid')).toBeVisible()
   await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
 })
+
+test('about settings surfaces the live internal_error envelope', async ({ page }) => {
+  let infoCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', (route) => {
+    infoCalls += 1
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(infoCalls).toBeGreaterThan(0)
+})
