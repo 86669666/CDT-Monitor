@@ -271,6 +271,37 @@ func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsInvalidScheduleClock(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	for _, clock := range []string{"9:00", "24:00", "15:04:05", "noon"} {
+		config.Accounts[0].StartTime = clock
+		config.Accounts[0].StopTime = "18:00"
+		if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "schedule time is invalid") {
+			t.Fatalf("start %q err=%v", clock, err)
+		}
+	}
+	config.Accounts[0].StartTime = "08:30"
+	config.Accounts[0].StopTime = "23:45"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || accounts[0].StartTime != "08:30" || accounts[0].StopTime != "23:45" {
+		t.Fatalf("accounts=%#v err=%v", accounts, err)
+	}
+}
+
 func TestSaveConfigRejectsNotifyHeaderInjection(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
