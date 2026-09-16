@@ -13,7 +13,19 @@ import (
 	"github.com/wang4386/CDT-Monitor/internal/security"
 )
 
+func validLogType(logType string) bool {
+	switch logType {
+	case "info", "warning", "error", "audit", "heartbeat":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
+	if !validLogType(logType) {
+		return errors.New("log type is invalid")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, clipRunes(message, maxLogRunes))
 	return err
 }
@@ -220,7 +232,15 @@ func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error
 	return err
 }
 
+const (
+	maxLeaseNameRunes  = 64
+	maxLeaseOwnerRunes = 128
+)
+
 func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.Duration) (bool, error) {
+	if name == "" || owner == "" || len([]rune(name)) > maxLeaseNameRunes || len([]rune(owner)) > maxLeaseOwnerRunes {
+		return false, errors.New("lease identity is invalid")
+	}
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `INSERT INTO scheduler_leases(name,owner,expires_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at,updated_at=excluded.updated_at WHERE scheduler_leases.expires_at<? OR scheduler_leases.owner=?`,
 		name, owner, now.Add(ttl).Unix(), now.Unix(), now.Unix(), owner)
@@ -244,7 +264,37 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 	return current == owner && expires >= now.Unix(), nil
 }
 
+const (
+	maxActionEventKeyRunes    = 128
+	maxActionEventDetailRunes = 256
+)
+
+func validActionEventType(eventType string) bool {
+	switch eventType {
+	case "threshold", "threshold_stop", "keepalive", "schedule_start", "schedule_stop":
+		return true
+	default:
+		return false
+	}
+}
+
+func validActionEventStatus(status string) bool {
+	switch status {
+	case "attempting", "detected":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {
+	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
+		return false, errors.New("action event key is invalid")
+	}
+	if !validActionEventType(eventType) || !validActionEventStatus(status) {
+		return false, errors.New("action event type is invalid")
+	}
+	detail = clipRunes(detail, maxActionEventDetailRunes)
 	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(event_key,account_id,type,status,detail,created_at,updated_at) VALUES(?,?,?,?,?,unixepoch(),unixepoch())`, key, accountID, eventType, status, detail)
 	if err != nil {
 		return false, err
@@ -258,10 +308,39 @@ func (s *Store) DeleteActionEvent(ctx context.Context, key string) error {
 	return err
 }
 
+const (
+	maxOutboxPayloadRunes = 8192
+	maxOutboxEventIDRunes = 64
+	maxOutboxChannels     = 3
+)
+
+func validOutboxChannel(channel string) bool {
+	switch channel {
+	case "email", "telegram", "webhook":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, channels []string) error {
+	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
+		return errors.New("notification event id is invalid")
+	}
+	if len(channels) > maxOutboxChannels {
+		return errors.New("too many notification channels")
+	}
+	for _, channel := range channels {
+		if !validOutboxChannel(channel) {
+			return errors.New("notification channel is invalid")
+		}
+	}
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return err
+	}
+	if len(payload) > maxOutboxPayloadRunes {
+		return errors.New("notification payload is too long")
 	}
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, channel := range channels {

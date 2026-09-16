@@ -1044,6 +1044,21 @@ func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	}
 }
 
+func TestAddLogRejectsUnknownType(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err = st.AddLog(context.Background(), "debug", "should not store"); err == nil || !strings.Contains(err.Error(), "log type is invalid") {
+		t.Fatalf("unknown type err=%v", err)
+	}
+	entries, err := st.ListLogs(context.Background(), "action", 10)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("unknown type stored logs=%#v err=%v", entries, err)
+	}
+}
+
 func TestAddLogMessageIsClipped(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1060,6 +1075,31 @@ func TestAddLogMessageIsClipped(t *testing.T) {
 	}
 	if got := []rune(entries[0].Message); len(got) != maxLogRunes || string(got) != strings.Repeat("x", maxLogRunes) {
 		t.Fatalf("stored log len = %d", len(got))
+	}
+}
+
+func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.AcquireLease(ctx, "", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("empty name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", "", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("empty owner err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes+1), "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", strings.Repeat("o", maxLeaseOwnerRunes+1), time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("owner err=%v", err)
+	}
+	got, err := st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes), strings.Repeat("o", maxLeaseOwnerRunes), time.Minute)
+	if err != nil || !got {
+		t.Fatalf("max identity = %v err=%v", got, err)
 	}
 }
 
@@ -1093,6 +1133,38 @@ func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
 	got, err = st.AcquireLease(ctx, "monitor", "owner-a", time.Minute)
 	if err != nil || got {
 		t.Fatalf("previous owner must not steal a live lease, got %v err=%v", got, err)
+	}
+}
+
+func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.RecordActionEvent(ctx, "", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("empty key err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1), 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("long key err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, "threshold:1:active", 1, "unknown", "detected", ""); err == nil || !strings.Contains(err.Error(), "type is invalid") {
+		t.Fatalf("type err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, "threshold:1:active", 1, "threshold", "nope", ""); err == nil || !strings.Contains(err.Error(), "type is invalid") {
+		t.Fatalf("status err=%v", err)
+	}
+	fresh, err := st.RecordActionEvent(ctx, "threshold:1:active", 1, "threshold", "detected", strings.Repeat("d", maxActionEventDetailRunes+8))
+	if err != nil || !fresh {
+		t.Fatalf("clipped detail = %v err=%v", fresh, err)
+	}
+	var detail string
+	if err = st.db.QueryRow(`SELECT detail FROM action_events WHERE event_key='threshold:1:active'`).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if got := []rune(detail); len(got) != maxActionEventDetailRunes {
+		t.Fatalf("stored detail len = %d", len(got))
 	}
 }
 
@@ -1950,6 +2022,30 @@ func TestTwoStoresCannotClaimTheSameJob(t *testing.T) {
 	_, err = second.ClaimJob(ctx)
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("second store must not claim the same job, err=%v", err)
+	}
+}
+
+func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
+	if err = st.AddOutbox(ctx, event, []string{"sms"}); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
+		t.Fatalf("channel err=%v", err)
+	}
+	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("empty id err=%v", err)
+	}
+	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("payload err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM notification_outbox`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("rejected outbox count = %d err=%v", count, err)
 	}
 }
 
