@@ -183,6 +183,51 @@ func ValidateDialHost(host string) error {
 	return nil
 }
 
+var lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
+		}
+	}
+	return ips, nil
+}
+
+func validateNotifyDestination(ctx context.Context, raw string) error {
+	if err := ValidateCallbackURL(raw); err != nil {
+		return err
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Hostname() == "" {
+		return err
+	}
+	return resolveForbiddenHost(ctx, parsed.Hostname())
+}
+
+func resolveForbiddenHost(ctx context.Context, host string) error {
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	if host == "" || strings.Contains(host, "#") || net.ParseIP(host) != nil {
+		return nil
+	}
+	if forbiddenNotifyHost(host) {
+		return errForbiddenNotifyHost
+	}
+	ips, err := lookupNotifyIPs(ctx, host)
+	if err != nil {
+		return fmt.Errorf("notification URL host lookup failed: %w", err)
+	}
+	for _, ip := range ips {
+		if forbiddenNotifyIP(ip) {
+			return errForbiddenNotifyHost
+		}
+	}
+	return nil
+}
+
 func forbiddenNotifyHost(host string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	switch host {
@@ -289,10 +334,13 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 		baseURL = strings.TrimRight(config.ProxyURL, "/")
 	}
 	endpoint := baseURL + "/bot" + config.Token + "/sendMessage"
-	if err := ValidateCallbackURL(endpoint); err != nil {
+	if err := validateNotifyDestination(ctx, endpoint); err != nil {
 		return err
 	}
 	if err := ValidateDialHost(config.ProxyIP); err != nil {
+		return err
+	}
+	if err := resolveForbiddenHost(ctx, config.ProxyIP); err != nil {
 		return err
 	}
 	form := url.Values{"chat_id": {config.ChatID}, "text": {eventText(event)}}
@@ -380,7 +428,7 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 		}
 		body = strings.NewReader(payload)
 	}
-	if err := ValidateCallbackURL(endpoint); err != nil {
+	if err := validateNotifyDestination(ctx, endpoint); err != nil {
 		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
