@@ -488,6 +488,28 @@ func TestAccountSecretsIncludesDeletedAccounts(t *testing.T) {
 	}
 }
 
+func TestMetadataSMTPHostIsRejected(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts:      []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}},
+		Notifications: domain.NotificationConfig{Email: domain.EmailConfig{Host: "100.100.100.200"}},
+	}
+	if err = st.Setup(ctx, config); err == nil {
+		t.Fatal("expected metadata SMTP host to be rejected")
+	}
+	config.Notifications.Email.Host = "smtp.example.test"
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMetadataWebhookURLIsRejected(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

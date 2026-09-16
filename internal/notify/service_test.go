@@ -306,3 +306,38 @@ func TestSendTelegramRejectsProxyHostnameResolvedToMetadata(t *testing.T) {
 		t.Fatalf("send err=%v", err)
 	}
 }
+
+func TestSendEmailRejectsMetadataHost(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Email.Enabled = true
+	config.Notifications.Email.Host = "100.100.100.200"
+	config.Notifications.Email.Port = 465
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops@example.test"
+	err := New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
+	}
+}
+
+func TestSendEmailRejectsHostnameResolvedToMetadata(t *testing.T) {
+	original := lookupNotifyIPs
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		if host == "smtp.metadata.example.test" {
+			return []net.IP{net.ParseIP("169.254.169.254")}, nil
+		}
+		return []net.IP{net.ParseIP("1.2.3.4")}, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+
+	config := domain.Config{}
+	config.Notifications.Email.Enabled = true
+	config.Notifications.Email.Host = "smtp.metadata.example.test"
+	config.Notifications.Email.Port = 465
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops@example.test"
+	err := New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
+	}
+}
