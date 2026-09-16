@@ -351,3 +351,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求先 COPY `package-lock.json` / `go.mod` `go.sum`，再 `npm ci` / `go mod download`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T04:39Z` / 2026-09-16 12:39 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `a8be68b` 再加 Dockerfile stage names 扫描：
+
+- Publish Guard 现要求阶段名 `AS frontend` / `AS builder` / `AS certificates`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

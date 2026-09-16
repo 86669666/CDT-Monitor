@@ -473,6 +473,15 @@ scan_dockerfile() {
   if ! grep -Fq 'RUN go mod download' <<<"$body"; then
     bad "$f: builder must run go mod download"
   fi
+  if ! grep -Eq ' AS frontend$' <<<"$body"; then
+    bad "$f: node stage must stay AS frontend"
+  fi
+  if ! grep -Eq ' AS builder$' <<<"$body"; then
+    bad "$f: golang stage must stay AS builder"
+  fi
+  if ! grep -Eq ' AS certificates$' <<<"$body"; then
+    bad "$f: alpine CA stage must stay AS certificates"
+  fi
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
