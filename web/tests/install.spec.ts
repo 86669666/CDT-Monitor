@@ -67,7 +67,8 @@ test('installation wizard posts the setup contract and reaches the dashboard', a
   const notifications = setupBody!.notifications as Record<string, Record<string, unknown>>
   expect(notifications.email).toMatchObject({ enabled: false, port: 465, security: 'ssl', password_configured: false })
   expect(notifications.telegram).toMatchObject({ enabled: false, token_configured: false, proxy_type: 'none', proxy_password_configured: false })
-  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false })
+  expect(notifications.webhook).toMatchObject({ enabled: false, method: 'GET', request_type: 'JSON', secret_configured: false, headers_configured: false, url_configured: false,
+        body_configured: false, body_configured: false })
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('dashboard-desktop.png'), fullPage: true })
 
@@ -2650,6 +2651,7 @@ test('settings telegram keeps configured proxy password when left empty', async 
         proxy_type: 'socks5',
         proxy_url: '',
         proxy_url_configured: false,
+        body_configured: false,
         proxy_ip: '127.0.0.1',
         proxy_port: '1080',
         proxy_user: 'proxy-user',
@@ -2701,6 +2703,7 @@ test('settings telegram clears configured proxy password with the live sentinel'
         proxy_type: 'socks5',
         proxy_url: '',
         proxy_url_configured: false,
+        body_configured: false,
         proxy_ip: '127.0.0.1',
         proxy_port: '1080',
         proxy_user: 'proxy-user',
@@ -4017,6 +4020,7 @@ test('settings webhook keeps configured url when left empty', async ({ page }) =
         secret_configured: false,
         headers_configured: false,
         url_configured: true,
+        body_configured: false,
       },
     },
   }
@@ -4064,6 +4068,7 @@ test('settings webhook clears configured url with the live sentinel', async ({ p
         secret_configured: false,
         headers_configured: false,
         url_configured: true,
+        body_configured: false,
       },
     },
   }
@@ -4100,6 +4105,102 @@ test('settings webhook clears configured url with the live sentinel', async ({ p
   })
 })
 
+test('settings webhook keeps configured body when left empty', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: {
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        secret_configured: false,
+        headers_configured: false,
+        url_configured: false,
+        body_configured: true,
+      },
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const bodyField = page.getByLabel('Body 模板 · 已配置')
+  await expect(bodyField).toBeVisible()
+  await expect(bodyField).toHaveAttribute('placeholder', '留空保持不变')
+  await expect(bodyField).toHaveValue('')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    body_configured: true,
+  })
+  expect(savedWebhook).not.toHaveProperty('body')
+  expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
+})
+
+test('settings webhook clears configured body with the live sentinel', async ({ page }) => {
+  const configured = {
+    ...dashboardConfig,
+    notifications: {
+      ...dashboardConfig.notifications,
+      webhook: {
+        enabled: true,
+        method: 'POST',
+        request_type: 'JSON',
+        secret_configured: false,
+        headers_configured: false,
+        url_configured: false,
+        body_configured: true,
+      },
+    },
+  }
+  let savedWebhook: Record<string, unknown> | undefined
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, configured)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { webhook?: Record<string, unknown> } }
+      expectKnownKeys(payload, CONFIG_OBJECT_KEYS)
+      savedWebhook = payload.notifications?.webhook
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: configured })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const bodyField = page.getByLabel('Body 模板 · 已配置')
+  await expect(bodyField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByText('清除已配置的 Body', { exact: true }).click()
+  await expect(bodyField).toHaveAttribute('placeholder', '保存后清除')
+  await expect(bodyField).toHaveValue('')
+  await expect(page.getByText('__clear__')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(savedWebhook).toMatchObject({
+    enabled: true,
+    body: '__clear__',
+    body_configured: true,
+  })
+})
+
 test('settings webhook keeps configured headers when left empty', async ({ page }) => {
   const configured = {
     ...dashboardConfig,
@@ -4114,6 +4215,7 @@ test('settings webhook keeps configured headers when left empty', async ({ page 
         secret_configured: false,
         headers_configured: true,
         url_configured: false,
+        body_configured: false,
       },
     },
   }
@@ -4147,6 +4249,7 @@ test('settings webhook keeps configured headers when left empty', async ({ page 
     request_type: 'JSON',
     headers_configured: true,
         url_configured: false,
+        body_configured: false,
   })
   expect(savedWebhook).not.toHaveProperty('headers')
   expect(JSON.stringify(savedWebhook)).not.toContain('__clear__')
@@ -4166,6 +4269,7 @@ test('settings webhook clears configured headers with the live sentinel', async 
         secret_configured: false,
         headers_configured: true,
         url_configured: false,
+        body_configured: false,
       },
     },
   }
@@ -4201,6 +4305,7 @@ test('settings webhook clears configured headers with the live sentinel', async 
     headers: '__clear__',
     headers_configured: true,
         url_configured: false,
+        body_configured: false,
   })
 })
 
@@ -4378,6 +4483,7 @@ test('settings telegram keeps configured token when left empty', async ({ page }
         proxy_type: 'none',
         proxy_url: '',
         proxy_url_configured: false,
+        body_configured: false,
         proxy_ip: '',
         proxy_port: '',
         proxy_user: '',
@@ -4429,6 +4535,7 @@ test('settings telegram clears configured token with the live sentinel', async (
         proxy_type: 'none',
         proxy_url: '',
         proxy_url_configured: false,
+        body_configured: false,
         proxy_ip: '',
         proxy_port: '',
         proxy_user: '',
@@ -4546,6 +4653,7 @@ test('settings webhook keeps configured dingtalk secret when left empty', async 
         secret_configured: true,
         headers_configured: false,
         url_configured: false,
+        body_configured: false,
       },
     },
   }
@@ -4596,6 +4704,7 @@ test('settings webhook clears configured dingtalk secret with the live sentinel'
         secret_configured: true,
         headers_configured: false,
         url_configured: false,
+        body_configured: false,
       },
     },
   }

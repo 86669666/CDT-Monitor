@@ -43,7 +43,7 @@ export type Config = {
   notifications: {
     email: { enabled: boolean; to: string; host: string; port: number; username: string; password?: string; password_configured: boolean; security: string }
     telegram: { enabled: boolean; token?: string; token_configured: boolean; chat_id: string; proxy_type: string; proxy_url?: string; proxy_url_configured: boolean; proxy_ip: string; proxy_port: string; proxy_user: string; proxy_pass?: string; proxy_password_configured: boolean }
-    webhook: { enabled: boolean; url?: string; method: string; request_type: string; headers?: string; body: string; provider?: string; secret?: string; secret_configured: boolean; headers_configured: boolean; url_configured: boolean }
+    webhook: { enabled: boolean; url?: string; method: string; request_type: string; headers?: string; body?: string; provider?: string; secret?: string; secret_configured: boolean; headers_configured: boolean; url_configured: boolean; body_configured: boolean }
   }
   accounts: Account[]
 }
@@ -126,7 +126,7 @@ export const defaultConfig = (): Config => ({
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password: '', password_configured: false, security: 'ssl' },
     telegram: { enabled: false, token: '', token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_url_configured: false, proxy_ip: '', proxy_port: '', proxy_user: '', proxy_pass: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', headers: '', body: '', provider: 'generic', secret: '', secret_configured: false, headers_configured: false, url_configured: false },
+    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', headers: '', body: '', provider: 'generic', secret: '', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false },
   },
   accounts: [],
 })
