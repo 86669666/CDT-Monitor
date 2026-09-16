@@ -785,7 +785,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count
+  local body images svc_keys image_count port_count extra_env
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -819,6 +819,10 @@ scan_compose() {
   fi
   if grep -Eiq '^[[:space:]]+([A-Z0-9_]*ACCESS_KEY[A-Z0-9_]*|[A-Z0-9_]*SECRET[A-Z0-9_]*|SMTP_PASSWORD|TELEGRAM_TOKEN|BOT_TOKEN):' <<<"$body"; then
     bad "$f: do not put Aliyun/notify secrets in Compose env"
+  fi
+  extra_env="$(grep -E '^      [A-Z0-9_]+:' <<<"$body" | grep -Ev '^      (CDT_DATA_DIR|CDT_LISTEN|CDT_WORKERS|TZ):' || true)"
+  if [ -n "$extra_env" ]; then
+    bad "$f: extra Compose environment keys are forbidden; keep CDT_DATA_DIR/CDT_LISTEN/CDT_WORKERS/TZ"
   fi
   if ! grep -Eq '^[[:space:]]+pull_policy:[[:space:]]*build$' <<<"$body"; then
     bad "$f: pull_policy must stay build so Compose cannot pull/push a registry tag"
