@@ -311,3 +311,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Compose `name: cdt-monitor`、`container_name: cdt-monitor`、`CDT_WORKERS: 2`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T03:20Z` / 2026-09-16 11:20 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e2e64a8` 再加 Dockerfile ca-certificates 扫描：
+
+- Publish Guard 现要求 scratch 镜像复制 `ca-certificates.crt`（HTTPS 出站，不是入站 TLS/HSTS）
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
