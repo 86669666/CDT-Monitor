@@ -551,3 +551,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 gated `release.yml` 使用 `actions/download-artifact`。CI / widget / Publish Guard 不要把 Release 产物拉回来再发布
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T14:43Z` / 2026-09-16 22:43 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `955b6cf` 再加 Compose healthcheck 时序扫描：
+
+- Publish Guard 现要求 Compose healthcheck 仍是 30s/5s/10s/3，并禁止 `disable: true`。不要把本地健康检查拉长或关掉
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

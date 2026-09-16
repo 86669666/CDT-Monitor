@@ -842,6 +842,21 @@ scan_compose() {
   if ! grep -Fq '/cdt-monitor", "healthcheck"' <<<"$body"; then
     bad "$f: healthcheck must stay /cdt-monitor healthcheck"
   fi
+  if ! grep -Eq 'interval:[[:space:]]*30s' <<<"$body"; then
+    bad "$f: healthcheck interval must stay 30s"
+  fi
+  if ! grep -Eq 'timeout:[[:space:]]*5s' <<<"$body"; then
+    bad "$f: healthcheck timeout must stay 5s"
+  fi
+  if ! grep -Eq 'retries:[[:space:]]*3$' <<<"$body"; then
+    bad "$f: healthcheck retries must stay 3"
+  fi
+  if ! grep -Eq 'start_period:[[:space:]]*10s' <<<"$body"; then
+    bad "$f: healthcheck start_period must stay 10s"
+  fi
+  if grep -Eq 'disable:[[:space:]]*true' <<<"$body"; then
+    bad "$f: healthcheck disable is forbidden"
+  fi
   if ! grep -Eq 'max-size:[[:space:]]*"10m"' <<<"$body"; then
     bad "$f: json-file logs must stay max-size 10m"
   fi
