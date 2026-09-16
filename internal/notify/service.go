@@ -162,6 +162,7 @@ var (
 	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
 	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
+	errInvalidNotifyOption     = errors.New("notification option is invalid")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -226,6 +227,38 @@ func ValidateTCPPortString(value string) error {
 	port, err := strconv.Atoi(value)
 	if err != nil || port < 1 || port > 65535 {
 		return errInvalidNotifyPort
+	}
+	return nil
+}
+
+func allowedNotifyOption(value string, options ...string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	for _, option := range options {
+		if strings.EqualFold(value, option) {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateNotifyOptions(config domain.NotificationConfig) error {
+	if !allowedNotifyOption(config.Email.Security, "ssl", "tls", "starttls") {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Telegram.ProxyType, "none", "socks5", "custom") {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Webhook.Method, http.MethodGet, http.MethodPost) {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Webhook.Type, "JSON", "FORM") {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Webhook.Provider, "generic", "dingtalk") {
+		return errInvalidNotifyOption
 	}
 	return nil
 }

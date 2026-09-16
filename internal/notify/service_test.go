@@ -339,6 +339,25 @@ func TestSendTelegramRejectsProxyHostnameResolvedToMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateNotifyOptionsRejectsUnknownValues(t *testing.T) {
+	config := domain.NotificationConfig{}
+	if err := ValidateNotifyOptions(config); err != nil {
+		t.Fatalf("empty options err=%v", err)
+	}
+	config.Email.Security = "ssl"
+	config.Telegram.ProxyType = "socks5"
+	config.Webhook.Method = "POST"
+	config.Webhook.Type = "FORM"
+	config.Webhook.Provider = "dingtalk"
+	if err := ValidateNotifyOptions(config); err != nil {
+		t.Fatalf("known options err=%v", err)
+	}
+	config.Webhook.Method = "PUT"
+	if err := ValidateNotifyOptions(config); !errors.Is(err, errInvalidNotifyOption) {
+		t.Fatalf("method err=%v", err)
+	}
+}
+
 func TestSendEmailRejectsInvalidPort(t *testing.T) {
 	config := domain.Config{}
 	config.Notifications.Email.Enabled = true
