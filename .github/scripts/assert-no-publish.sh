@@ -758,6 +758,18 @@ scan_compose() {
   if ! grep -Eq '^[[:space:]]+pull_policy:[[:space:]]*build$' <<<"$body"; then
     bad "$f: pull_policy must stay build so Compose cannot pull/push a registry tag"
   fi
+  if ! grep -Eq '^[[:space:]]+context:[[:space:]]*\.$' <<<"$body"; then
+    bad "$f: build context must stay ."
+  fi
+  if ! grep -Eq '^[[:space:]]+dockerfile:[[:space:]]*Dockerfile$' <<<"$body"; then
+    bad "$f: dockerfile must stay Dockerfile"
+  fi
+  if grep -Eq '^[[:space:]]+additional_contexts:' <<<"$body"; then
+    bad "$f: additional_contexts is forbidden; keep a single local context"
+  fi
+  if grep -Eq '^[[:space:]]+ssh:' <<<"$body"; then
+    bad "$f: build ssh mounts are forbidden"
+  fi
   if grep -Eq 'privileged:[[:space:]]*true' <<<"$body"; then
     bad "$f: privileged: true is forbidden on this fork"
   fi
