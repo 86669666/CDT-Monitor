@@ -176,7 +176,7 @@ func (e *Engine) processJobs(ctx context.Context, index int) {
 func (e *Engine) runJobGuarded(ctx context.Context, job domain.Job) (result string, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			e.logger.Error("job panic", "job_id", job.ID, "type", job.Type, "panic", recovered)
+			e.logger.Error("job panic", "job_id", job.ID, "type", job.Type)
 			result = ""
 			err = errJobPanic
 		}
@@ -282,7 +282,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			defer wait.Done()
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					e.logger.Error("traffic fetch panic", "account_id", accountID, "panic", recovered)
+					e.logger.Error("traffic fetch panic", "account_id", accountID)
 					trafficErr = errProviderPanic
 				}
 			}()
@@ -292,7 +292,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			defer wait.Done()
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					e.logger.Error("status fetch panic", "account_id", accountID, "panic", recovered)
+					e.logger.Error("status fetch panic", "account_id", accountID)
 					statusErr = errProviderPanic
 				}
 			}()
@@ -544,7 +544,7 @@ func (e *Engine) flushOutbox(ctx context.Context) {
 		sendErr := func() (sendErr error) {
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					e.logger.Error("notification panic", "id", item.ID, "channel", item.Channel, "panic", recovered)
+					e.logger.Error("notification panic", "id", item.ID, "channel", item.Channel)
 					sendErr = errJobPanic
 				}
 			}()

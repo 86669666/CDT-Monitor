@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -1798,7 +1799,8 @@ func TestSaveConfigRejectsInvalidShutdownAndInterval(t *testing.T) {
 }
 
 func TestRecoverHidesPanicDetails(t *testing.T) {
-	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	var logs bytes.Buffer
+	server := &Server{logger: slog.New(slog.NewTextHandler(&logs, nil))}
 	handler := server.recover(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("secret-panic-detail")
 	}))
@@ -1810,6 +1812,9 @@ func TestRecoverHidesPanicDetails(t *testing.T) {
 	}
 	if strings.Contains(response.Body.String(), "secret-panic-detail") {
 		t.Fatalf("panic leaked: %s", response.Body.String())
+	}
+	if strings.Contains(logs.String(), "secret-panic-detail") {
+		t.Fatalf("panic leaked into slog: %s", logs.String())
 	}
 }
 

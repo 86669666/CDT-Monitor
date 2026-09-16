@@ -892,7 +892,7 @@ func (s *Server) recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.logger.Error("request panic", "panic", recovered, "path", r.URL.Path)
+				s.logger.Error("request panic", "path", r.URL.Path)
 				writeError(w, http.StatusInternalServerError, "internal_error", "服务暂时不可用")
 			}
 		}()

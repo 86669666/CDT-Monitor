@@ -190,7 +190,8 @@ func TestProcessJobsRecoversFromControlPanic(t *testing.T) {
 	defer st.Close()
 	provider := newFakeProvider()
 	provider.controlPanic = "ecs-secret-should-not-leak"
-	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	logger, logs := capturingLogger()
+	eng := New(st, provider, notify.New(), logger, 1)
 	ctx := context.Background()
 	job, err := eng.Enqueue(ctx, JobControlInstance, account.ID, ParseControlPayload("start", "手动"), JobUniqueKey(JobControlInstance, account.ID, "start"))
 	if err != nil {
@@ -210,6 +211,9 @@ func TestProcessJobsRecoversFromControlPanic(t *testing.T) {
 	}
 	if strings.Contains(jobErr, "ecs-secret-should-not-leak") {
 		t.Fatalf("job error leaked panic: %q", jobErr)
+	}
+	if strings.Contains(logs.String(), "ecs-secret-should-not-leak") {
+		t.Fatalf("job panic leaked into slog: %s", logs.String())
 	}
 	var refreshStatus string
 	if err = st.DB().QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, refresh.ID).Scan(&refreshStatus); err != nil || refreshStatus != "completed" {
