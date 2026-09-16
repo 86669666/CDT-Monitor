@@ -11,6 +11,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
+	"github.com/wang4386/CDT-Monitor/internal/notify"
 	"github.com/wang4386/CDT-Monitor/internal/security"
 )
 
@@ -192,6 +193,15 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	}
 	if setup && len(config.AdminPassword) < 10 {
 		return errors.New("administrator password must be at least 10 characters")
+	}
+	if err := notify.ValidateCallbackURL(config.Notifications.Webhook.URL); err != nil {
+		return err
+	}
+	if err := notify.ValidateProxyURL(config.Notifications.Telegram.ProxyURL); err != nil {
+		return err
+	}
+	if err := notify.ValidateDialHost(config.Notifications.Telegram.ProxyIP); err != nil {
+		return err
 	}
 
 	return s.WithTx(ctx, func(tx *sql.Tx) error {

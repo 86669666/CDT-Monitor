@@ -168,3 +168,72 @@ func TestRedactSecretsIncludesAccountSecrets(t *testing.T) {
 		t.Fatalf("expected both secrets redacted: %q", got)
 	}
 }
+
+func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
+	allowed := []string{
+		"",
+		domain.ClearSecretSentinel,
+		"https://oapi.dingtalk.com/robot/send?access_token=x",
+		"http://127.0.0.1:1/hooks/test",
+		"http://192.168.1.10/hook",
+		"https://example.test/hook?access_token=#TOKEN#",
+	}
+	for _, raw := range allowed {
+		if err := ValidateCallbackURL(raw); err != nil {
+			t.Fatalf("allowed %q: %v", raw, err)
+		}
+	}
+	if err := ValidateCallbackURL("socks5://127.0.0.1:1080"); !errors.Is(err, errUnsupportedNotifyScheme) {
+		t.Fatalf("webhook socks URL err=%v", err)
+	}
+	if err := ValidateProxyURL("socks5://user:proxy-pass-value@127.0.0.1:1080"); err != nil {
+		t.Fatalf("socks proxy URL rejected: %v", err)
+	}
+	if err := ValidateProxyURL("socks5://100.100.100.200:1080"); !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("metadata socks proxy err=%v", err)
+	}
+	blocked := map[string]error{
+		"file:///etc/passwd":                        errUnsupportedNotifyScheme,
+		"gopher://127.0.0.1/":                       errUnsupportedNotifyScheme,
+		"http://169.254.169.254/latest/meta-data/":  errForbiddenNotifyHost,
+		"https://100.100.100.200/latest/meta-data/": errForbiddenNotifyHost,
+		"http://metadata.google.internal/":          errForbiddenNotifyHost,
+		"http://[fd00:ec2::254]/latest/meta-data/":  errForbiddenNotifyHost,
+	}
+	for raw, want := range blocked {
+		if err := ValidateCallbackURL(raw); !errors.Is(err, want) {
+			t.Fatalf("%q err=%v want %v", raw, err, want)
+		}
+	}
+	if err := ValidateDialHost("100.100.100.200"); !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("dial host err=%v", err)
+	}
+	if err := ValidateDialHost("192.168.1.1"); err != nil {
+		t.Fatalf("lan dial host rejected: %v", err)
+	}
+}
+
+func TestSendRejectsMetadataWebhookURL(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Webhook.Enabled = true
+	config.Notifications.Webhook.URL = "http://100.100.100.200/latest/meta-data/"
+	config.Notifications.Webhook.Method = "POST"
+	config.Notifications.Webhook.Type = "JSON"
+	err := New().Send(context.Background(), "webhook", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
+	}
+}
+
+func TestSendTelegramRejectsMetadataProxyURL(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "custom"
+	config.Notifications.Telegram.ProxyURL = "http://169.254.169.254"
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("send err=%v", err)
+	}
+}

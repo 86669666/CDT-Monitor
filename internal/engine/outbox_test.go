@@ -80,7 +80,11 @@ func TestFlushOutboxRetriesFailedWebhook(t *testing.T) {
 }
 
 func TestFlushOutboxRecoversFromNotifierPanic(t *testing.T) {
-	st, _ := setupAccount(t, nil)
+	st, _ := setupAccount(t, func(config *domain.Config) {
+		config.Notifications.Webhook.Enabled = true
+		config.Notifications.Webhook.URL = "http://127.0.0.1:1/hooks/test"
+		config.Notifications.Webhook.Method = "POST"
+	})
 	defer st.Close()
 	logger, logs := capturingLogger()
 	eng := New(st, newFakeProvider(), nil, logger, 1)
