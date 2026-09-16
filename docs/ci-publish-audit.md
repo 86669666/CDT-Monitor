@@ -546,3 +546,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `labels` 和 `storage_opt`。OCI 元数据留在 Dockerfile，不要在本地 daemon 上挂 registry 风格 label 或改存储驱动
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T14:39Z` / 2026-09-16 22:39 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `006cb2b` 再加 download-artifact 白名单扫描：
+
+- Publish Guard 现只允许 gated `release.yml` 使用 `actions/download-artifact`。CI / widget / Publish Guard 不要把 Release 产物拉回来再发布
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

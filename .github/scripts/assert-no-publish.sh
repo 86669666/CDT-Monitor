@@ -475,6 +475,14 @@ scan_workflow_hygiene() {
         bad "$f: artifact retention longer than 7 days is forbidden on this fork"
       fi
     fi
+    if grep -q 'actions/download-artifact@' <<<"$body"; then
+      case "$base" in
+        release.yml) ;;
+        *)
+          bad "$f: download-artifact is forbidden outside gated Release Binaries"
+          ;;
+      esac
+    fi
   done
 }
 
