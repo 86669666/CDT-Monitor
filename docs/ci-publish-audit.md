@@ -556,3 +556,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Compose healthcheck 仍是 30s/5s/10s/3，并禁止 `disable: true`。不要把本地健康检查拉长或关掉
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T15:53Z` / 2026-09-16 23:53 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c591aad` 再加 standalone actions/cache 扫描：
+
+- Publish Guard 现禁止 `actions/cache@` / `actions/cache/save` / `actions/cache/restore`。setup-go `cache: true` 和 setup-node `cache: npm` 仍可用
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

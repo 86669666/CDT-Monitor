@@ -132,6 +132,9 @@ scan_workflows() {
     if grep -Fq 'docker-container' <<<"$body"; then
       bad "$f: privileged docker-container Buildx is forbidden; keep driver: docker"
     fi
+    if grep -Eq 'actions/cache(@|/save|/restore)' <<<"$body"; then
+      bad "$f: standalone actions/cache is forbidden; keep setup-go/setup-node caches"
+    fi
   done
 }
 
