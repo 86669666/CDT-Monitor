@@ -96,6 +96,22 @@ export const dashboardStatus: StatusResponse = {
 
 export const emptyHistory: History = { hourly: [], daily: [] }
 
+/** Live GET /api/v1/config webhook after scrubConfig: values omitted, configured flags only. */
+export function liveGetWebhook(
+  webhook: Partial<Config['notifications']['webhook']> = {},
+): Config['notifications']['webhook'] {
+  return {
+    enabled: webhook.enabled ?? false,
+    method: webhook.method ?? 'GET',
+    request_type: webhook.request_type ?? 'JSON',
+    ...(webhook.provider ? { provider: webhook.provider } : {}),
+    secret_configured: webhook.secret_configured ?? false,
+    headers_configured: webhook.headers_configured ?? false,
+    url_configured: webhook.url_configured ?? false,
+    body_configured: webhook.body_configured ?? false,
+  }
+}
+
 export function jobFixture(id: string, status: JobStatus, accountId = 1): Job {
   const now = new Date().toISOString()
   return {
