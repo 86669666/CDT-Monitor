@@ -286,6 +286,7 @@ const (
 	maxNotifyEmailRunes    = 254
 	maxTelegramChatRunes   = 64
 	maxWebhookHeadersRunes = 4096
+	maxWebhookHeaderFields = 32
 	maxWebhookBodyRunes    = 8192
 	maxNotifyURLRunes      = 2048
 	maxNotifySecretRunes   = 255
@@ -354,12 +355,24 @@ func ValidateWebhookHeaders(raw string) error {
 		}
 		return nil
 	}
+	if len(headers) > maxWebhookHeaderFields {
+		return errInvalidNotifyPayload
+	}
 	for key, value := range headers {
-		if containsHeaderBreak(key) || containsHeaderBreak(value) {
+		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
 			return errInvalidNotifyHeader
 		}
 	}
 	return nil
+}
+
+func forbiddenWebhookHeader(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "host", "content-length", "transfer-encoding", "connection", "keep-alive", "upgrade", "te", "trailer", "cookie":
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidateWebhookBody(raw string) error {
