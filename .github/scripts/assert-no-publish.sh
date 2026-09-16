@@ -479,6 +479,15 @@ scan_dockerfile() {
   if ! grep -Fq 'RUN go mod download' <<<"$body"; then
     bad "$f: builder must run go mod download"
   fi
+  if ! grep -Fq -- '-trimpath' <<<"$body"; then
+    bad "$f: go build must keep -trimpath"
+  fi
+  if ! grep -Fq -- '-ldflags="-s -w' <<<"$body"; then
+    bad "$f: go build must keep -ldflags -s -w"
+  fi
+  if ! grep -Fq -- '-X main.version=${VERSION}' <<<"$body"; then
+    bad "$f: go build must stamp main.version from VERSION"
+  fi
   if ! grep -Eq ' AS frontend$' <<<"$body"; then
     bad "$f: node stage must stay AS frontend"
   fi

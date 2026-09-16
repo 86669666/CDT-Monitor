@@ -361,3 +361,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `org.opencontainers.image.source` 使用 `IMAGE_SOURCE`，`licenses` 为 MIT
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T04:58Z` / 2026-09-16 12:58 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `3640a49` 再加 Dockerfile -trimpath/-ldflags 扫描：
+
+- Publish Guard 现要求镜像 Go 编译带 `-trimpath`、`-ldflags -s -w`、以及 `-X main.version=${VERSION}`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
