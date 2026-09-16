@@ -9088,3 +9088,17 @@ test('history chart surfaces the live invalid_id envelope', async ({ page }) => 
   await expect(page.getByRole('alert')).toContainText('无效 ID')
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
+
+test('history chart surfaces the live internal_error envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('alert')).toContainText('服务暂时不可用')
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
