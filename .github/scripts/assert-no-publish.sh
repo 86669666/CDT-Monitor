@@ -250,6 +250,12 @@ scan_widget() {
   if ! grep -Fq 'platforms;android-35' "$f"; then
     bad "$f: widget CI must install platforms;android-35"
   fi
+  if ! grep -Eq 'distribution:[[:space:]]*temurin' <<<"$body"; then
+    bad "$f: setup-java must stay temurin"
+  fi
+  if ! grep -Eq 'gradle-home-cache-cleanup:[[:space:]]*true' <<<"$body"; then
+    bad "$f: setup-gradle must keep gradle-home-cache-cleanup: true"
+  fi
 }
 
 scan_checkout_credentials() {

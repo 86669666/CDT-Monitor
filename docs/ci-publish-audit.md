@@ -271,3 +271,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `stop_signal: SIGTERM`、`memswap_limit: 512m`、`CDT_DATA_DIR: /data`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:01Z` / 2026-09-16 10:01 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `51c54b7` 再加 widget temurin / gradle cache cleanup 扫描：
+
+- Publish Guard 现要求 `distribution: temurin` 与 `gradle-home-cache-cleanup: true`
+- 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
