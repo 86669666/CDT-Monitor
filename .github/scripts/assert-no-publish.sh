@@ -384,6 +384,12 @@ scan_checkout_credentials() {
   for f in .github/workflows/*.yml; do
     body="$(strip_comments "$f")"
     base="$(basename "$f")"
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+token:' <<<"$body"; then
+      bad "$f: checkout token: overrides are forbidden; do not pass a PAT"
+    fi
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+submodules:' <<<"$body"; then
+      bad "$f: checkout submodules: is forbidden; do not clone nested repos"
+    fi
     if [ "$base" = "auto-release.yml" ]; then
       if ! grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
         bad "$f: gated tag job must keep persist-credentials true for git push tag"
@@ -395,9 +401,6 @@ scan_checkout_credentials() {
     fi
     if grep -q 'actions/checkout@' <<<"$body" && ! grep -Eq 'persist-credentials:[[:space:]]*false' <<<"$body"; then
       bad "$f: checkout must set persist-credentials: false"
-    fi
-    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+token:' <<<"$body"; then
-      bad "$f: checkout token: overrides are forbidden; do not pass a PAT"
     fi
   done
 }
