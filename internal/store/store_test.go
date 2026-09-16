@@ -1622,6 +1622,24 @@ func TestBillingCacheRejectsInvalidKeysAndOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestBillingCacheRejectsOversizedStoredPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	blob := strings.Repeat("m", maxBillingCacheBytes+1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(1,'balance','',?,unixepoch())`, blob); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	_, err = st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
+	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestBillingCacheIsIsolatedPerAccount(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
