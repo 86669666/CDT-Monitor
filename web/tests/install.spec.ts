@@ -8945,3 +8945,33 @@ test('about update check surfaces the live internal_error envelope', async ({ pa
   await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
   expect(checkCalls).toBe(1)
 })
+
+test('about update check falls back after the live check_error contract', async ({ page }) => {
+  let checkCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', (route) => {
+    const check = new URL(route.request().url()).searchParams.get('check') === '1'
+    if (check) checkCalls += 1
+    return route.fulfill({ json: {
+      version: 'v2.0.1',
+      commit: 'abc1234',
+      built_at: 'github-run-12345',
+      repository: 'https://github.com/wang4386/CDT-Monitor',
+      release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+      ...(check ? { check_error: '暂时无法检查 GitHub Release' } : {}),
+    } })
+  })
+  await page.route('https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest', (route) => route.fulfill({
+    headers: { 'access-control-allow-origin': '*' },
+    json: { tag_name: 'v2.0.3' },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await page.getByRole('button', { name: '检查更新' }).click()
+  await expect(page.getByText('已通过浏览器网络检查版本')).toBeVisible()
+  await expect(page.getByText('GitHub 最新版本：v2.0.3')).toBeVisible()
+  expect(checkCalls).toBe(1)
+})
