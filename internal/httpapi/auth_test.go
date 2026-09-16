@@ -1351,6 +1351,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 		t.Fatalf("remark status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account access_key_secret is too long"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account access_key_secret is too long") {
+		t.Fatalf("secret status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account region_id is invalid"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account region_id is invalid") {
 		t.Fatalf("region status = %d body = %s", rec.Code, rec.Body.String())

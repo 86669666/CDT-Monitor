@@ -225,6 +225,28 @@ func TestAccountIDsRemainStable(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsOversizedAccessKeySecret(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = strings.Repeat("s", maxAccessKeySecretRunes+1)
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "access_key_secret is too long") {
+		t.Fatalf("secret err=%v", err)
+	}
+	config.Accounts[0].AccessKeySecret = strings.Repeat("s", maxAccessKeySecretRunes)
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

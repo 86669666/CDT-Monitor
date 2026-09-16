@@ -17,14 +17,15 @@ import (
 )
 
 const (
-	minAPIIntervalSeconds = 30
-	maxAccountRemarkRunes = 64
-	maxAccessKeyIDRunes   = 64
-	maxRegionIDRunes      = 32
-	maxInstanceIDRunes    = 64
-	maxAccountTrafficGB   = 1000000
-	maxAccounts           = 32
-	maxTimezoneRunes      = 64
+	minAPIIntervalSeconds   = 30
+	maxAccountRemarkRunes   = 64
+	maxAccessKeyIDRunes     = 64
+	maxRegionIDRunes        = 32
+	maxInstanceIDRunes      = 64
+	maxAccessKeySecretRunes = 128
+	maxAccountTrafficGB     = 1000000
+	maxAccounts             = 32
+	maxTimezoneRunes        = 64
 )
 
 var sensitiveSettings = map[string]bool{
@@ -435,6 +436,9 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 			row, found = byComposite[account.AccessKeyID+"|"+account.RegionID+"|"+account.InstanceID]
 		}
 		secret := account.AccessKeySecret
+		if secret != "" && len([]rune(secret)) > maxAccessKeySecretRunes {
+			return errors.New("account access_key_secret is too long")
+		}
 		if secret == "" && found {
 			secret, err = s.DecryptAAD(row.secret, security.AccountBoundAAD(row.key))
 			if err != nil {
