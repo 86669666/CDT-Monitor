@@ -247,6 +247,9 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateDialHost(strings.Repeat("a", maxDialHostRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
 		t.Fatalf("oversized dial host err=%v", err)
 	}
+	if err := ValidateCallbackURL("https://example.test/" + strings.Repeat("x", maxNotifyURLRunes)); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("oversized webhook URL err=%v", err)
+	}
 }
 
 func TestSendRejectsMetadataWebhookURL(t *testing.T) {

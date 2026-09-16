@@ -180,6 +180,9 @@ func validateNotifyURL(raw string, schemes []string) error {
 	if raw == "" || raw == domain.ClearSecretSentinel {
 		return nil
 	}
+	if len([]rune(raw)) > maxNotifyURLRunes {
+		return errInvalidNotifyPayload
+	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("invalid notification URL: %w", err)
@@ -284,6 +287,7 @@ const (
 	maxTelegramChatRunes   = 64
 	maxWebhookHeadersRunes = 4096
 	maxWebhookBodyRunes    = 8192
+	maxNotifyURLRunes      = 2048
 )
 
 func ValidateSMTPIdentity(username, to string) error {
