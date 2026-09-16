@@ -571,3 +571,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/deploy-pages`、`configure-pages`、`upload-pages-artifact` 和 `peaceiris/actions-gh-pages`。本 fork 不要做 GitHub Pages 发布
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T21:23Z` / 2026-09-17 05:23 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `4417395` 再加 Compose 单 tmpfs 扫描：
+
+- Publish Guard 现只允许 `/tmp` tmpfs（16m, noexec,nosuid,nodev）。不要再挂 `/run` 或其他可写 tmpfs
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
