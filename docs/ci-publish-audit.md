@@ -301,3 +301,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `VOLUME ["/data"]` 且 `/runtime-data` 以 `--chown=65532:65532` 复制
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T02:59Z` / 2026-09-16 10:59 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `4bbd7e2` 再加 widget artifact paths 扫描：
+
+- Publish Guard 现要求 widget artifact 只包含 debug/release APK 与 AAB，禁止把 `.jks` / `.keystore` 打进 artifact
+- 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
