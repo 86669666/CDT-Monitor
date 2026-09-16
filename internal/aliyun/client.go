@@ -451,6 +451,11 @@ func allowedAliyunHost(host string) bool {
 	return validECSRegion(strings.TrimSuffix(strings.TrimPrefix(host, prefix), suffix))
 }
 
+const (
+	maxAliyunAttempts      = 3
+	maxAliyunResponseBytes = 1 << 20
+)
+
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
 	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
 		return nil, errors.New("access key is required")
@@ -471,13 +476,13 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 		return nil, err
 	}
 	var last error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < maxAliyunAttempts; attempt++ {
 		result, retry, err := c.callOnce(ctx, accessKeyID, secret, region, host, version, action, extras)
 		if err == nil {
 			return result, nil
 		}
 		last = err
-		if !retry || attempt == 2 {
+		if !retry || attempt == maxAliyunAttempts-1 {
 			break
 		}
 		select {
@@ -540,7 +545,7 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 		return nil, true, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAliyunResponseBytes))
 	if err != nil {
 		return nil, resp.StatusCode >= 500, err
 	}

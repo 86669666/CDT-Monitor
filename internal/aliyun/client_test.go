@@ -659,6 +659,34 @@ func TestControlInstanceStopChargingMode(t *testing.T) {
 	}
 }
 
+func TestCallLimitsResponseBody(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		payload := `{"Code":"200","Pad":"` + strings.Repeat("A", maxAliyunResponseBytes) + `"}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "invalid response") {
+		t.Fatalf("oversized body err=%v", err)
+	}
+}
+
+func TestCallStopsAfterMaxAttempts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(strings.NewReader(`{"Code":"InternalError","Message":"boom"}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if hits != maxAliyunAttempts {
+		t.Fatalf("hits=%d want %d", hits, maxAliyunAttempts)
+	}
+}
+
 func TestCallTruncatesNonJSONErrorBodies(t *testing.T) {
 	client := NewClient()
 	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
