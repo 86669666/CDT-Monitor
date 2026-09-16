@@ -777,7 +777,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count
+  local body images svc_keys image_count port_count
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -795,6 +795,10 @@ scan_compose() {
   fi
   if ! grep -Eq '^[[:space:]]*-[[:space:]]*"127\.0\.0\.1:43210:8080"' <<<"$body"; then
     bad "$f: published port must stay 127.0.0.1:43210:8080"
+  fi
+  port_count="$(grep -cE '^[[:space:]]+-[[:space:]]*"127\.0\.0\.1:' <<<"$body" || true)"
+  if [ "$port_count" -ne 1 ]; then
+    bad "$f: only one published port is allowed (127.0.0.1:43210:8080)"
   fi
   if grep -Eq ':(80|443):|"80:|"443:' <<<"$body"; then
     bad "$f: do not publish host 80/443; TLS stays at the reverse proxy"
