@@ -247,6 +247,9 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateDialHost(strings.Repeat("a", maxDialHostRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
 		t.Fatalf("oversized dial host err=%v", err)
 	}
+	if err := ValidateCallbackURL("https://example.test/" + strings.Repeat("x", maxNotifyURLRunes)); !errors.Is(err, errInvalidNotifyPayload) {
+		t.Fatalf("oversized webhook URL err=%v", err)
+	}
 }
 
 func TestSendRejectsMetadataWebhookURL(t *testing.T) {
@@ -388,6 +391,48 @@ func TestSendTelegramRejectsInvalidSOCKSPort(t *testing.T) {
 	}
 }
 
+func TestSendTelegramRejectsMetadataSOCKSProxy(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "socks5"
+	config.Notifications.Telegram.ProxyIP = "100.100.100.200"
+	config.Notifications.Telegram.ProxyPort = "1080"
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("socks metadata err=%v", err)
+	}
+}
+
+func TestSendTelegramSOCKSRejectsProxyRebindToMetadata(t *testing.T) {
+	original := lookupNotifyIPs
+	calls := 0
+	lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		if host != "socks.example.test" {
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		calls++
+		if calls == 1 {
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		return []net.IP{net.ParseIP("169.254.169.254")}, nil
+	}
+	t.Cleanup(func() { lookupNotifyIPs = original })
+
+	config := domain.Config{}
+	config.Notifications.Telegram.Enabled = true
+	config.Notifications.Telegram.Token = "123456:AA-secret-token-value"
+	config.Notifications.Telegram.ChatID = "42"
+	config.Notifications.Telegram.ProxyType = "socks5"
+	config.Notifications.Telegram.ProxyIP = "socks.example.test"
+	config.Notifications.Telegram.ProxyPort = "1080"
+	err := New().Send(context.Background(), "telegram", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if err == nil || !strings.Contains(err.Error(), errForbiddenNotifyHost.Error()) {
+		t.Fatalf("socks rebind err=%v", err)
+	}
+}
+
 func TestValidateWebhookPayloadRejectsOversizedValues(t *testing.T) {
 	if err := ValidateWebhookHeaders(strings.Repeat("h", maxWebhookHeadersRunes+1)); !errors.Is(err, errInvalidNotifyPayload) {
 		t.Fatalf("headers err=%v", err)
@@ -491,6 +536,18 @@ func TestNotifyDialContextRejectsMetadataIP(t *testing.T) {
 	_, err = notifyDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "80"))
 	if !errors.Is(err, errForbiddenNotifyHost) {
 		t.Fatalf("aliyun metadata dial err=%v", err)
+	}
+}
+
+func TestSOCKSTransportDialContextRejectsMetadataDestination(t *testing.T) {
+	dial := socksTransportDialContext(notifyContextDialer{})
+	_, err := dial(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("ip dest err=%v", err)
+	}
+	_, err = dial(context.Background(), "tcp", net.JoinHostPort("metadata.google.internal", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("hostname dest err=%v", err)
 	}
 }
 

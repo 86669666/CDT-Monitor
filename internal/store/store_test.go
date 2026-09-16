@@ -481,6 +481,11 @@ func TestSaveConfigRejectsOversizedWebhookPayload(t *testing.T) {
 	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "payload is too long") {
 		t.Fatalf("headers err=%v", err)
 	}
+	config.Notifications.Webhook.Headers = ""
+	config.Notifications.Webhook.URL = "https://example.test/" + strings.Repeat("x", 2048)
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("url err=%v", err)
+	}
 }
 
 func TestWebhookHeadersStayUntilCleared(t *testing.T) {
