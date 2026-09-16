@@ -381,3 +381,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 frontend `COPY web ./`、builder `COPY . ./`（lockfile 之后）
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T05:39Z` / 2026-09-16 13:39 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `43616f4` 再加 Dockerfile -o /cdt-monitor 扫描：
+
+- Publish Guard 现要求 `go build -o /cdt-monitor`，与 scratch `COPY --from=builder /cdt-monitor` 对齐
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
