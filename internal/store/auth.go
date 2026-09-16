@@ -27,17 +27,17 @@ func (s *Store) VerifyAdminPassword(ctx context.Context, password string) (bool,
 
 func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.Time) (int, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, ip, since.Unix()).Scan(&count)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, clipIP(ip), since.Unix()).Scan(&count)
 	return count, err
 }
 
 func (s *Store) RecordLoginFailure(ctx context.Context, ip string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, clipIP(ip))
 	return err
 }
 
 func (s *Store) ClearLoginFailures(ctx context.Context, ip string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, clipIP(ip))
 	return err
 }
 
@@ -48,18 +48,29 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	}
 	now := time.Now().UTC()
 	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-		security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
+		security.TokenHash(token), clipIP(ip), clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
 	return token, err
 }
 
-const maxUserAgentRunes = 256
+const (
+	maxUserAgentRunes = 256
+	maxIPRunes        = 64
+)
 
 func clipUserAgent(value string) string {
+	return clipRunes(value, maxUserAgentRunes)
+}
+
+func clipIP(value string) string {
+	return clipRunes(strings.TrimSpace(value), maxIPRunes)
+}
+
+func clipRunes(value string, max int) string {
 	runes := []rune(value)
-	if len(runes) <= maxUserAgentRunes {
+	if len(runes) <= max {
 		return value
 	}
-	return string(runes[:maxUserAgentRunes])
+	return string(runes[:max])
 }
 
 func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
@@ -73,7 +84,7 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-			security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
+			security.TokenHash(token), clipIP(ip), clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
 		return err
 	})
 	return token, err

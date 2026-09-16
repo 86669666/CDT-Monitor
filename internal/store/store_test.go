@@ -835,6 +835,37 @@ func TestSessionUserAgentIsClipped(t *testing.T) {
 	}
 }
 
+func TestLoginFailureIPIsClipped(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	long := strings.Repeat("9", 128)
+	if err = st.RecordLoginFailure(ctx, long); err != nil {
+		t.Fatal(err)
+	}
+	count, err := st.RecentLoginFailures(ctx, long, time.Now().Add(-time.Minute))
+	if err != nil || count != 1 {
+		t.Fatalf("recent failures = %d err=%v", count, err)
+	}
+	var stored string
+	if err = st.db.QueryRow(`SELECT ip FROM login_attempts`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != strings.Repeat("9", maxIPRunes) {
+		t.Fatalf("stored ip = %q", stored)
+	}
+	if err = st.ClearLoginFailures(ctx, long); err != nil {
+		t.Fatal(err)
+	}
+	count, err = st.RecentLoginFailures(ctx, long, time.Now().Add(-time.Minute))
+	if err != nil || count != 0 {
+		t.Fatalf("cleared failures = %d err=%v", count, err)
+	}
+}
+
 func TestSessionExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
