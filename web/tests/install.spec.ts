@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { CSRF_COOKIE, CSRF_HEADER, JOB_FAILED_USER_MESSAGE } from '../src/api'
-import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
+import { MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, liveScheduleClock, liveNotifyHeaderText } from '../src/types'
 import {
   ACCOUNT_OBJECT_KEYS,
   CONFIG_OBJECT_KEYS,
@@ -8466,4 +8466,35 @@ test('settings webhook secret posts at the live secret rune cap', async ({ page 
   expect(saveCalls).toBe(1)
   expect([...secret]).toHaveLength(MAX_NOTIFY_SECRET_RUNES)
   expect(secret).toBe(capped)
+})
+
+test('settings email host posts at the live dial-host rune cap', async ({ page }) => {
+  let saveCalls = 0
+  let host = ''
+  const overflow = `${'h'.repeat(MAX_NOTIFY_DIAL_HOST_RUNES)}超`
+  const capped = 'h'.repeat(MAX_NOTIFY_DIAL_HOST_RUNES)
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', async (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      const payload = JSON.parse(route.request().postData() || '{}') as { notifications?: { email?: { host?: string } } }
+      expectKnownKeys(payload as Record<string, unknown>, CONFIG_OBJECT_KEYS)
+      host = payload.notifications?.email?.host || ''
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Email' }).click()
+  await page.getByLabel('SMTP Host').fill(overflow)
+  await expect(page.getByLabel('SMTP Host')).toHaveValue(capped)
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已安全保存')).toBeVisible()
+  expect(saveCalls).toBe(1)
+  expect([...host]).toHaveLength(MAX_NOTIFY_DIAL_HOST_RUNES)
+  expect(host).toBe(capped)
 })
