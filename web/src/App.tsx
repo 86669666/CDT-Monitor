@@ -13,7 +13,7 @@ import { DEFAULT_TIME_ZONE, resolveTimeZone } from './timezone'
 import {
   APIKeyRecord, APIKeysResponse, APIKeyScope, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyRequest, CreateAPIKeyResponse,
   History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
-  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, defaultConfig, emptyAccount,
+  PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, defaultConfig, emptyAccount,
 } from './types'
 
 type Phase = 'loading' | 'setup' | 'login' | 'dashboard' | 'fatal'
@@ -459,7 +459,7 @@ function GeneralSettings({ config, onChange }: { config: Config; onChange: (conf
 function AccountSettings({ config, onChange }: { config: Config; onChange: (config: Config) => void }) {
   const update = (index: number, account: Account) => { const accounts = [...config.accounts]; accounts[index] = account; onChange({ ...config, accounts }) }
   const remove = (index: number) => onChange({ ...config, accounts: config.accounts.filter((_, current) => current !== index) })
-  return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<Server />} title="云端实例" subtitle="ALIYUN ACCOUNTS" /><button className="button button--secondary button--small" onClick={() => onChange({ ...config, accounts: [...config.accounts, emptyAccount()] })}><Plus />添加实例</button></div>
+  return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<Server />} title="云端实例" subtitle="ALIYUN ACCOUNTS" /><button className="button button--secondary button--small" disabled={config.accounts.length >= MAX_ACCOUNTS} onClick={() => onChange({ ...config, accounts: config.accounts.length >= MAX_ACCOUNTS ? config.accounts : [...config.accounts, emptyAccount()] })}><Plus />添加实例</button></div>
     <div className="account-settings-list">{config.accounts.length === 0 && <div className="subtle-empty"><Database />尚未配置实例</div>}{config.accounts.map((account, index) => <div className="account-editor" key={account.id || `new-${index}`}><div className="account-editor__head"><span>{account.remark || `实例 ${index + 1}`}</span><IconButton label="删除" tone="danger" onClick={() => remove(index)}><Trash2 /></IconButton></div><AccountFields account={account} onChange={(next) => update(index, next)} /></div>)}</div>
   </div>
 }
