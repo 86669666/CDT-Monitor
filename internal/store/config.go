@@ -322,6 +322,18 @@ func putSettingTx(ctx context.Context, tx *sql.Tx, key, value string) error {
 	return err
 }
 
+func validScheduleClock(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	if len(value) != 5 {
+		return false
+	}
+	parsed, err := time.Parse("15:04", value)
+	return err == nil && parsed.Format("15:04") == value
+}
+
 func validAccountToken(value string, max int, extra string) bool {
 	if value == "" || len(value) > max {
 		return false
@@ -377,6 +389,11 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		}
 		if account.InstanceID != "" && !validAccountToken(account.InstanceID, maxInstanceIDRunes, "-_") {
 			return errors.New("account instance_id is invalid")
+		}
+		account.StartTime = strings.TrimSpace(account.StartTime)
+		account.StopTime = strings.TrimSpace(account.StopTime)
+		if !validScheduleClock(account.StartTime) || !validScheduleClock(account.StopTime) {
+			return errors.New("account schedule time is invalid")
 		}
 		account.Remark = strings.TrimSpace(account.Remark)
 		if len([]rune(account.Remark)) > maxAccountRemarkRunes {
