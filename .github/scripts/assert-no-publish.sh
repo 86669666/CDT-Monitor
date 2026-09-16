@@ -177,6 +177,24 @@ scan_widget() {
   if grep -Eiq 'gradle-play-publisher|upload-google-play|play-console' <<<"$body"; then
     bad "$f: Play Store upload is forbidden on this fork"
   fi
+  if ! grep -Fq 'if: always()' "$f"; then
+    bad "$f: keystore cleanup must run if: always()"
+  fi
+  if ! grep -Eq 'shred' <<<"$body"; then
+    bad "$f: decoded keystore must be shredded"
+  fi
+  if ! grep -Eq 'umask 077' <<<"$body"; then
+    bad "$f: keystore decode must umask 077"
+  fi
+  if ! grep -Eq 'RUNNER_TEMP' <<<"$body"; then
+    bad "$f: decoded keystore must stay in RUNNER_TEMP"
+  fi
+  if ! grep -Fq 'secrets.ANDROID_KEYSTORE_BASE64' "$f"; then
+    bad "$f: keystore must come from secrets.ANDROID_KEYSTORE_BASE64"
+  fi
+  if grep -Eq 'BEGIN (RSA |PRIVATE|CERTIFICATE)|keystorepassword:' <<<"$body"; then
+    bad "$f: do not embed keystore material in YAML"
+  fi
 }
 
 scan_checkout_credentials() {

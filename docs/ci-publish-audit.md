@@ -216,3 +216,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 Android Widget 仅 `workflow_dispatch`、JDK 17、20 分钟超时、job 名 artifact only，禁止 Play 上传；Container Images 禁止 `type=gha` / `cache-to`
 - 这仍不是 widget 已跑或已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-15T23:55Z` / 2026-09-16 07:55 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `ed650f8` 再加 widget keystore shred 扫描：
+
+- Publish Guard 现要求 Android Widget 用 `secrets.ANDROID_KEYSTORE_BASE64`、`umask 077`、写在 `$RUNNER_TEMP`，并在 `if: always()` 里 `shred`
+- 仓库 secrets 仍为空。这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
