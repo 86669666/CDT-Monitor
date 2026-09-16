@@ -134,6 +134,22 @@ func TestSetupRejectsOversizedAdminPassword(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsOversizedSetting(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('timezone',?)`, strings.Repeat("z", maxSettingValueBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "setting is too large") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestOpenRejectsUnsupportedArgon2idParams(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
