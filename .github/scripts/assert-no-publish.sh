@@ -404,6 +404,12 @@ scan_dockerfile() {
   if ! grep -Eq '^USER 65532:65532$' <<<"$body"; then
     bad "$f: final image must stay USER 65532:65532"
   fi
+  if ! grep -Fq 'VOLUME ["/data"]' <<<"$body"; then
+    bad "$f: VOLUME must stay /data"
+  fi
+  if ! grep -Fq -- '--chown=65532:65532 /runtime-data /data' <<<"$body"; then
+    bad "$f: /data must be copied --chown=65532:65532"
+  fi
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
