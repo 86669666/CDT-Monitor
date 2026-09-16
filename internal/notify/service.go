@@ -388,6 +388,32 @@ func resolveForbiddenHost(ctx context.Context, host string) error {
 	return nil
 }
 
+type notifyContextDialer struct{}
+
+func (notifyContextDialer) Dial(network, address string) (net.Conn, error) {
+	return notifyDialContext(context.Background(), network, address)
+}
+
+func (notifyContextDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	return notifyDialContext(ctx, network, address)
+}
+
+func socksTransportDialContext(dialer proxy.Dialer) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		if err = ValidateDialHost(host); err != nil {
+			return nil, err
+		}
+		if d, ok := dialer.(proxy.ContextDialer); ok {
+			return d.DialContext(ctx, network, address)
+		}
+		return dialer.Dial(network, address)
+	}
+}
+
 func notifyDialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
@@ -559,13 +585,11 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 		if config.ProxyUser != "" || config.ProxyPass != "" {
 			auth = &proxy.Auth{User: config.ProxyUser, Password: config.ProxyPass}
 		}
-		dialer, err := proxy.SOCKS5("tcp", net.JoinHostPort(config.ProxyIP, config.ProxyPort), auth, proxy.Direct)
+		dialer, err := proxy.SOCKS5("tcp", net.JoinHostPort(config.ProxyIP, config.ProxyPort), auth, notifyContextDialer{})
 		if err != nil {
 			return err
 		}
-		client = notifyHTTPClient(12*time.Second, tls12Transport(&http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return dialer.Dial(network, address)
-		}}))
+		client = notifyHTTPClient(12*time.Second, tls12Transport(&http.Transport{DialContext: socksTransportDialContext(dialer)}))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
