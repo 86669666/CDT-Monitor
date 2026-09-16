@@ -306,3 +306,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 widget artifact 只包含 debug/release APK 与 AAB，禁止把 `.jks` / `.keystore` 打进 artifact
 - 这仍不是 APK 已构建，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T03:11Z` / 2026-09-16 11:11 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `85e6eed` 再加 Compose project/container name 扫描：
+
+- Publish Guard 现要求 Compose `name: cdt-monitor`、`container_name: cdt-monitor`、`CDT_WORKERS: 2`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

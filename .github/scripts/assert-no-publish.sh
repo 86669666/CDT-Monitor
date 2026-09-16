@@ -649,6 +649,15 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+-[[:space:]]+"?/data:' <<<"$body"; then
     bad "$f: do not bind-mount host /data into the container"
   fi
+  if ! grep -Eq '^name:[[:space:]]*cdt-monitor$' <<<"$body"; then
+    bad "$f: Compose project name must stay cdt-monitor"
+  fi
+  if ! grep -Eq 'container_name:[[:space:]]*cdt-monitor$' <<<"$body"; then
+    bad "$f: container_name must stay cdt-monitor"
+  fi
+  if ! grep -Eq 'CDT_WORKERS:[[:space:]]*2$' <<<"$body"; then
+    bad "$f: CDT_WORKERS must stay 2"
+  fi
 }
 
 scan_vars() {
