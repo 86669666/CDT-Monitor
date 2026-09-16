@@ -339,6 +339,38 @@ func TestSendTelegramRejectsProxyHostnameResolvedToMetadata(t *testing.T) {
 	}
 }
 
+func TestSendEmailRejectsHeaderInjection(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Email.Enabled = true
+	config.Notifications.Email.Host = "smtp.example.test"
+	config.Notifications.Email.Port = 587
+	config.Notifications.Email.Username = "monitor@example.test"
+	config.Notifications.Email.To = "ops@example.test\r\nBcc: attacker@evil.test"
+	err := New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("to injection err=%v", err)
+	}
+	config.Notifications.Email.To = "ops@example.test"
+	config.Notifications.Email.Username = "monitor@example.test\nFrom: forged@evil.test"
+	err = New().Send(context.Background(), "email", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("from injection err=%v", err)
+	}
+}
+
+func TestSendWebhookRejectsHeaderInjection(t *testing.T) {
+	config := domain.Config{}
+	config.Notifications.Webhook.Enabled = true
+	config.Notifications.Webhook.URL = "http://127.0.0.1:1/hooks/test"
+	config.Notifications.Webhook.Method = "POST"
+	config.Notifications.Webhook.Type = "JSON"
+	config.Notifications.Webhook.Headers = "{\"X-Auth\":\"leak\\r\\nX-Injected: 1\"}"
+	err := New().Send(context.Background(), "webhook", domain.NotificationEvent{Title: "t", Summary: "s"}, config)
+	if !errors.Is(err, errInvalidNotifyHeader) {
+		t.Fatalf("webhook header injection err=%v", err)
+	}
+}
+
 func TestSendEmailRejectsMetadataHost(t *testing.T) {
 	config := domain.Config{}
 	config.Notifications.Email.Enabled = true

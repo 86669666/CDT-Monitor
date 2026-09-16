@@ -271,6 +271,30 @@ func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsNotifyHeaderInjection(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Email.To = "ops@example.test\r\nBcc: attacker@evil.test"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "line breaks") {
+		t.Fatalf("email to injection err=%v", err)
+	}
+	config.Notifications.Email.To = "ops@example.test"
+	config.Notifications.Webhook.Headers = "{\"X-Auth\":\"leak\\r\\nX-Injected: 1\"}"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "line breaks") {
+		t.Fatalf("webhook header injection err=%v", err)
+	}
+}
+
 func TestWebhookHeadersStayUntilCleared(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -1355,6 +1355,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account region_id is invalid") {
 		t.Fatalf("region status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification header fields must not contain line breaks"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "line breaks") {
+		t.Fatalf("header injection status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {

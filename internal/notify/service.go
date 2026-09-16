@@ -160,6 +160,7 @@ func notificationSecrets(config domain.Config, extraSecrets ...string) []string 
 var (
 	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
 	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
+	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -202,6 +203,42 @@ func ValidateDialHost(host string) error {
 	}
 	if forbiddenNotifyHost(host) {
 		return errForbiddenNotifyHost
+	}
+	return nil
+}
+
+func containsHeaderBreak(value string) bool {
+	for _, r := range value {
+		if r == '\r' || r == '\n' || r == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateSMTPIdentity(username, to string) error {
+	if containsHeaderBreak(username) || containsHeaderBreak(to) {
+		return errInvalidNotifyHeader
+	}
+	return nil
+}
+
+func ValidateWebhookHeaders(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
+		if containsHeaderBreak(raw) {
+			return errInvalidNotifyHeader
+		}
+		return nil
+	}
+	for key, value := range headers {
+		if containsHeaderBreak(key) || containsHeaderBreak(value) {
+			return errInvalidNotifyHeader
+		}
 	}
 	return nil
 }
@@ -314,6 +351,9 @@ func forbiddenNotifyIP(ip net.IP) bool {
 func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.NotificationEvent) error {
 	if config.Host == "" || config.Port == 0 || config.Username == "" || config.To == "" {
 		return errors.New("SMTP host, port, username and recipient are required")
+	}
+	if err := ValidateSMTPIdentity(config.Username, config.To); err != nil {
+		return err
 	}
 	if err := ValidateDialHost(config.Host); err != nil {
 		return err
@@ -506,6 +546,9 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 		var headers map[string]string
 		if err = json.Unmarshal([]byte(config.Headers), &headers); err != nil {
 			return fmt.Errorf("invalid webhook headers: %w", err)
+		}
+		if err = ValidateWebhookHeaders(config.Headers); err != nil {
+			return err
 		}
 		for key, value := range headers {
 			req.Header.Set(key, value)
