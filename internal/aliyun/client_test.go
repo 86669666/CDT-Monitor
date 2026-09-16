@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -720,6 +721,28 @@ func TestCallRejectsDeeplyNestedJSON(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("deep json must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsWideJSON(t *testing.T) {
+	fields := make([]string, 0, maxAliyunJSONBreadth+1)
+	fields = append(fields, `"Code":"200"`)
+	for i := 0; i < maxAliyunJSONBreadth; i++ {
+		fields = append(fields, `"k`+strconv.Itoa(i)+`":1`)
+	}
+	payload := `{` + strings.Join(fields, ",") + `}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "nesting is too wide") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("wide json must not retry, hits=%d", hits)
 	}
 }
 
