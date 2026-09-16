@@ -6469,3 +6469,68 @@ test('admin passkey delete surfaces the invalid_id envelope', async ({ page }) =
   await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
   expect(deleteCalls).toBe(1)
 })
+
+test('settings email test surfaces the invalid_channel envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_channel', message: 'invalid notification channel' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'invalid notification channel' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
+test('settings telegram test surfaces the invalid_channel envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/telegram', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_channel', message: 'invalid notification channel' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'invalid notification channel' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
+test('settings webhook test surfaces the invalid_channel envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_channel', message: 'invalid notification channel' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'invalid notification channel' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
