@@ -511,6 +511,15 @@ scan_dockerfile() {
   if ! grep -Fq -- '-X main.version=${VERSION}' <<<"$body"; then
     bad "$f: go build must stamp main.version from VERSION"
   fi
+  if ! grep -Eq '^ARG VERSION=dev$' <<<"$body"; then
+    bad "$f: VERSION must default to dev for local builds"
+  fi
+  if ! grep -Eq '^ARG COMMIT=unknown$' <<<"$body"; then
+    bad "$f: COMMIT must default to unknown for local builds"
+  fi
+  if ! grep -Eq '^ARG BUILT_AT=unknown$' <<<"$body"; then
+    bad "$f: BUILT_AT must default to unknown for local builds"
+  fi
   if ! grep -Fq 'mkdir -p /runtime-data' <<<"$body"; then
     bad "$f: builder must mkdir /runtime-data for the empty /data volume"
   fi
