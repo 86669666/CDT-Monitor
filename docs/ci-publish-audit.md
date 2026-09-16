@@ -331,3 +331,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止把宿主机 80/443 映射进 Compose，也禁止 Dockerfile `EXPOSE 80/443`。TLS/HSTS 仍在反向代理，应用只听 8080 / loopback 43210
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T03:45Z` / 2026-09-16 11:45 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e559e5f` 再加 Dockerfile TARGETOS/TARGETARCH 扫描：
+
+- Publish Guard 现要求 `ARG TARGETOS` / `ARG TARGETARCH` 不带默认值，编译用 `GOOS=${TARGETOS} GOARCH=${TARGETARCH}`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

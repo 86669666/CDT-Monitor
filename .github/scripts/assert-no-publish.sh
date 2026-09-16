@@ -443,6 +443,18 @@ scan_dockerfile() {
   if ! grep -Eq 'CGO_ENABLED=0' <<<"$body"; then
     bad "$f: Go build must stay CGO_ENABLED=0"
   fi
+  if ! grep -Eq '^ARG TARGETOS$' <<<"$body"; then
+    bad "$f: TARGETOS must stay an ARG without a default (BuildKit injects it)"
+  fi
+  if ! grep -Eq '^ARG TARGETARCH$' <<<"$body"; then
+    bad "$f: TARGETARCH must stay an ARG without a default (BuildKit injects it)"
+  fi
+  if grep -Eq '^ARG TARGETOS=' <<<"$body" || grep -Eq '^ARG TARGETARCH=' <<<"$body"; then
+    bad "$f: do not default TARGETOS/TARGETARCH; that can ship the wrong GOARCH"
+  fi
+  if ! grep -Fq 'GOOS=${TARGETOS} GOARCH=${TARGETARCH}' <<<"$body"; then
+    bad "$f: go build must use GOOS=\${TARGETOS} GOARCH=\${TARGETARCH}"
+  fi
   if ! grep -Fq './cmd/cdt-monitor' "$f"; then
     bad "$f: Go build target must stay ./cmd/cdt-monitor"
   fi
