@@ -9523,3 +9523,28 @@ test('log clear surfaces the live unauthorized envelope', async ({ page }) => {
   await expect(page.getByText('保留日志')).toBeVisible()
   expect(clearCalls).toBe(1)
 })
+
+test('log clear surfaces the live internal_error envelope', async ({ page }) => {
+  let clearCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    if (route.request().method() === 'DELETE') {
+      clearCalls += 1
+      return route.fulfill({
+        status: 500,
+        json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '保留日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  await page.getByRole('button', { name: '清空' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  await expect(page.getByText('保留日志')).toBeVisible()
+  expect(clearCalls).toBe(1)
+})
