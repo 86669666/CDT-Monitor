@@ -1370,6 +1370,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification port is invalid") {
 		t.Fatalf("port status = %d body = %s", rec.Code, rec.Body.String())
 	}
+	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification option is invalid"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification option is invalid") {
+		t.Fatalf("option status = %d body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func leakedInternalError(body, path string) bool {

@@ -330,6 +330,39 @@ func TestSaveConfigRejectsInvalidNotifyPorts(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsInvalidNotifyOptions(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Webhook.Method = "DELETE"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification option is invalid") {
+		t.Fatalf("method err=%v", err)
+	}
+	config.Notifications.Webhook.Method = "POST"
+	config.Notifications.Email.Security = "none"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification option is invalid") {
+		t.Fatalf("security err=%v", err)
+	}
+	config.Notifications.Email.Security = "starttls"
+	config.Notifications.Telegram.ProxyType = "http"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification option is invalid") {
+		t.Fatalf("proxy type err=%v", err)
+	}
+	config.Notifications.Telegram.ProxyType = "custom"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSaveConfigRejectsNotifyHeaderInjection(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

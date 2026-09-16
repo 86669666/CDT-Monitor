@@ -386,3 +386,13 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现要求 `go build -o /cdt-monitor`，与 scratch `COPY --from=builder /cdt-monitor` 对齐
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T05:54Z` / 2026-09-16 13:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `5270ee6` 再加 Dockerfile no ADD / no USER root 扫描：
+
+- Publish Guard 现禁止 `ADD` 与 `USER root`/`USER 0`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T06:17Z` / 2026-09-16 14:17 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `77354d0` 再加 Compose host namespace 扫描：
+
+- Publish Guard 现禁止 `network_mode: host`、`pid: host`、`ipc: host`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
