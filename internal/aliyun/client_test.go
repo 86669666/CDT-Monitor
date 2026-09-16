@@ -85,6 +85,26 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	}
 }
 
+func TestCallRejectsUnknownExtras(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"Action": "DeleteInstance"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("override action err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": strings.Repeat("i", 65)})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("long instance err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("invalid extras must not call Aliyun, hits=%d", hits)
+	}
+}
+
 func TestCallRejectsUnknownActions(t *testing.T) {
 	hits := 0
 	client := NewClient()

@@ -329,6 +329,27 @@ func allowedAliyunAction(action string) bool {
 	}
 }
 
+func allowedAliyunExtra(key string) bool {
+	switch key {
+	case "RegionId", "InstanceId", "InstanceID", "StoppedMode", "BillingCycle", "Granularity":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateAliyunExtras(extras map[string]string) error {
+	if len(extras) > 8 {
+		return errors.New("aliyun extras are invalid")
+	}
+	for key, value := range extras {
+		if !allowedAliyunExtra(key) || len(value) > 64 {
+			return errors.New("aliyun extras are invalid")
+		}
+	}
+	return nil
+}
+
 func allowedAliyunVersion(version string) bool {
 	switch version {
 	case "2014-05-26", "2017-12-14", "2021-08-13":
@@ -366,6 +387,9 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	}
 	if !allowedAliyunVersion(version) {
 		return nil, errors.New("aliyun version is invalid")
+	}
+	if err := validateAliyunExtras(extras); err != nil {
+		return nil, err
 	}
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
