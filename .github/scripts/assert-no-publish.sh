@@ -464,6 +464,15 @@ scan_dockerfile() {
   if ! grep -Fq -- 'COPY --from=builder /cdt-monitor /cdt-monitor' <<<"$body"; then
     bad "$f: scratch image must copy /cdt-monitor from the builder stage"
   fi
+  if ! grep -Fq 'COPY web/package.json web/package-lock.json ./' <<<"$body"; then
+    bad "$f: frontend deps must copy package-lock.json before npm ci"
+  fi
+  if ! grep -Fq 'COPY go.mod go.sum ./' <<<"$body"; then
+    bad "$f: Go deps must copy go.mod/go.sum before go mod download"
+  fi
+  if ! grep -Fq 'RUN go mod download' <<<"$body"; then
+    bad "$f: builder must run go mod download"
+  fi
   if ! grep -Eq '^FROM scratch$' <<<"$body"; then
     bad "$f: final stage must stay FROM scratch"
   fi
