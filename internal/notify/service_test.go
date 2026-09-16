@@ -244,6 +244,9 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateDialHost("192.168.1.1"); err != nil {
 		t.Fatalf("lan dial host rejected: %v", err)
 	}
+	if err := ValidateDialHost(strings.Repeat("a", maxDialHostRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
+		t.Fatalf("oversized dial host err=%v", err)
+	}
 }
 
 func TestSendRejectsMetadataWebhookURL(t *testing.T) {

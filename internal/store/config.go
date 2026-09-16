@@ -24,6 +24,7 @@ const (
 	maxInstanceIDRunes    = 64
 	maxAccountTrafficGB   = 1000000
 	maxAccounts           = 32
+	maxTimezoneRunes      = 64
 )
 
 var sensitiveSettings = map[string]bool{
@@ -196,6 +197,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 	}
 	if config.Timezone == "" {
 		config.Timezone = "Asia/Shanghai"
+	}
+	if len([]rune(config.Timezone)) > maxTimezoneRunes {
+		return errors.New("invalid timezone")
 	}
 	if _, err := time.LoadLocation(config.Timezone); err != nil {
 		return errors.New("invalid timezone")
