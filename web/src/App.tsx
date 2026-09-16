@@ -293,7 +293,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
       await waitForJob(job.id)
       await onRefresh(true)
       notify(action === 'refresh' ? '实例状态已刷新' : `已发送${action === 'start' ? '开机' : '关机'}指令`, 'success')
-    } catch (error) { notify(error instanceof Error ? error.message : '操作失败', 'error') }
+    } catch (error) { notify(error instanceof Error ? error.message : '任务提交失败', 'error') }
     finally { setBusy((value) => { const next = { ...value }; delete next[account.id]; return next }) }
   }
   const logout = async () => {
@@ -487,7 +487,7 @@ function NotificationSettings({ config, onChange, notify }: { config: Config; on
   const test = async () => {
     setTesting(true)
     try { const job = await api<Job>(`/api/v1/notifications/test/${channel}`, { method: 'POST', body: '{}' }); await waitForJob(job.id); notify('测试通知已送达', 'success') }
-    catch (error) { notify(error instanceof Error ? error.message : '测试失败', 'error') }
+    catch (error) { notify(error instanceof Error ? error.message : '任务提交失败', 'error') }
     finally { setTesting(false) }
   }
   const n = config.notifications
@@ -595,7 +595,7 @@ function LogSettings({ notify, timeZone }: { notify: (message: string, tone?: To
     }
   }, [notify, tab])
   useEffect(() => { void load() }, [load])
-  const clear = async () => { try { await api(`/api/v1/logs?tab=${tab}`, { method: 'DELETE', body: '{}' }); setLogs([]); await load(); notify('日志已清空', 'success') } catch (cause) { notify(cause instanceof Error ? cause.message : '日志清理失败', 'error') } }
+  const clear = async () => { try { await api(`/api/v1/logs?tab=${tab}`, { method: 'DELETE', body: '{}' }); setLogs([]); await load(); notify('日志已清空', 'success') } catch (cause) { notify(cause instanceof Error ? cause.message : '日志操作失败', 'error') } }
   return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<FileClock />} title="运行日志" subtitle="EVENT STREAM" /><div className="log-actions"><Segmented value={tab} options={[['action', '动作'], ['heartbeat', '心跳']]} onChange={(value) => setTab(value as typeof tab)} /><IconButton label="清空" tone="danger" onClick={() => void clear()}><Trash2 /></IconButton></div></div><div className="log-list">{logs.length === 0 && <div className="subtle-empty"><FileClock />暂无日志</div>}{logs.map((log) => <div className="log-row" key={log.id}><i className={`log-dot log-dot--${log.type}`} /><div><p>{log.message}</p><span>{formatDate(log.created_at, timeZone)} · {log.type.toUpperCase()}</span></div></div>)}</div></div>
 }
 
