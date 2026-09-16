@@ -209,7 +209,7 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 			Action string `json:"action"`
 			Source string `json:"source"`
 		}
-		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil {
+		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
 		}
 		if len([]rune(payload.Source)) > maxControlSourceRunes {
@@ -220,7 +220,7 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		var payload struct {
 			Channel string `json:"channel"`
 		}
-		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil {
+		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
 		}
 		config, err := e.store.GetConfig(ctx)
@@ -740,6 +740,18 @@ func RegionName(region string) string {
 }
 
 const maxControlSourceRunes = 32
+
+func decodeJobPayload(raw string, target any) error {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.More() {
+		return errors.New("job payload is invalid")
+	}
+	return nil
+}
 
 func ParseControlPayload(action, source string) string {
 	action = strings.ToLower(strings.TrimSpace(action))
