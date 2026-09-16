@@ -8,6 +8,7 @@ name: Publish Guard
 # Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
 # Do not set continue-on-error or dump toJSON(secrets).
 # Do not add issue_comment, schedule, discussion, or watch triggers.
+# Do not add job services: sidecars or type=gha/registry build cache.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
