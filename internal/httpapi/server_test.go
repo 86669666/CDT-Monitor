@@ -290,6 +290,17 @@ func TestGitHubDialContextRejectsPrivateResolvedIPs(t *testing.T) {
 	}
 }
 
+func TestGitHubDialContextRejectsNonTLSDestinations(t *testing.T) {
+	_, err := githubDialContext(context.Background(), "udp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "80"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("port 80 dial err=%v", err)
+	}
+}
+
 func TestAllowRateExpiresStaleWindows(t *testing.T) {
 	server := &Server{limits: make(map[string]*rateWindow)}
 	if !server.allowRate("login:1.1.1.1", 1, time.Hour) {
