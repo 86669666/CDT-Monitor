@@ -108,12 +108,13 @@ func TestSanitizeNotificationErrorRedactsWebhookURLAndSecret(t *testing.T) {
 	config := domain.Config{}
 	config.Notifications.Webhook.URL = "http://127.0.0.1:1/hooks/super-webhook-secret"
 	config.Notifications.Webhook.Secret = "ding-secret-value"
-	err := sanitizeNotificationError(errors.New(`Post "http://127.0.0.1:1/hooks/super-webhook-secret?sign=ding-secret-value": connection refused`), config)
+	config.Notifications.Webhook.Body = `{"access_token":"body-token-value"}`
+	err := sanitizeNotificationError(errors.New(`Post "http://127.0.0.1:1/hooks/super-webhook-secret?sign=ding-secret-value" body={"access_token":"body-token-value"}: connection refused`), config)
 	if err == nil {
 		t.Fatal("expected redacted error")
 	}
 	msg := err.Error()
-	if strings.Contains(msg, "super-webhook-secret") || strings.Contains(msg, "ding-secret-value") {
+	if strings.Contains(msg, "super-webhook-secret") || strings.Contains(msg, "ding-secret-value") || strings.Contains(msg, "body-token-value") {
 		t.Fatalf("webhook secret leaked: %q", msg)
 	}
 	if !strings.Contains(msg, "[redacted]") {

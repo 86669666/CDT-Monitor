@@ -68,12 +68,13 @@ type WebhookConfig struct {
 	Method            string `json:"method"`
 	Type              string `json:"request_type"`
 	Headers           string `json:"headers,omitempty"`
-	Body              string `json:"body"`
+	Body              string `json:"body,omitempty"`
 	Provider          string `json:"provider,omitempty"`
 	Secret            string `json:"secret,omitempty"`
 	SecretConfigured  bool   `json:"secret_configured"`
 	HeadersConfigured bool   `json:"headers_configured"`
 	URLConfigured     bool   `json:"url_configured"`
+	BodyConfigured    bool   `json:"body_configured"`
 }
 
 type NotificationConfig struct {

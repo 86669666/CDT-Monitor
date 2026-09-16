@@ -23,6 +23,7 @@ var sensitiveSettings = map[string]bool{
 	"notify_wh_headers":    true,
 	"notify_wh_secret":     true,
 	"notify_wh_url":        true,
+	"notify_wh_body":       true,
 	"notify_tg_proxy_url":  true,
 }
 
@@ -132,6 +133,7 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				SecretConfigured:  settings["notify_wh_secret"] != "",
 				HeadersConfigured: settings["notify_wh_headers"] != "",
 				URLConfigured:     settings["notify_wh_url"] != "",
+				BodyConfigured:    settings["notify_wh_body"] != "",
 			},
 		},
 	}
@@ -229,7 +231,6 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_wh_enabled":      strconv.FormatBool(config.Notifications.Webhook.Enabled),
 			"notify_wh_method":       config.Notifications.Webhook.Method,
 			"notify_wh_request_type": config.Notifications.Webhook.Type,
-			"notify_wh_body":         config.Notifications.Webhook.Body,
 			"notify_wh_provider":     config.Notifications.Webhook.Provider,
 		}
 		for key, value := range values {
@@ -249,6 +250,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			}
 		}
 		if err := s.saveSensitiveSetting(ctx, tx, "notify_wh_url", config.Notifications.Webhook.URL); err != nil {
+			return err
+		}
+		if err := s.saveSensitiveSetting(ctx, tx, "notify_wh_body", config.Notifications.Webhook.Body); err != nil {
 			return err
 		}
 		if err := s.saveSensitiveSetting(ctx, tx, "notify_tg_proxy_url", config.Notifications.Telegram.ProxyURL); err != nil {

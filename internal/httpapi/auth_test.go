@@ -279,6 +279,85 @@ func TestWebhookURLIsScrubbedOnConfigGET(t *testing.T) {
 	}
 }
 
+func TestWebhookBodyIsScrubbedOnConfigGET(t *testing.T) {
+	st := initializedAuthStore(t)
+	ctx := t.Context()
+	config, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := `{"msgtype":"text","text":{"content":"token=body-token-value"}}`
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Webhook.Body = template
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get config status = %d body = %s", got.Code, got.Body.String())
+	}
+	body := got.Body.String()
+	if strings.Contains(body, template) || strings.Contains(body, "body-token-value") {
+		t.Fatalf("GET config leaked webhook body: %s", body)
+	}
+	if strings.Contains(body, "enc:v1:") || strings.Contains(body, "enc:v2:") {
+		t.Fatalf("GET config leaked ciphertext: %s", body)
+	}
+	var gotConfig domain.Config
+	if err = json.Unmarshal(got.Body.Bytes(), &gotConfig); err != nil {
+		t.Fatal(err)
+	}
+	if !gotConfig.Notifications.Webhook.BodyConfigured || gotConfig.Notifications.Webhook.Body != "" {
+		t.Fatalf("body_configured flags = %#v", gotConfig.Notifications.Webhook)
+	}
+	raw, err := json.Marshal(gotConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if kept.Code != http.StatusOK {
+		t.Fatalf("scrubbed save status = %d body = %s", kept.Code, kept.Body.String())
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil || loaded.Notifications.Webhook.Body != template {
+		t.Fatalf("empty scrubbed PUT must keep webhook body: %#v err=%v", loaded.Notifications.Webhook, err)
+	}
+	gotConfig.Notifications.Webhook.Body = domain.ClearSecretSentinel
+	raw, err = json.Marshal(gotConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if cleared.Code != http.StatusOK {
+		t.Fatalf("clear save status = %d body = %s", cleared.Code, cleared.Body.String())
+	}
+	reload := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", cookies, nil)
+	if reload.Code != http.StatusOK {
+		t.Fatalf("reload status = %d body = %s", reload.Code, reload.Body.String())
+	}
+	var clearedConfig domain.Config
+	if err = json.Unmarshal(reload.Body.Bytes(), &clearedConfig); err != nil {
+		t.Fatal(err)
+	}
+	if clearedConfig.Notifications.Webhook.BodyConfigured || clearedConfig.Notifications.Webhook.Body != "" {
+		t.Fatalf("cleared body flags = %#v", clearedConfig.Notifications.Webhook)
+	}
+	if strings.Contains(reload.Body.String(), "body-token-value") || strings.Contains(reload.Body.String(), domain.ClearSecretSentinel) {
+		t.Fatalf("cleared config leaked body material: %s", reload.Body.String())
+	}
+	var stored string
+	if err = st.DB().QueryRow(`SELECT value FROM settings WHERE key='notify_wh_body'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "" {
+		t.Fatalf("store still has webhook body: %q", stored)
+	}
+}
+
 func TestTelegramProxyURLIsScrubbedOnConfigGET(t *testing.T) {
 	st := initializedAuthStore(t)
 	ctx := t.Context()

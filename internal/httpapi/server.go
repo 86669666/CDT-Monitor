@@ -1088,6 +1088,7 @@ func scrubConfig(config *domain.Config) {
 	config.Notifications.Webhook.Headers = ""
 	config.Notifications.Webhook.Secret = ""
 	config.Notifications.Webhook.URL = ""
+	config.Notifications.Webhook.Body = ""
 	for index := range config.Accounts {
 		config.Accounts[index].AccessKeySecret = ""
 	}
