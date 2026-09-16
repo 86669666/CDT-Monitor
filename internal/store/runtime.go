@@ -308,10 +308,39 @@ func (s *Store) DeleteActionEvent(ctx context.Context, key string) error {
 	return err
 }
 
+const (
+	maxOutboxPayloadRunes = 8192
+	maxOutboxEventIDRunes = 64
+	maxOutboxChannels     = 3
+)
+
+func validOutboxChannel(channel string) bool {
+	switch channel {
+	case "email", "telegram", "webhook":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, channels []string) error {
+	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
+		return errors.New("notification event id is invalid")
+	}
+	if len(channels) > maxOutboxChannels {
+		return errors.New("too many notification channels")
+	}
+	for _, channel := range channels {
+		if !validOutboxChannel(channel) {
+			return errors.New("notification channel is invalid")
+		}
+	}
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return err
+	}
+	if len(payload) > maxOutboxPayloadRunes {
+		return errors.New("notification payload is too long")
 	}
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
 		for _, channel := range channels {

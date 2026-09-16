@@ -2025,6 +2025,30 @@ func TestTwoStoresCannotClaimTheSameJob(t *testing.T) {
 	}
 }
 
+func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
+	if err = st.AddOutbox(ctx, event, []string{"sms"}); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
+		t.Fatalf("channel err=%v", err)
+	}
+	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("empty id err=%v", err)
+	}
+	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "payload is too long") {
+		t.Fatalf("payload err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRow(`SELECT COUNT(*) FROM notification_outbox`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("rejected outbox count = %d err=%v", count, err)
+	}
+}
+
 func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
