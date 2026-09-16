@@ -604,6 +604,10 @@ func TestSOCKSTransportDialContextRejectsMetadataDestination(t *testing.T) {
 	if !errors.Is(err, errForbiddenNotifyHost) {
 		t.Fatalf("hostname dest err=%v", err)
 	}
+	_, err = dial(context.Background(), "udp", net.JoinHostPort("proxy.example.test", "443"))
+	if !errors.Is(err, errForbiddenNotifyHost) {
+		t.Fatalf("udp dest err=%v", err)
+	}
 }
 
 func TestSendWebhookRejectsDNSRebindingToMetadata(t *testing.T) {

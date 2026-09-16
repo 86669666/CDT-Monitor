@@ -434,6 +434,11 @@ func (notifyContextDialer) DialContext(ctx context.Context, network, address str
 
 func socksTransportDialContext(dialer proxy.Dialer) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		switch network {
+		case "tcp", "tcp4", "tcp6":
+		default:
+			return nil, errForbiddenNotifyHost
+		}
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
 			return nil, err
