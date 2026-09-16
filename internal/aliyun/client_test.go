@@ -703,6 +703,25 @@ func TestCallStopsAfterMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestCallClipsAliyunErrorMessages(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"InvalidParameter","Message":"` + strings.Repeat("m", maxAliyunErrorRunes+40) + `"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "...") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := []rune(err.Error()); len(got) > maxAliyunErrorRunes+80 {
+		t.Fatalf("error too long: %d", len(got))
+	}
+}
+
 func TestCallTruncatesNonJSONErrorBodies(t *testing.T) {
 	client := NewClient()
 	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

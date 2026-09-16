@@ -572,7 +572,7 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
 	}
 	if code := stringValue(result["Code"]); code != "" && !isSuccessCode(code) {
-		return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, stringValue(result["Message"]))
+		return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, clipAliyunErrorText(stringValue(result["Message"])))
 	}
 	return result, false, nil
 }
@@ -586,15 +586,22 @@ func isSuccessCode(code string) bool {
 	}
 }
 
-func compactMessage(result map[string]any, raw []byte) string {
-	if message := stringValue(result["Message"]); message != "" {
-		return message
-	}
-	text := strings.TrimSpace(string(raw))
-	if len(text) > 240 {
-		return text[:240] + "..."
+const maxAliyunErrorRunes = 240
+
+func clipAliyunErrorText(text string) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) > maxAliyunErrorRunes {
+		return string(runes[:maxAliyunErrorRunes]) + "..."
 	}
 	return text
+}
+
+func compactMessage(result map[string]any, raw []byte) string {
+	if message := stringValue(result["Message"]); message != "" {
+		return clipAliyunErrorText(message)
+	}
+	return clipAliyunErrorText(string(raw))
 }
 
 func sign(values map[string]string, secret string) string {
