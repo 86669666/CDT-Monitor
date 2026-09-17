@@ -1077,6 +1077,12 @@ scan_compose() {
   if grep -Eq 'cgroup:[[:space:]]*host|cgroupns:[[:space:]]*host|cgroupns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: host cgroup namespace is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+cgroup_parent:' <<<"$body"; then
+    bad "$f: cgroup_parent is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]*deploy:' <<<"$body"; then
+    bad "$f: Compose deploy: is forbidden; keep the local-only service"
+  fi
   if grep -Eq 'userns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: userns_mode: host is forbidden"
   fi

@@ -671,3 +671,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `repository:` 覆盖（含 gated auto-release）。只克隆本 fork
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-17T00:22Z` / 2026-09-17 08:22 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `f089d11` 再加 Compose deploy/cgroup_parent 扫描：
+
+- Publish Guard 现禁止 Compose `deploy:` 和 `cgroup_parent:`。不要用 Swarm 发布面或挂到宿主机 cgroup
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
