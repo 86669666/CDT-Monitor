@@ -95,6 +95,20 @@ func TestEnqueueRejectsNonPositiveAccountID(t *testing.T) {
 	}
 }
 
+func TestRunJobRejectsNonPositiveAccountID(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(context.Background(), domain.Job{Type: JobRefreshAccount, AccountID: 0, Payload: `{}`})
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("provider calls=%#v", got)
+	}
+}
+
 func TestProcessJobsUnknownTypeRequeues(t *testing.T) {
 	st, _ := setupAccount(t, nil)
 	defer st.Close()

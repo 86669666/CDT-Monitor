@@ -203,6 +203,12 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
 	defer cancel()
 	switch job.Type {
+	case JobMonitorAccount, JobRefreshAccount, JobControlInstance:
+		if job.AccountID < 1 {
+			return "", errors.New("account id is invalid")
+		}
+	}
+	switch job.Type {
 	case JobMonitorAccount:
 		return e.processAccount(ctx, job.AccountID, false)
 	case JobRefreshAccount:
