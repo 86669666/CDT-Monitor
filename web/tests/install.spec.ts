@@ -10438,3 +10438,26 @@ test('instance refresh surfaces the live job internal_error envelope', async ({ 
   await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
   expect(refreshCalls).toBe(1)
 })
+
+test('dashboard status poll surfaces the live unauthorized envelope', async ({ page }) => {
+  await page.clock.install()
+  let failPoll = false
+  let pollCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failPoll) return route.fulfill({ json: dashboardStatus })
+    pollCalls += 1
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  failPoll = true
+  await page.clock.fastForward(31_000)
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(pollCalls).toBeGreaterThan(0)
+})
