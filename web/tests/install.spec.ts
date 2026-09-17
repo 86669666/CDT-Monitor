@@ -10238,3 +10238,25 @@ test('settings webhook test surfaces the live forbidden envelope', async ({ page
   await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings webhook test surfaces the live not_found envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
