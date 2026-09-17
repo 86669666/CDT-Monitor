@@ -227,6 +227,8 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if len([]rune(job.Payload)) > maxJobPayloadRunes {
 		return domain.Job{}, errors.New("job payload is too long")
 	}
+	job.Result = clipRunes(job.Result, maxLogRunes)
+	job.Error = clipRunes(job.Error, maxLogRunes)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
 	return job, nil
 }
@@ -364,6 +366,9 @@ func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int
 }
 
 func (s *Store) DeleteActionEvent(ctx context.Context, key string) error {
+	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
+		return errors.New("action event key is invalid")
+	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM action_events WHERE event_key=?`, key)
 	return err
 }

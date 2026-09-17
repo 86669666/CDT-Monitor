@@ -1353,6 +1353,21 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	}
 }
 
+func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.DeleteActionEvent(ctx, ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("empty key err=%v", err)
+	}
+	if err = st.DeleteActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1)); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("long key err=%v", err)
+	}
+}
+
 func TestActionEventCanBeReleasedAfterFailure(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1468,6 +1483,29 @@ func TestGetJobRejectsOversizedPayload(t *testing.T) {
 	_, err = st.GetJob(ctx, id)
 	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestGetJobClipsOversizedResultAndError(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-oversized-result"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,result,error,max_attempts,available_at,created_at,updated_at) VALUES(?,?,1,'{}','failed',?,?,3,unixepoch(),unixepoch(),unixepoch())`, id, "refresh_account", strings.Repeat("r", maxLogRunes+8), strings.Repeat("e", maxLogRunes+8)); err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.GetJob(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []rune(job.Result); len(got) != maxLogRunes {
+		t.Fatalf("result len=%d", len(got))
+	}
+	if got := []rune(job.Error); len(got) != maxLogRunes {
+		t.Fatalf("error len=%d", len(got))
 	}
 }
 
