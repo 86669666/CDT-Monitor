@@ -10485,3 +10485,27 @@ test('dashboard status poll keeps the console on the live forbidden envelope', a
   await expect(page.locator('.toast--error')).toHaveCount(0)
   expect(pollCalls).toBeGreaterThan(0)
 })
+
+test('dashboard status poll keeps the console on the live not_found envelope', async ({ page }) => {
+  await page.clock.install()
+  let failPoll = false
+  let pollCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failPoll) return route.fulfill({ json: dashboardStatus })
+    pollCalls += 1
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  failPoll = true
+  await page.clock.fastForward(31_000)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.locator('.toast--error')).toHaveCount(0)
+  expect(pollCalls).toBeGreaterThan(0)
+})
