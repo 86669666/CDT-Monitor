@@ -641,6 +641,9 @@ func (s *Store) UpdateRuntime(ctx context.Context, id int64, traffic float64, st
 }
 
 func (s *Store) UpdateKeepAliveAt(ctx context.Context, id int64, at time.Time) error {
+	if !validAccountID(id) {
+		return sql.ErrNoRows
+	}
 	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET last_keep_alive_at=? WHERE id=?`, at.Unix(), id)
 	return err
 }

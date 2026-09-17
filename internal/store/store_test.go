@@ -464,6 +464,9 @@ func TestAccountWritesRejectNonPositiveID(t *testing.T) {
 	if _, err = st.RecordActionEvent(ctx, "threshold:1:active", 0, "threshold", "detected", ""); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("action event err=%v", err)
 	}
+	if err = st.UpdateKeepAliveAt(ctx, 0, time.Now().UTC()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("keepalive err=%v", err)
+	}
 }
 
 func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
