@@ -10461,3 +10461,27 @@ test('dashboard status poll surfaces the live unauthorized envelope', async ({ p
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   expect(pollCalls).toBeGreaterThan(0)
 })
+
+test('dashboard status poll keeps the console on the live forbidden envelope', async ({ page }) => {
+  await page.clock.install()
+  let failPoll = false
+  let pollCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failPoll) return route.fulfill({ json: dashboardStatus })
+    pollCalls += 1
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  failPoll = true
+  await page.clock.fastForward(31_000)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.locator('.toast--error')).toHaveCount(0)
+  expect(pollCalls).toBeGreaterThan(0)
+})
