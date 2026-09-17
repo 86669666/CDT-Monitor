@@ -666,3 +666,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 Compose healthcheck `test` / `interval` / `timeout` / `retries` / `start_period`。不要加 `start_interval` 或关掉检查
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-17T00:07Z` / 2026-09-17 08:07 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `252357f` 再加 checkout repository 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `repository:` 覆盖（含 gated auto-release）。只克隆本 fork
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
