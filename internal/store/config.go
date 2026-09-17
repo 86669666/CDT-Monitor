@@ -352,6 +352,9 @@ func hashPassword(password string) (string, error) {
 }
 
 func putSettingTx(ctx context.Context, tx *sql.Tx, key, value string) error {
+	if key == "" || len([]rune(key)) > maxSettingKeyRunes || len(value) > maxSettingValueBytes {
+		return errors.New("setting is too large")
+	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
 	return err
 }
