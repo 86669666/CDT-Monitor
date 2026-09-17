@@ -816,7 +816,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg extra_cap
+  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg extra_cap extra_hc
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -956,6 +956,14 @@ scan_compose() {
   fi
   if grep -Eq 'disable:[[:space:]]*true' <<<"$body"; then
     bad "$f: healthcheck disable is forbidden"
+  fi
+  extra_hc="$(awk '
+    $0 ~ /^    healthcheck:[[:space:]]*$/ { in_h=1; next }
+    in_h && $0 ~ /^    [A-Za-z]/ { in_h=0 }
+    in_h && $0 ~ /^      [A-Za-z0-9_-]+:/ { print }
+  ' <<<"$body" | grep -Ev '^      (test|interval|timeout|retries|start_period):' || true)"
+  if [ -n "$extra_hc" ]; then
+    bad "$f: extra healthcheck keys are forbidden; keep test/interval/timeout/retries/start_period"
   fi
   if ! grep -Eq 'max-size:[[:space:]]*"10m"' <<<"$body"; then
     bad "$f: json-file logs must stay max-size 10m"
