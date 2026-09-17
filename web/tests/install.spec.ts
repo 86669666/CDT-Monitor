@@ -10301,3 +10301,22 @@ test('logout surfaces the live unauthorized envelope', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   expect(logoutCalls).toBe(1)
 })
+
+test('logout surfaces the live forbidden envelope', async ({ page }) => {
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+})
