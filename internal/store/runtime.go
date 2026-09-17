@@ -318,6 +318,9 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 	if err != nil {
 		return false, err
 	}
+	if len([]rune(current)) > maxLeaseOwnerRunes {
+		return false, errors.New("lease identity is invalid")
+	}
 	return current == owner && expires >= now.Unix(), nil
 }
 

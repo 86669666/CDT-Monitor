@@ -1271,6 +1271,23 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	}
 }
 
+func TestAcquireLeaseRejectsOversizedStoredOwner(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour).Unix()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO scheduler_leases(name,owner,expires_at,updated_at) VALUES('monitor',?,?,?)`, strings.Repeat("o", maxLeaseOwnerRunes+1), expires, time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.AcquireLease(ctx, "monitor", "owner-b", time.Minute)
+	if err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
