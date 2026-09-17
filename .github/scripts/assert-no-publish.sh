@@ -1143,6 +1143,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+env_file:' <<<"$body"; then
     bad "$f: env_file is forbidden; do not load host .env secrets into the container"
   fi
+  if grep -Eq '^[[:space:]]*secrets:' <<<"$body"; then
+    bad "$f: Compose secrets: is forbidden; do not inject secret files"
+  fi
+  if grep -Eq '^[[:space:]]*configs:' <<<"$body"; then
+    bad "$f: Compose configs: is forbidden; do not inject config files"
+  fi
   if grep -Eq '^[[:space:]]+command:' <<<"$body"; then
     bad "$f: command: overrides are forbidden; keep the image ENTRYPOINT/CMD"
   fi

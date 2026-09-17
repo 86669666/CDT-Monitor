@@ -681,3 +681,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `github-server-url:`（含 gated auto-release）。只从 github.com 克隆。`path:` 仍不扫，避免误伤 artifact `path:`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-17T00:46Z` / 2026-09-17 08:46 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `e70dd0a` 再加 Compose secrets/configs 扫描：
+
+- Publish Guard 现禁止 Compose `secrets:` 和 `configs:`。不要往容器里挂密钥文件或 config 文件
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
