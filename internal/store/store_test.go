@@ -444,6 +444,28 @@ func TestAccountLookupsRejectNonPositiveID(t *testing.T) {
 	}
 }
 
+func TestAccountWritesRejectNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.AddTrafficStats(ctx, 0, 1, time.Now().UTC()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("traffic err=%v", err)
+	}
+	if err = st.SetBillingCache(ctx, 0, "balance", "", map[string]float64{"amount": 1}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("set billing err=%v", err)
+	}
+	ok, err := st.BillingCache(ctx, 0, "balance", "", time.Hour, &map[string]any{})
+	if ok || !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("get billing ok=%v err=%v", ok, err)
+	}
+	if _, err = st.RecordActionEvent(ctx, "threshold:1:active", 0, "threshold", "detected", ""); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("action event err=%v", err)
+	}
+}
+
 func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

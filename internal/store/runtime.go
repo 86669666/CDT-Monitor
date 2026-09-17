@@ -102,6 +102,9 @@ func validInstanceStatus(status string) bool {
 }
 
 func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic float64, now time.Time) error {
+	if !validAccountID(accountID) {
+		return sql.ErrNoRows
+	}
 	if !validTrafficSample(traffic) {
 		return errors.New("traffic sample is invalid")
 	}
@@ -353,6 +356,9 @@ func validActionEventStatus(status string) bool {
 }
 
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {
+	if !validAccountID(accountID) {
+		return false, sql.ErrNoRows
+	}
 	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
 		return false, errors.New("action event key is invalid")
 	}
@@ -554,6 +560,9 @@ func validBillingCycle(cycle string) bool {
 }
 
 func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cycle string, maxAge time.Duration, target any) (bool, error) {
+	if !validAccountID(accountID) {
+		return false, sql.ErrNoRows
+	}
 	if !validBillingCacheType(cacheType) || !validBillingCycle(cycle) {
 		return false, errors.New("billing cache key is invalid")
 	}
@@ -573,6 +582,9 @@ func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cy
 }
 
 func (s *Store) SetBillingCache(ctx context.Context, accountID int64, cacheType, cycle string, value any) error {
+	if !validAccountID(accountID) {
+		return sql.ErrNoRows
+	}
 	if !validBillingCacheType(cacheType) || !validBillingCycle(cycle) {
 		return errors.New("billing cache key is invalid")
 	}
