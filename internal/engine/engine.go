@@ -77,6 +77,9 @@ func (e *Engine) Enqueue(ctx context.Context, jobType string, accountID int64, p
 	if !allowedJobType(jobType) {
 		return domain.Job{}, fmt.Errorf("unknown job type %q", jobType)
 	}
+	if jobType != JobTestNotify && accountID < 1 {
+		return domain.Job{}, errors.New("account id is invalid")
+	}
 	job, err := e.store.EnqueueJob(ctx, jobType, accountID, payload, uniqueKey, 3)
 	if err == nil {
 		e.signal()
@@ -199,6 +202,12 @@ func (e *Engine) runJobGuarded(ctx context.Context, job domain.Job) (result stri
 func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
 	defer cancel()
+	switch job.Type {
+	case JobMonitorAccount, JobRefreshAccount, JobControlInstance:
+		if job.AccountID < 1 {
+			return "", errors.New("account id is invalid")
+		}
+	}
 	switch job.Type {
 	case JobMonitorAccount:
 		return e.processAccount(ctx, job.AccountID, false)
