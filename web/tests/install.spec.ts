@@ -10663,3 +10663,29 @@ test('login surfaces the live status unauthorized envelope when dashboard load f
   await expect(page.locator('.inline-error')).toContainText('请登录或提供有效 API Key')
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
+
+test('login surfaces the live status forbidden envelope when dashboard load fails', async ({ page }) => {
+  await mockInitStatus(page, true)
+  let authed = false
+  await page.route('**/api/v1/auth/login', async (route) => {
+    authed = true
+    await route.fulfill({ json: { success: true, csrf_token: 'test-csrf' } })
+  })
+  await page.route('**/api/v1/status', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+    })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (!authed) return route.fulfill({ status: 401, json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } } })
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('管理员密码').fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '安全登录' }).click()
+  await expect(page.locator('.inline-error')).toContainText('API Key 权限不足')
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+})
