@@ -40,7 +40,11 @@ type Engine struct {
 	accountLocks sync.Map
 }
 
-var ErrMonitorBusy = errors.New("monitor scheduler lease is held by another process")
+var (
+	ErrMonitorBusy   = errors.New("monitor scheduler lease is held by another process")
+	errJobPanic      = errors.New("job panicked")
+	errProviderPanic = errors.New("aliyun provider panicked")
+)
 
 func New(st *store.Store, provider aliyun.Provider, notifier *notify.Service, logger *slog.Logger, workers int) *Engine {
 	if workers < 1 {
@@ -60,7 +64,22 @@ func (e *Engine) Start(ctx context.Context) {
 	})
 }
 
+func allowedJobType(jobType string) bool {
+	switch jobType {
+	case JobMonitorAccount, JobRefreshAccount, JobControlInstance, JobTestNotify:
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *Engine) Enqueue(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string) (domain.Job, error) {
+	if !allowedJobType(jobType) {
+		return domain.Job{}, fmt.Errorf("unknown job type %q", jobType)
+	}
+	if jobType != JobTestNotify && accountID < 1 {
+		return domain.Job{}, errors.New("account id is invalid")
+	}
 	job, err := e.store.EnqueueJob(ctx, jobType, accountID, payload, uniqueKey, 3)
 	if err == nil {
 		e.signal()
@@ -140,29 +159,55 @@ func (e *Engine) worker(ctx context.Context, index int) {
 		case <-e.wake:
 		case <-ticker.C:
 		}
-		for {
-			job, err := e.store.ClaimJob(ctx)
-			if errors.Is(err, sql.ErrNoRows) {
-				break
-			}
-			if err != nil {
-				e.logger.Error("claim job", "worker", index, "error", err)
-				break
-			}
-			result, runErr := e.runJob(ctx, job)
-			if runErr != nil {
-				e.logger.Warn("job failed", "job_id", job.ID, "type", job.Type, "error", runErr)
-				_ = e.store.FailJob(ctx, job, runErr)
-				continue
-			}
-			_ = e.store.CompleteJob(ctx, job.ID, result)
-		}
+		e.processJobs(ctx, index)
 	}
+}
+
+func (e *Engine) RunQueuedJobs(ctx context.Context) {
+	e.processJobs(ctx, 0)
+}
+
+func (e *Engine) processJobs(ctx context.Context, index int) {
+	for {
+		job, err := e.store.ClaimJob(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return
+		}
+		if err != nil {
+			e.logger.Error("claim job", "worker", index, "error", err)
+			return
+		}
+		result, runErr := e.runJobGuarded(ctx, job)
+		if runErr != nil {
+			runErr = e.persistRedactedErr(ctx, runErr)
+			e.logger.Warn("job failed", "job_id", job.ID, "type", job.Type, "error", runErr)
+			_ = e.store.FailJob(ctx, job, runErr)
+			continue
+		}
+		_ = e.store.CompleteJob(ctx, job.ID, e.persistRedacted(ctx, result))
+	}
+}
+
+func (e *Engine) runJobGuarded(ctx context.Context, job domain.Job) (result string, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			e.logger.Error("job panic", "job_id", job.ID, "type", job.Type)
+			result = ""
+			err = errJobPanic
+		}
+	}()
+	return e.runJob(ctx, job)
 }
 
 func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
 	defer cancel()
+	switch job.Type {
+	case JobMonitorAccount, JobRefreshAccount, JobControlInstance:
+		if job.AccountID < 1 {
+			return "", errors.New("account id is invalid")
+		}
+	}
 	switch job.Type {
 	case JobMonitorAccount:
 		return e.processAccount(ctx, job.AccountID, false)
@@ -173,16 +218,28 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 			Action string `json:"action"`
 			Source string `json:"source"`
 		}
-		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil {
+		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
+		}
+		payload.Action = strings.ToLower(strings.TrimSpace(payload.Action))
+		payload.Source = strings.TrimSpace(payload.Source)
+		if payload.Action != "start" && payload.Action != "stop" {
+			return "", errors.New("action must be start or stop")
+		}
+		if len([]rune(payload.Source)) > maxControlSourceRunes {
+			return "", errors.New("control source is too long")
 		}
 		return e.control(ctx, job.AccountID, payload.Action, payload.Source)
 	case JobTestNotify:
 		var payload struct {
 			Channel string `json:"channel"`
 		}
-		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil {
+		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
+		}
+		payload.Channel = strings.ToLower(strings.TrimSpace(payload.Channel))
+		if !allowedNotifyChannel(payload.Channel) {
+			return "", fmt.Errorf("unsupported notification channel %q", payload.Channel)
 		}
 		config, err := e.store.GetConfig(ctx)
 		if err != nil {
@@ -250,26 +307,41 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	}
 	due := force || account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) >= interval || now.Minute() == 0 || statusChangedBySchedule
 	traffic, status := account.TrafficUsed, account.InstanceStatus
+	var trafficErr, statusErr error
 	if due {
-		var trafficErr, statusErr error
 		var wait sync.WaitGroup
 		wait.Add(2)
 		go func() {
 			defer wait.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					e.logger.Error("traffic fetch panic", "account_id", accountID)
+					trafficErr = errProviderPanic
+				}
+			}()
 			traffic, trafficErr = e.provider.GetTraffic(ctx, account, secret)
 		}()
 		go func() {
 			defer wait.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					e.logger.Error("status fetch panic", "account_id", accountID)
+					statusErr = errProviderPanic
+				}
+			}()
 			status, statusErr = e.provider.GetInstanceStatus(ctx, account, secret)
 		}()
 		wait.Wait()
 		if trafficErr != nil {
 			traffic = account.TrafficUsed
-			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %v", masked(account.AccessKeyID), trafficErr))
+			_ = e.addLog(ctx, "error", fmt.Sprintf("流量查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(trafficErr, account.AccessKeyID, secret)))
 		}
 		if statusErr != nil || status == "" {
+			if statusErr == nil {
+				statusErr = errors.New("empty instance status")
+			}
 			status = account.InstanceStatus
-			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %v", masked(account.AccessKeyID), statusErr))
+			_ = e.addLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(statusErr, account.AccessKeyID, secret)))
 		}
 		updatedAt := time.Now().UTC()
 		if trafficErr != nil && statusErr != nil {
@@ -293,34 +365,41 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	percentage := usagePercent(traffic, account.MaxTraffic)
 	overThreshold := percentage >= float64(config.TrafficThreshold)
 	thresholdKey := fmt.Sprintf("threshold:%d:active", account.ID)
-	if !overThreshold {
+	thresholdStopKey := fmt.Sprintf("threshold:%d:stop", account.ID)
+	if !overThreshold && trafficErr == nil {
 		_ = e.store.DeleteActionEvent(ctx, thresholdKey)
+		_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
 	}
-	if overThreshold && due {
-		key := thresholdKey
-		recorded, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "threshold", "detected", fmt.Sprintf("%.2f%%", percentage))
-		if recordErr != nil {
-			return "", recordErr
-		}
-		if recorded {
-			if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && status != domain.StatusStopping {
+	if overThreshold && due && trafficErr == nil {
+		if config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && !inFlight(status) {
+			freshStop, recordErr := e.store.RecordActionEvent(ctx, thresholdStopKey, account.ID, "threshold_stop", "attempting", fmt.Sprintf("%.2f%%", percentage))
+			if recordErr != nil {
+				return "", recordErr
+			}
+			if freshStop {
 				if err = e.provider.ControlInstance(ctx, account, secret, "stop", config.ShutdownMode); err != nil {
-					_ = e.store.DeleteActionEvent(ctx, key)
-					return "", err
+					_ = e.store.DeleteActionEvent(ctx, thresholdStopKey)
+					return "", providerError(err, account.AccessKeyID, secret)
 				}
 				status = domain.StatusStopping
 				_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
 				actions = append(actions, "threshold_stop")
 			}
+		}
+		recorded, recordErr := e.store.RecordActionEvent(ctx, thresholdKey, account.ID, "threshold", "detected", fmt.Sprintf("%.2f%%", percentage))
+		if recordErr != nil {
+			return "", recordErr
+		}
+		if recorded {
 			event := newEvent("threshold", "流量阈值告警", fmt.Sprintf("账号 %s 的流量使用率达到 %.2f%%。", masked(account.AccessKeyID), percentage), account.ID, map[string]string{
 				"当前流量": fmt.Sprintf("%.2f GB", traffic), "设定阈值": fmt.Sprintf("%d%%", config.TrafficThreshold), "实例状态": status,
 			})
 			_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
-			_ = e.store.AddLog(ctx, "warning", event.Summary)
+			_ = e.addLog(ctx, "warning", event.Summary)
 		}
 	}
 
-	if config.KeepAlive && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
+	if config.KeepAlive && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && statusErr == nil && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
 		key := fmt.Sprintf("keepalive:%d:%s", account.ID, now.Format("200601021504"))
 		fresh, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "keepalive", "attempting", "")
 		if recordErr != nil {
@@ -329,7 +408,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		if fresh {
 			if err = e.provider.ControlInstance(ctx, account, secret, "start", config.ShutdownMode); err != nil {
 				_ = e.store.DeleteActionEvent(ctx, key)
-				return "", err
+				return "", providerError(err, account.AccessKeyID, secret)
 			}
 			status = domain.StatusStarting
 			_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
@@ -350,7 +429,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 		if force || now.Hour()%6 == 0 || !balanceCached || !billCached {
 			if billingErr := e.refreshBilling(ctx, account, secret, now); billingErr != nil {
-				_ = e.store.AddLog(ctx, "error", fmt.Sprintf("账单查询失败 [%s]: %v", masked(account.AccessKeyID), billingErr))
+				_ = e.addLog(ctx, "error", fmt.Sprintf("账单查询失败 [%s]: %s", masked(account.AccessKeyID), sanitizeProviderError(billingErr, account.AccessKeyID, secret)))
 			}
 		}
 	}
@@ -358,11 +437,17 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	if len(actions) > 0 {
 		message += " · 动作 " + strings.Join(actions, ",")
 	}
-	_ = e.store.AddLog(ctx, "heartbeat", message)
+	_ = e.addLog(ctx, "heartbeat", message)
 	return message, nil
 }
 
 func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Config, account domain.Account, secret, action string, now time.Time) (bool, error) {
+	if action == "start" && (account.InstanceStatus == domain.StatusRunning || inFlight(account.InstanceStatus)) {
+		return false, nil
+	}
+	if action == "stop" && (account.InstanceStatus == domain.StatusStopped || inFlight(account.InstanceStatus)) {
+		return false, nil
+	}
 	key := fmt.Sprintf("schedule:%d:%s:%s", account.ID, now.Format("20060102"), action)
 	fresh, err := e.store.RecordActionEvent(ctx, key, account.ID, "schedule_"+action, "attempting", "")
 	if err != nil || !fresh {
@@ -370,14 +455,14 @@ func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Confi
 	}
 	if err = e.provider.ControlInstance(ctx, account, secret, action, config.ShutdownMode); err != nil {
 		_ = e.store.DeleteActionEvent(ctx, key)
-		return false, err
+		return false, providerError(err, account.AccessKeyID, secret)
 	}
 	status := domain.StatusStarting
 	if action == "stop" {
 		status = domain.StatusStopping
 	}
 	_ = e.store.UpdateRuntime(ctx, account.ID, account.TrafficUsed, status, time.Now().UTC())
-	_ = e.store.AddLog(ctx, "info", fmt.Sprintf("执行定时%s [%s]", map[string]string{"start": "开机", "stop": "关机"}[action], masked(account.AccessKeyID)))
+	_ = e.addLog(ctx, "info", fmt.Sprintf("执行定时%s [%s]", map[string]string{"start": "开机", "stop": "关机"}[action], masked(account.AccessKeyID)))
 	if config.EnableScheduleMail {
 		event := newEvent("schedule", "定时任务已执行", fmt.Sprintf("实例定时%s指令已发送。", map[string]string{"start": "开机", "stop": "关机"}[action]), account.ID, map[string]string{"账号": masked(account.AccessKeyID), "实例": account.InstanceID})
 		_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
@@ -397,22 +482,25 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	if err != nil {
 		return "", err
 	}
-	action = strings.ToLower(action)
+	action = strings.ToLower(strings.TrimSpace(action))
 	if action != "start" && action != "stop" {
 		return "", errors.New("action must be start or stop")
 	}
-	if transient(account.InstanceStatus) {
+	if inFlight(account.InstanceStatus) {
 		return "", fmt.Errorf("instance is currently %s", account.InstanceStatus)
 	}
 	if config.KeepAlive && action == "stop" {
 		return "", errors.New("manual shutdown is disabled while keep-alive is enabled")
+	}
+	if (action == "start" && account.InstanceStatus == domain.StatusRunning) || (action == "stop" && account.InstanceStatus == domain.StatusStopped) {
+		return fmt.Sprintf("%s控制实例 [%s]：%s", source, masked(account.AccessKeyID), action), nil
 	}
 	secret, err := e.store.AccountSecret(ctx, accountID)
 	if err != nil {
 		return "", err
 	}
 	if err = e.provider.ControlInstance(ctx, account, secret, action, config.ShutdownMode); err != nil {
-		return "", err
+		return "", providerError(err, account.AccessKeyID, secret)
 	}
 	status := domain.StatusStarting
 	if action == "stop" {
@@ -422,7 +510,7 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 		return "", err
 	}
 	message := fmt.Sprintf("%s控制实例 [%s]：%s", source, masked(account.AccessKeyID), action)
-	_ = e.store.AddLog(ctx, "audit", message)
+	_ = e.addLog(ctx, "audit", message)
 	return message, nil
 }
 
@@ -434,7 +522,7 @@ func (e *Engine) accountLock(accountID int64) *sync.Mutex {
 func (e *Engine) refreshBilling(ctx context.Context, account domain.Account, secret string, now time.Time) error {
 	cycle := now.Format("2006-01")
 	setBillingError := func(err error) {
-		_ = e.store.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": err.Error()})
+		_ = e.store.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": e.persistRedacted(ctx, sanitizeProviderError(err, account.AccessKeyID, secret))})
 	}
 	var balance aliyun.BillingBalance
 	cached, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 6*time.Hour, &balance)
@@ -471,32 +559,48 @@ func (e *Engine) notificationWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for {
-				item, err := e.store.ClaimOutbox(ctx)
-				if errors.Is(err, sql.ErrNoRows) {
-					break
-				}
-				if err != nil {
-					e.logger.Error("claim notification", "error", err)
-					break
-				}
-				var event domain.NotificationEvent
-				if err = json.Unmarshal([]byte(item.Payload), &event); err == nil {
-					var config domain.Config
-					config, err = e.store.GetConfig(ctx)
-					if err == nil {
-						sendCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-						err = e.notify.Send(sendCtx, item.Channel, event, config)
-						cancel()
-					}
-				}
-				if err != nil {
-					_ = e.store.FailOutbox(ctx, item, err)
-					continue
-				}
-				_ = e.store.CompleteOutbox(ctx, item.ID)
-			}
+			e.flushOutbox(ctx)
 		}
+	}
+}
+
+func (e *Engine) flushOutbox(ctx context.Context) {
+	for {
+		item, err := e.store.ClaimOutbox(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return
+		}
+		if err != nil {
+			e.logger.Error("claim notification", "error", err)
+			return
+		}
+		sendErr := func() (sendErr error) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					e.logger.Error("notification panic", "id", item.ID, "channel", item.Channel)
+					sendErr = errJobPanic
+				}
+			}()
+			var event domain.NotificationEvent
+			if sendErr = decodeJobPayload(item.Payload, &event); sendErr != nil {
+				return sendErr
+			}
+			if sendErr = store.ValidateOutboxItem(item.Channel, event); sendErr != nil {
+				return sendErr
+			}
+			config, cfgErr := e.store.GetConfig(ctx)
+			if cfgErr != nil {
+				return cfgErr
+			}
+			sendCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			return e.notify.Send(sendCtx, item.Channel, event, config)
+		}()
+		if sendErr != nil {
+			_ = e.store.FailOutbox(ctx, item, e.persistRedactedErr(ctx, sendErr))
+			continue
+		}
+		_ = e.store.CompleteOutbox(ctx, item.ID)
 	}
 }
 
@@ -531,6 +635,10 @@ func transient(status string) bool {
 	return status == domain.StatusStarting || status == domain.StatusStopping || status == "Pending" || status == domain.StatusUnknown
 }
 
+func inFlight(status string) bool {
+	return status == domain.StatusStarting || status == domain.StatusStopping || status == "Pending"
+}
+
 func usagePercent(traffic, maxTraffic float64) float64 {
 	if maxTraffic <= 0 {
 		return 0
@@ -543,6 +651,56 @@ func masked(accessKeyID string) string {
 		return accessKeyID + "***"
 	}
 	return accessKeyID[:7] + "***"
+}
+
+func (e *Engine) addLog(ctx context.Context, logType, message string) error {
+	return e.store.AddLog(ctx, logType, e.persistRedacted(ctx, message))
+}
+
+func (e *Engine) persistRedacted(ctx context.Context, message string) string {
+	if message == "" {
+		return ""
+	}
+	config, cfgErr := e.store.GetConfig(ctx)
+	extras, secretErr := e.store.AccountSecrets(ctx)
+	if cfgErr != nil && secretErr != nil {
+		return "[redacted]"
+	}
+	if cfgErr != nil {
+		config = domain.Config{}
+	}
+	if secretErr != nil {
+		extras = nil
+	}
+	return notify.RedactSecrets(message, config, extras...)
+}
+
+func (e *Engine) persistRedactedErr(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(e.persistRedacted(ctx, err.Error()))
+}
+
+func sanitizeProviderError(err error, accessKeyID, secret string) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if secret != "" {
+		msg = strings.ReplaceAll(msg, secret, "[redacted]")
+	}
+	if accessKeyID != "" {
+		msg = strings.ReplaceAll(msg, accessKeyID, masked(accessKeyID))
+	}
+	return msg
+}
+
+func providerError(err error, accessKeyID, secret string) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(sanitizeProviderError(err, accessKeyID, secret))
 }
 
 func newEvent(eventType, title, summary string, accountID int64, fields map[string]string) domain.NotificationEvent {
@@ -573,7 +731,7 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 				Message string `json:"message"`
 			}
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "error", "", 7*24*time.Hour, &billingError); ok {
-				item.BillingError = strings.TrimSpace(billingError.Message)
+				item.BillingError = e.persistRedacted(ctx, strings.TrimSpace(billingError.Message))
 			}
 			var balance aliyun.BillingBalance
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 7*24*time.Hour, &balance); ok {
@@ -602,12 +760,47 @@ func RegionName(region string) string {
 	return region
 }
 
+const maxControlSourceRunes = 32
+
+func decodeJobPayload(raw string, target any) error {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.More() {
+		return errors.New("job payload is invalid")
+	}
+	return nil
+}
+
 func ParseControlPayload(action, source string) string {
-	payload, _ := json.Marshal(map[string]string{"action": strings.ToLower(action), "source": source})
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action != "start" && action != "stop" {
+		action = ""
+	}
+	source = strings.TrimSpace(source)
+	if runes := []rune(source); len(runes) > maxControlSourceRunes {
+		source = string(runes[:maxControlSourceRunes])
+	}
+	payload, _ := json.Marshal(map[string]string{"action": action, "source": source})
 	return string(payload)
 }
 
+func allowedNotifyChannel(channel string) bool {
+	switch channel {
+	case "email", "telegram", "webhook":
+		return true
+	default:
+		return false
+	}
+}
+
 func ParseNotifyPayload(channel string) string {
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	if !allowedNotifyChannel(channel) {
+		channel = ""
+	}
 	payload, _ := json.Marshal(map[string]string{"channel": channel})
 	return string(payload)
 }

@@ -58,7 +58,29 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err = restrictDataFiles(dataDir, dbPath); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return s, nil
+}
+
+func restrictDataFiles(dataDir, dbPath string) error {
+	if err := os.Chmod(dataDir, 0o750); err != nil {
+		return fmt.Errorf("restrict data directory permissions: %w", err)
+	}
+	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if err := os.Chmod(path, 0o600); err != nil {
+			return fmt.Errorf("restrict sqlite permissions: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) recoverInterruptedWork(ctx context.Context) error {
@@ -94,6 +116,12 @@ func (s *Store) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 
 func (s *Store) Encrypt(value string) (string, error) { return s.cipher.Encrypt(value) }
 func (s *Store) Decrypt(value string) (string, error) { return s.cipher.Decrypt(value) }
+func (s *Store) EncryptAAD(value, aad string) (string, error) {
+	return s.cipher.EncryptAAD(value, aad)
+}
+func (s *Store) DecryptAAD(value, aad string) (string, error) {
+	return s.cipher.DecryptAAD(value, aad)
+}
 
 func nullTime(unix sql.NullInt64) *time.Time {
 	if !unix.Valid || unix.Int64 <= 0 {

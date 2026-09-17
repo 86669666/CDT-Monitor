@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,8 +32,39 @@ type Service struct {
 	httpClient *http.Client
 }
 
+var errNotifyRedirect = errors.New("notification redirects are not allowed")
+
 func New() *Service {
-	return &Service{httpClient: &http.Client{Timeout: 12 * time.Second}}
+	return &Service{httpClient: notifyHTTPClient(12*time.Second, nil)}
+}
+
+func notifyHTTPClient(timeout time.Duration, transport http.RoundTripper) *http.Client {
+	if transport == nil {
+		transport = tls12Transport(nil)
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errNotifyRedirect
+		},
+	}
+}
+
+func tls12Transport(base *http.Transport) *http.Transport {
+	if base == nil {
+		base = &http.Transport{}
+	}
+	if base.TLSClientConfig == nil {
+		base.TLSClientConfig = &tls.Config{}
+	}
+	cloned := base.TLSClientConfig.Clone()
+	cloned.MinVersion = tls.VersionTLS12
+	base.TLSClientConfig = cloned
+	if base.DialContext == nil {
+		base.DialContext = notifyDialContext
+	}
+	return base
 }
 
 func EnabledChannels(config domain.Config) []string {
@@ -50,53 +82,505 @@ func EnabledChannels(config domain.Config) []string {
 }
 
 func (s *Service) Send(ctx context.Context, channel string, event domain.NotificationEvent, config domain.Config) error {
+	var err error
 	switch channel {
 	case "email":
-		return sendEmail(ctx, config.Notifications.Email, event)
+		err = sendEmail(ctx, config.Notifications.Email, event)
 	case "telegram":
-		return s.sendTelegram(ctx, config.Notifications.Telegram, event)
+		err = s.sendTelegram(ctx, config.Notifications.Telegram, event)
 	case "webhook":
-		return s.sendWebhook(ctx, config.Notifications.Webhook, event)
+		err = s.sendWebhook(ctx, config.Notifications.Webhook, event)
 	default:
 		return fmt.Errorf("unsupported notification channel %q", channel)
 	}
+	return sanitizeNotificationError(err, config)
+}
+
+func RedactSecrets(message string, config domain.Config, extraSecrets ...string) string {
+	if message == "" {
+		return ""
+	}
+	err := sanitizeNotificationError(errors.New(message), config, extraSecrets...)
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func sanitizeNotificationError(err error, config domain.Config, extraSecrets ...string) error {
+	if err == nil {
+		return nil
+	}
+	secrets := notificationSecrets(config, extraSecrets...)
+	if len(secrets) == 0 {
+		return err
+	}
+	msg := err.Error()
+	redacted := msg
+	for _, secret := range secrets {
+		redacted = strings.ReplaceAll(redacted, secret, "[redacted]")
+	}
+	if redacted == msg {
+		return err
+	}
+	return errors.New(redacted)
+}
+
+func notificationSecrets(config domain.Config, extraSecrets ...string) []string {
+	n := config.Notifications
+	candidates := []string{
+		n.Webhook.URL,
+		n.Webhook.Headers,
+		n.Webhook.Secret,
+		n.Webhook.Body,
+		n.Telegram.ProxyURL,
+		n.Telegram.Token,
+		n.Telegram.ChatID,
+		n.Telegram.ProxyUser,
+		n.Telegram.ProxyPass,
+		n.Email.Password,
+		n.Email.Username,
+		n.Email.To,
+	}
+	candidates = append(candidates, extraSecrets...)
+	for _, account := range config.Accounts {
+		candidates = append(candidates, account.AccessKeySecret)
+	}
+	secrets := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if len(candidate) < 4 {
+			continue
+		}
+		secrets = append(secrets, candidate)
+	}
+	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
+	return secrets
+}
+
+var (
+	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
+	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
+	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
+	errInvalidNotifyPort       = errors.New("notification port is invalid")
+	errInvalidNotifyOption     = errors.New("notification option is invalid")
+	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
+	errInvalidNotifyPayload    = errors.New("notification payload is too long")
+)
+
+func ValidateCallbackURL(raw string) error {
+	return validateNotifyURL(raw, []string{"http", "https"})
+}
+
+func ValidateProxyURL(raw string) error {
+	return validateNotifyURL(raw, []string{"http", "https", "socks5", "socks4"})
+}
+
+func validateNotifyURL(raw string, schemes []string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	if len([]rune(raw)) > maxNotifyURLRunes {
+		return errInvalidNotifyPayload
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid notification URL: %w", err)
+	}
+	if !contains(schemes, parsed.Scheme) {
+		return errUnsupportedNotifyScheme
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return errors.New("notification URL host is required")
+	}
+	if strings.Contains(host, "#") {
+		return nil
+	}
+	if forbiddenNotifyHost(host) {
+		return errForbiddenNotifyHost
+	}
+	return nil
+}
+
+const maxDialHostRunes = 253
+
+func ValidateDialHost(host string) error {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil
+	}
+	if len([]rune(host)) > maxDialHostRunes {
+		return errInvalidNotifyIdentity
+	}
+	if forbiddenNotifyHost(host) {
+		return errForbiddenNotifyHost
+	}
+	return nil
+}
+
+func ValidateTCPPort(port int) error {
+	if port == 0 {
+		return nil
+	}
+	if port < 1 || port > 65535 {
+		return errInvalidNotifyPort
+	}
+	return nil
+}
+
+func ValidateTCPPortString(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return errInvalidNotifyPort
+	}
+	return nil
+}
+
+func allowedNotifyOption(value string, options ...string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	for _, option := range options {
+		if strings.EqualFold(value, option) {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateNotifyOptions(config domain.NotificationConfig) error {
+	if !allowedNotifyOption(config.Email.Security, "ssl", "tls", "starttls") {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Telegram.ProxyType, "none", "socks5", "custom") {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Webhook.Method, http.MethodGet, http.MethodPost) {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Webhook.Type, "JSON", "FORM") {
+		return errInvalidNotifyOption
+	}
+	if !allowedNotifyOption(config.Webhook.Provider, "generic", "dingtalk") {
+		return errInvalidNotifyOption
+	}
+	return nil
+}
+
+func containsHeaderBreak(value string) bool {
+	for _, r := range value {
+		if r == '\r' || r == '\n' || r == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	maxNotifyEmailRunes        = 254
+	maxTelegramChatRunes       = 64
+	maxWebhookHeadersRunes     = 4096
+	maxWebhookHeaderFields     = 32
+	maxWebhookHeaderNameRunes  = 128
+	maxWebhookHeaderValueRunes = 2048
+	maxWebhookBodyRunes        = 8192
+	maxNotifyURLRunes          = 2048
+	maxNotifySecretRunes       = 255
+	maxNotifyErrorRunes        = 240
+)
+
+func ValidateSMTPIdentity(username, to string) error {
+	if containsHeaderBreak(username) || containsHeaderBreak(to) {
+		return errInvalidNotifyHeader
+	}
+	if len([]rune(username)) > maxNotifyEmailRunes || len([]rune(to)) > maxNotifyEmailRunes {
+		return errInvalidNotifyIdentity
+	}
+	return nil
+}
+
+func ValidateTelegramChatID(id string) error {
+	if containsHeaderBreak(id) {
+		return errInvalidNotifyHeader
+	}
+	if len([]rune(id)) > maxTelegramChatRunes {
+		return errInvalidNotifyIdentity
+	}
+	return nil
+}
+
+func ValidateNotifySecret(raw string) error {
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	if containsHeaderBreak(raw) {
+		return errInvalidNotifyHeader
+	}
+	if len([]rune(raw)) > maxNotifySecretRunes {
+		return errInvalidNotifyIdentity
+	}
+	return nil
+}
+
+func ValidateNotifyCredentials(config domain.NotificationConfig) error {
+	for _, raw := range []string{
+		config.Telegram.ProxyUser,
+		config.Telegram.ProxyPass,
+		config.Telegram.Token,
+		config.Email.Password,
+		config.Webhook.Secret,
+	} {
+		if err := ValidateNotifySecret(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ValidateWebhookHeaders(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	if len([]rune(raw)) > maxWebhookHeadersRunes {
+		return errInvalidNotifyPayload
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(raw), &headers); err != nil {
+		if containsHeaderBreak(raw) {
+			return errInvalidNotifyHeader
+		}
+		return errInvalidNotifyPayload
+	}
+	if len(headers) > maxWebhookHeaderFields {
+		return errInvalidNotifyPayload
+	}
+	for key, value := range headers {
+		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
+			return errInvalidNotifyHeader
+		}
+		if len([]rune(key)) > maxWebhookHeaderNameRunes || len([]rune(value)) > maxWebhookHeaderValueRunes {
+			return errInvalidNotifyPayload
+		}
+	}
+	return nil
+}
+
+func forbiddenWebhookHeader(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "host", "content-length", "transfer-encoding", "connection", "keep-alive", "upgrade", "te", "trailer", "cookie":
+		return true
+	default:
+		return false
+	}
+}
+
+func ValidateWebhookBody(raw string) error {
+	if raw == "" || raw == domain.ClearSecretSentinel {
+		return nil
+	}
+	if len([]rune(raw)) > maxWebhookBodyRunes {
+		return errInvalidNotifyPayload
+	}
+	return nil
+}
+
+const maxNotifyResolvedIPs = 8
+
+var lookupNotifyIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
+		}
+	}
+	return ips, nil
+}
+
+func validateNotifyDestination(ctx context.Context, raw string) error {
+	if err := ValidateCallbackURL(raw); err != nil {
+		return err
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Hostname() == "" {
+		return err
+	}
+	return resolveForbiddenHost(ctx, parsed.Hostname())
+}
+
+func resolveForbiddenHost(ctx context.Context, host string) error {
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	if host == "" || strings.Contains(host, "#") || net.ParseIP(host) != nil {
+		return nil
+	}
+	if forbiddenNotifyHost(host) {
+		return errForbiddenNotifyHost
+	}
+	ips, err := lookupNotifyIPs(ctx, host)
+	if err != nil {
+		return fmt.Errorf("notification URL host lookup failed: %w", err)
+	}
+	if len(ips) > maxNotifyResolvedIPs {
+		return errForbiddenNotifyHost
+	}
+	for _, ip := range ips {
+		if forbiddenNotifyIP(ip) {
+			return errForbiddenNotifyHost
+		}
+	}
+	return nil
+}
+
+type notifyContextDialer struct{}
+
+func (notifyContextDialer) Dial(network, address string) (net.Conn, error) {
+	return notifyDialContext(context.Background(), network, address)
+}
+
+func (notifyContextDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	return notifyDialContext(ctx, network, address)
+}
+
+func socksTransportDialContext(dialer proxy.Dialer) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		switch network {
+		case "tcp", "tcp4", "tcp6":
+		default:
+			return nil, errForbiddenNotifyHost
+		}
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		if err = ValidateDialHost(host); err != nil {
+			return nil, err
+		}
+		if d, ok := dialer.(proxy.ContextDialer); ok {
+			return d.DialContext(ctx, network, address)
+		}
+		return dialer.Dial(network, address)
+	}
+}
+
+func notifyDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errForbiddenNotifyHost
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if err = ValidateDialHost(host); err != nil {
+		return nil, err
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		ips, err = lookupNotifyIPs(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("notification URL host lookup failed: %w", err)
+		}
+	}
+	if len(ips) == 0 || len(ips) > maxNotifyResolvedIPs {
+		return nil, errForbiddenNotifyHost
+	}
+	for _, ip := range ips {
+		if forbiddenNotifyIP(ip) {
+			return nil, errForbiddenNotifyHost
+		}
+	}
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func forbiddenNotifyHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	switch host {
+	case "metadata.google.internal", "metadata.google.com", "metadata.aliyuncs.com":
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return forbiddenNotifyIP(ip)
+}
+
+func forbiddenNotifyIP(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254")) {
+		return true
+	}
+	return false
 }
 
 func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.NotificationEvent) error {
 	if config.Host == "" || config.Port == 0 || config.Username == "" || config.To == "" {
 		return errors.New("SMTP host, port, username and recipient are required")
 	}
+	if err := ValidateSMTPIdentity(config.Username, config.To); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.Password); err != nil {
+		return err
+	}
+	if err := ValidateTCPPort(config.Port); err != nil {
+		return err
+	}
+	if err := ValidateDialHost(config.Host); err != nil {
+		return err
+	}
+	if err := resolveForbiddenHost(ctx, config.Host); err != nil {
+		return err
+	}
 	hostPort := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	var client *smtp.Client
-	if strings.EqualFold(config.Security, "ssl") || config.Port == 465 {
-		conn, err := tls.DialWithDialer(dialer, "tcp", hostPort, &tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12})
-		if err != nil {
-			return err
-		}
-		client, err = smtp.NewClient(conn, config.Host)
-		if err != nil {
+	useImplicitTLS := strings.EqualFold(config.Security, "ssl") || config.Port == 465
+	conn, err := notifyDialContext(ctx, "tcp", hostPort)
+	if err != nil {
+		return err
+	}
+	if useImplicitTLS {
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12})
+		if err = tlsConn.HandshakeContext(ctx); err != nil {
 			conn.Close()
 			return err
 		}
-	} else {
-		conn, err := dialer.DialContext(ctx, "tcp", hostPort)
-		if err != nil {
-			return err
-		}
-		client, err = smtp.NewClient(conn, config.Host)
-		if err != nil {
-			conn.Close()
-			return err
-		}
-		if strings.EqualFold(config.Security, "tls") || strings.EqualFold(config.Security, "starttls") {
-			if err = client.StartTLS(&tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12}); err != nil {
-				client.Close()
-				return err
-			}
-		}
+		conn = tlsConn
+	}
+	client, err := smtp.NewClient(conn, config.Host)
+	if err != nil {
+		conn.Close()
+		return err
 	}
 	defer client.Close()
+	if !useImplicitTLS && (strings.EqualFold(config.Security, "tls") || strings.EqualFold(config.Security, "starttls")) {
+		if err = client.StartTLS(&tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
 	if config.Password != "" {
 		if err := client.Auth(smtp.PlainAuth("", config.Username, config.Password, config.Host)); err != nil {
 			return err
@@ -140,25 +624,47 @@ func renderEmail(event domain.NotificationEvent) string {
 }
 
 func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig, event domain.NotificationEvent) error {
+	if err := ValidateTelegramChatID(config.ChatID); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.Token); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.ProxyUser); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.ProxyPass); err != nil {
+		return err
+	}
 	baseURL := "https://api.telegram.org"
 	if config.ProxyType == "custom" && config.ProxyURL != "" {
 		baseURL = strings.TrimRight(config.ProxyURL, "/")
 	}
 	endpoint := baseURL + "/bot" + config.Token + "/sendMessage"
+	if err := validateNotifyDestination(ctx, endpoint); err != nil {
+		return err
+	}
+	if err := ValidateDialHost(config.ProxyIP); err != nil {
+		return err
+	}
+	if err := resolveForbiddenHost(ctx, config.ProxyIP); err != nil {
+		return err
+	}
 	form := url.Values{"chat_id": {config.ChatID}, "text": {eventText(event)}}
 	client := s.httpClient
 	if config.ProxyType == "socks5" && config.ProxyIP != "" && config.ProxyPort != "" {
+		if err := ValidateTCPPortString(config.ProxyPort); err != nil {
+			return err
+		}
 		var auth *proxy.Auth
 		if config.ProxyUser != "" || config.ProxyPass != "" {
 			auth = &proxy.Auth{User: config.ProxyUser, Password: config.ProxyPass}
 		}
-		dialer, err := proxy.SOCKS5("tcp", net.JoinHostPort(config.ProxyIP, config.ProxyPort), auth, proxy.Direct)
+		dialer, err := proxy.SOCKS5("tcp", net.JoinHostPort(config.ProxyIP, config.ProxyPort), auth, notifyContextDialer{})
 		if err != nil {
 			return err
 		}
-		client = &http.Client{Timeout: 12 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return dialer.Dial(network, address)
-		}}}
+		client = notifyHTTPClient(12*time.Second, tls12Transport(&http.Transport{DialContext: socksTransportDialContext(dialer)}))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -172,14 +678,23 @@ func (s *Service) sendTelegram(ctx context.Context, config domain.TelegramConfig
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram HTTP %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("telegram HTTP %d: %s", resp.StatusCode, clipNotifyErrorText(string(body)))
 	}
 	return nil
 }
 
 func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, event domain.NotificationEvent) error {
+	if err := ValidateWebhookBody(config.Body); err != nil {
+		return err
+	}
+	if err := ValidateNotifySecret(config.Secret); err != nil {
+		return err
+	}
 	replacements := replacements(event)
 	endpoint := replaceTemplate(config.URL, replacements, true)
+	if strings.TrimSpace(endpoint) == "" {
+		return errors.New("webhook URL is required")
+	}
 	if strings.EqualFold(config.Provider, "dingtalk") && config.Secret != "" {
 		timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
 		mac := hmac.New(sha256.New, []byte(config.Secret))
@@ -227,6 +742,9 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 		}
 		body = strings.NewReader(payload)
 	}
+	if err := validateNotifyDestination(ctx, endpoint); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
 		return err
@@ -243,6 +761,9 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 		if err = json.Unmarshal([]byte(config.Headers), &headers); err != nil {
 			return fmt.Errorf("invalid webhook headers: %w", err)
 		}
+		if err = ValidateWebhookHeaders(config.Headers); err != nil {
+			return err
+		}
 		for key, value := range headers {
 			req.Header.Set(key, value)
 		}
@@ -254,7 +775,7 @@ func (s *Service) sendWebhook(ctx context.Context, config domain.WebhookConfig, 
 	defer resp.Body.Close()
 	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webhook HTTP %d: %s", resp.StatusCode, string(responseBody))
+		return fmt.Errorf("webhook HTTP %d: %s", resp.StatusCode, clipNotifyErrorText(string(responseBody)))
 	}
 	return nil
 }
@@ -312,7 +833,8 @@ func replaceTemplate(input string, replacements map[string]string, urlEncode boo
 	return input
 }
 
-// ReadDotResponse is kept private to avoid accepting unbounded SMTP responses.
+const maxSMTPDotResponseBytes = 1 << 20
+
 func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 	var buffer bytes.Buffer
 	for {
@@ -323,6 +845,27 @@ func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 		if string(line) == ".\r\n" {
 			return buffer.Bytes(), nil
 		}
+		if buffer.Len()+len(line) > maxSMTPDotResponseBytes {
+			return nil, errors.New("SMTP response is too long")
+		}
 		buffer.Write(line)
 	}
+}
+
+func clipNotifyErrorText(text string) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) > maxNotifyErrorRunes {
+		return string(runes[:maxNotifyErrorRunes]) + "..."
+	}
+	return text
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

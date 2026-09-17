@@ -2,8 +2,13 @@ package aliyun
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -13,8 +18,11 @@ import (
 func TestTrafficClass(t *testing.T) {
 	cases := map[string]string{
 		"cn-hangzhou":    "china",
+		"cn-shanghai":    "china",
 		"cn-hongkong":    "international",
 		"ap-southeast-1": "international",
+		"ap-northeast-1": "international",
+		"ap-northeast-2": "international",
 	}
 	for region, expected := range cases {
 		if actual := trafficClass(region); actual != expected {
@@ -41,6 +49,31 @@ func TestTrafficResponseAggregation(t *testing.T) {
 	traffic, err := trafficFromResponse(result, "china")
 	if err != nil || traffic != 3 {
 		t.Fatalf("traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestTrafficResponseRejectsNonFiniteValues(t *testing.T) {
+	result := map[string]any{"TrafficDetails": []any{
+		map[string]any{"BusinessRegionId": "cn-hangzhou", "Traffic": "NaN"},
+	}}
+	_, err := trafficFromResponse(result, "china")
+	if err == nil || !strings.Contains(err.Error(), "traffic is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestTrafficResponseIgnoresInvalidRegions(t *testing.T) {
+	result := map[string]any{"TrafficDetails": []any{
+		map[string]any{"BusinessRegionId": "not a region", "Traffic": float64(64 * 1024 * 1024 * 1024)},
+		map[string]any{"BusinessRegionId": "cn-hangzhou", "Traffic": float64(1024 * 1024 * 1024)},
+	}}
+	china, err := trafficFromResponse(result, "china")
+	if err != nil || china != 1 {
+		t.Fatalf("china traffic=%v err=%v", china, err)
+	}
+	intl, err := trafficFromResponse(result, "international")
+	if err != nil || intl != 0 {
+		t.Fatalf("invalid region must not count as international, traffic=%v err=%v", intl, err)
 	}
 }
 
@@ -75,5 +108,1178 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
 	if err != nil || balance.Amount != 123.45 || balance.Currency != "CNY" {
 		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+}
+
+func TestGetAccountBalanceRejectsNonFiniteAmounts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"Inf"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "balance is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("non-finite balance must not retry, hits=%d", hits)
+	}
+}
+
+func TestGetAccountBalanceRejectsInvalidCurrency(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"12.5","Currency":"USDT"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "currency is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("invalid currency must not retry, hits=%d", hits)
+	}
+}
+
+func TestNormalizeAliyunCurrency(t *testing.T) {
+	got, err := normalizeAliyunCurrency("")
+	if err != nil || got != "CNY" {
+		t.Fatalf("empty currency=%q err=%v", got, err)
+	}
+	got, err = normalizeAliyunCurrency("usd")
+	if err != nil || got != "USD" {
+		t.Fatalf("usd currency=%q err=%v", got, err)
+	}
+	if _, err = normalizeAliyunCurrency("US$"); err == nil {
+		t.Fatal("expected invalid currency")
+	}
+}
+
+func TestCallRejectsMismatchedEndpoints(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "cdt.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun endpoint is invalid") {
+		t.Fatalf("mismatched endpoint err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("mismatched endpoint must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunEndpoint("ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "StartInstance") || allowedAliyunEndpoint("business.aliyuncs.com", "2017-12-14", "StartInstance") {
+		t.Fatal("endpoint pairing mismatch")
+	}
+}
+
+func TestCallRejectsUnknownExtras(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"Action": "DeleteInstance"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("override action err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": strings.Repeat("i", 65)})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("long instance err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": "i-test/../meta"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("junk instance err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "StopInstance", map[string]string{"InstanceId": "i-test", "StoppedMode": "reboot"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("stopped mode err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"InstanceId": "i-test", "StoppedMode": "KeepCharging"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("status stopped mode err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", map[string]string{"RegionId": "cn-hongkong"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun extras are invalid") {
+		t.Fatalf("missing instance err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("invalid extras must not call Aliyun, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsUnknownActions(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "DeleteInstance", map[string]string{"InstanceId": "i-test"})
+	if err == nil || !strings.Contains(err.Error(), "aliyun action is invalid") {
+		t.Fatalf("delete err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown action must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunAction("StartInstance") || allowedAliyunAction("RebootInstance") {
+		t.Fatal("action allowlist mismatch")
+	}
+}
+
+func TestCallRejectsUnknownVersions(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.cn-hongkong.aliyuncs.com", "2016-01-01", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun version is invalid") {
+		t.Fatalf("version err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown version must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunVersion("2014-05-26") || allowedAliyunVersion("2016-01-01") {
+		t.Fatal("version allowlist mismatch")
+	}
+}
+
+func TestAliyunRequestURLIsHTTPSWithoutPort(t *testing.T) {
+	got, err := aliyunRequestURL("cdt.aliyuncs.com")
+	if err != nil || got != "https://cdt.aliyuncs.com/" {
+		t.Fatalf("url=%q err=%v", got, err)
+	}
+	if _, err = aliyunRequestURL("cdt.aliyuncs.com:443"); err == nil {
+		t.Fatal("port must be rejected")
+	}
+	if _, err = aliyunRequestURL("user@cdt.aliyuncs.com"); err == nil {
+		t.Fatal("userinfo must be rejected")
+	}
+	if _, err = aliyunRequestURL("evil.example.test"); err == nil {
+		t.Fatal("unknown host must be rejected")
+	}
+}
+
+func TestCallRejectsUnknownHosts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "evil.example.test", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun host is invalid") {
+		t.Fatalf("evil host err=%v", err)
+	}
+	_, err = client.call(context.Background(), "LTAItest", "secret", "cn-hongkong", "ecs.not_a_region.aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", nil)
+	if err == nil || !strings.Contains(err.Error(), "aliyun host is invalid") {
+		t.Fatalf("bad ecs host err=%v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("unknown host must not call Aliyun, hits=%d", hits)
+	}
+	if !allowedAliyunHost("cdt.aliyuncs.com") || !allowedAliyunHost("ecs.cn-hongkong.aliyuncs.com") || allowedAliyunHost("ecs.aliyuncs.com") {
+		t.Fatal("host allowlist mismatch")
+	}
+}
+
+func TestCallRequiresAccessKey(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{RegionID: "cn-hongkong"}, "secret")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty access key err=%v hits=%d", err, hits)
+	}
+	_, err = client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty secret err=%v hits=%d", err, hits)
+	}
+	err = client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "  ", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "start", "KeepCharging")
+	if err == nil || hits != 0 {
+		t.Fatalf("blank access key err=%v hits=%d", err, hits)
+	}
+}
+
+func TestCallErrorsRedactAccessKeyMaterial(t *testing.T) {
+	secret := "super-secret-ak-value"
+	accessKeyID := "LTAIleakkey"
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"InvalidAccessKeyId","Message":"AccessKeyId ` + accessKeyID + ` secret ` + secret + ` rejected"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: accessKeyID, RegionID: "cn-hongkong"}, secret)
+	if err == nil {
+		t.Fatal("expected Aliyun error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, secret) || strings.Contains(msg, accessKeyID) {
+		t.Fatalf("error leaked credentials: %q", msg)
+	}
+	if !strings.Contains(msg, "[redacted]") || !strings.Contains(msg, "LTAIlea***") {
+		t.Fatalf("expected redaction markers in %q", msg)
+	}
+}
+
+func TestCallRetriesServerErrorThenSucceeds(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if hits == 1 {
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader(`{"Code":"InternalError","Message":"try again"}`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Message":"success","Data":{"AvailableAmount":"12.5"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || balance.Amount != 12.5 {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
+
+func TestCallDoesNotRetryClientErrors(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"InvalidParameter","Message":"bad request"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "bad request") {
+		t.Fatalf("err = %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("client error should not retry, hits = %d", hits)
+	}
+}
+
+func TestECSRequiresRegionID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", InstanceID: "i-test"}
+	status, err := client.GetInstanceStatus(context.Background(), account, "secret")
+	if err == nil || hits != 0 || status != domain.StatusUnknown {
+		t.Fatalf("empty region status=%q err=%v hits=%d", status, err, hits)
+	}
+	if err = client.ControlInstance(context.Background(), account, "secret", "start", "KeepCharging"); err == nil || hits != 0 {
+		t.Fatalf("empty region control err=%v hits=%d", err, hits)
+	}
+	account.RegionID = "   "
+	if err = client.ControlInstance(context.Background(), account, "secret", "stop", "KeepCharging"); err == nil || hits != 0 {
+		t.Fatalf("blank region control err=%v hits=%d", err, hits)
+	}
+}
+
+func TestGetTrafficRequiresRegionID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest"}, "secret")
+	if err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is required") {
+		t.Fatalf("empty region err=%v hits=%d", err, hits)
+	}
+	_, err = client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "   "}, "secret")
+	if err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is required") {
+		t.Fatalf("blank region err=%v hits=%d", err, hits)
+	}
+}
+
+func TestAliyunRejectsMalformedRegionID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong.evil.com", InstanceID: "i-test"}
+	_, err := client.GetTraffic(context.Background(), account, "secret")
+	if err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is invalid") {
+		t.Fatalf("traffic err=%v hits=%d", err, hits)
+	}
+	status, err := client.GetInstanceStatus(context.Background(), account, "secret")
+	if err == nil || hits != 0 || status != domain.StatusUnknown || !strings.Contains(err.Error(), "region_id is invalid") {
+		t.Fatalf("status=%q err=%v hits=%d", status, err, hits)
+	}
+	if err = client.ControlInstance(context.Background(), account, "secret", "start", "KeepCharging"); err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is invalid") {
+		t.Fatalf("control err=%v hits=%d", err, hits)
+	}
+}
+
+func TestGetInstanceStatusRequiresInstanceID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[]}}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if err == nil || hits != 0 || status != domain.StatusUnknown {
+		t.Fatalf("empty instance_id status=%q err=%v hits=%d", status, err, hits)
+	}
+}
+
+func TestGetInstanceBillRequiresBillingCycle(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"Data":{"Items":[]}}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", SiteType: "china", InstanceID: "i-test"}
+	for _, cycle := range []string{"", "  ", "nope", "2026-13"} {
+		_, err := client.GetInstanceBill(context.Background(), account, "secret", cycle)
+		if err == nil || hits != 0 {
+			t.Fatalf("cycle %q err=%v hits=%d", cycle, err, hits)
+		}
+	}
+}
+
+func TestGetInstanceBillRequiresInstanceID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"Data":{"Items":[]}}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetInstanceBill(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret", "2026-09")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty instance_id err=%v hits=%d", err, hits)
+	}
+}
+
+func TestControlInstanceRequiresInstanceID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret", "start", "KeepCharging")
+	if err == nil || hits != 0 {
+		t.Fatalf("empty instance_id err=%v hits=%d", err, hits)
+	}
+}
+
+func TestGetInstanceStatusUnknownValuesBecomeUnknown(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[{"InstanceId":"i-test","Status":"Exploded"}]}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret")
+	if err != nil || status != domain.StatusUnknown {
+		t.Fatalf("unknown status=%q err=%v", status, err)
+	}
+	if got := normalizeInstanceStatus(strings.Repeat("R", 33)); got != domain.StatusUnknown {
+		t.Fatalf("oversized status=%q", got)
+	}
+	if got := normalizeInstanceStatus("Pending"); got != "Pending" {
+		t.Fatalf("pending status=%q", got)
+	}
+}
+
+func TestGetInstanceStatusFromDescribeResponse(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[{"InstanceId":"i-test","Status":"Running"}]}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret")
+	if err != nil || status != domain.StatusRunning {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
+
+func TestControlInstanceStopDefaultsToKeepCharging(t *testing.T) {
+	var action, mode string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		action, mode = values.Get("Action"), values.Get("StoppedMode")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "STOP", ""); err != nil {
+		t.Fatal(err)
+	}
+	if action != "StopInstance" || mode != "KeepCharging" {
+		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
+	}
+}
+
+func TestCallRetriesTooManyRequestsThenSucceeds(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if hits == 1 {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Body:       io.NopCloser(strings.NewReader(`{"Code":"Throttling","Message":"slow down"}`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Message":"success","Data":{"AvailableAmount":"8.25"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || balance.Amount != 8.25 {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
+
+func TestGetTrafficUsesMockCdtAndCaches(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-beijing","Traffic":2147483648},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}
+	first, err := client.GetTraffic(context.Background(), account, "secret")
+	if err != nil || first != 3 {
+		t.Fatalf("first traffic=%v err=%v", first, err)
+	}
+	second, err := client.GetTraffic(context.Background(), account, "secret")
+	if err != nil || second != 3 {
+		t.Fatalf("cached traffic=%v err=%v", second, err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected one CDT call, hits=%d", hits)
+	}
+}
+
+func TestGetInstanceBillSumsPretaxAmount(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Data":{"Items":{"Item":[{"PretaxAmount":"10.5"},{"PretaxAmount":"12.96"}]}}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	bill, err := client.GetInstanceBill(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china", InstanceID: "i-test"}, "secret", "2026-09")
+	if err != nil || bill.TotalCost != 23.46 {
+		t.Fatalf("bill=%#v err=%v", bill, err)
+	}
+}
+
+func TestGetAccountBalanceCachesForSixHours(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if request.URL.Host != "business.aliyuncs.com" {
+			t.Errorf("host = %s", request.URL.Host)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"50","Currency":"CNY"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}
+	first, err := client.GetAccountBalance(context.Background(), account, "secret")
+	if err != nil || first.Amount != 50 || first.Currency != "CNY" {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	second, err := client.GetAccountBalance(context.Background(), account, "secret")
+	if err != nil || second.Amount != 50 {
+		t.Fatalf("cached=%#v err=%v", second, err)
+	}
+	if hits != 1 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
+
+func TestGetAccountBalanceUsesInternationalEndpoint(t *testing.T) {
+	var host string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		host = request.URL.Host
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"1.5","Currency":"USD"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "international"}, "secret")
+	if err != nil || balance.Amount != 1.5 || balance.Currency != "USD" {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if host != "business.ap-southeast-1.aliyuncs.com" {
+		t.Fatalf("host = %s", host)
+	}
+}
+
+func TestControlInstanceRejectsUnknownAction(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}
+	for _, action := range []string{"", "reboot", "delete", "STOPINSTANCE"} {
+		if err := client.ControlInstance(context.Background(), account, "secret", action, "KeepCharging"); err == nil || !strings.Contains(err.Error(), "instance action is invalid") {
+			t.Fatalf("action %q err=%v", action, err)
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("unknown actions must not call Aliyun, hits=%d", hits)
+	}
+}
+
+func TestControlInstanceStartSendsStartInstance(t *testing.T) {
+	var action, mode string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		action, mode = values.Get("Action"), values.Get("StoppedMode")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "start", "KeepCharging"); err != nil {
+		t.Fatal(err)
+	}
+	if action != "StartInstance" || mode != "" {
+		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
+	}
+}
+
+func TestGetTrafficMissingDetailsIsError(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","TrafficDetails":[]}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "TrafficDetails") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestControlInstanceStopChargingMode(t *testing.T) {
+	var action, mode string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		action, mode = values.Get("Action"), values.Get("StoppedMode")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "stop", "StopCharging"); err != nil {
+		t.Fatal(err)
+	}
+	if action != "StopInstance" || mode != "StopCharging" {
+		t.Fatalf("Action=%q StoppedMode=%q", action, mode)
+	}
+}
+
+func TestCallLimitsResponseBody(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		payload := `{"Code":"200","Pad":"` + strings.Repeat("A", maxAliyunResponseBytes) + `"}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "invalid response") {
+		t.Fatalf("oversized body err=%v", err)
+	}
+}
+
+func TestCallStopsAfterMaxAttempts(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(strings.NewReader(`{"Code":"InternalError","Message":"boom"}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if hits != maxAliyunAttempts {
+		t.Fatalf("hits=%d want %d", hits, maxAliyunAttempts)
+	}
+}
+
+func TestCallRejectsDeeplyNestedJSON(t *testing.T) {
+	nested := `{"Code":"200"}`
+	for i := 0; i < maxAliyunJSONDepth; i++ {
+		nested = `{"k":` + nested + `}`
+	}
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(nested)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "nesting is too deep") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("deep json must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsWideJSON(t *testing.T) {
+	fields := make([]string, 0, maxAliyunJSONBreadth+1)
+	fields = append(fields, `"Code":"200"`)
+	for i := 0; i < maxAliyunJSONBreadth; i++ {
+		fields = append(fields, `"k`+strconv.Itoa(i)+`":1`)
+	}
+	payload := `{` + strings.Join(fields, ",") + `}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "nesting is too wide") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("wide json must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsOversizedJSONKeys(t *testing.T) {
+	payload := `{"Code":"200","` + strings.Repeat("K", maxAliyunJSONKeyRunes+1) + `":1}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "key is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized json key must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsOversizedJSONStrings(t *testing.T) {
+	payload := `{"Code":"200","Pad":"` + strings.Repeat("A", maxAliyunJSONStringRunes+1) + `"}`
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header), Request: request}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "string is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized json string must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallRejectsOversizedAliyunCodes(t *testing.T) {
+	hits := 0
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"` + strings.Repeat("T", maxAliyunCodeRunes+1) + `","Message":"throttling"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "code is too long") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("oversized code must not retry, hits=%d", hits)
+	}
+}
+
+func TestCallClipsAliyunErrorMessages(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"InvalidParameter","Message":"` + strings.Repeat("m", maxAliyunErrorRunes+40) + `"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || !strings.Contains(err.Error(), "...") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := []rune(err.Error()); len(got) > maxAliyunErrorRunes+80 {
+		t.Fatalf("error too long: %d", len(got))
+	}
+}
+
+func TestCallTruncatesNonJSONErrorBodies(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"Error","Pad":"` + strings.Repeat("A", 400) + `"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "...") || len(msg) > 320 {
+		t.Fatalf("expected truncated error, got len=%d %q", len(msg), msg)
+	}
+}
+
+func TestGetTrafficInternationalExcludesChina(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if err != nil || traffic != 4 {
+		t.Fatalf("traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestCallRetriesThrottlingCodeThenSucceeds(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		if hits == 1 {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"Code":"Throttling.User","Message":"slow down"}`)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"200","Data":{"AvailableAmount":"3.5"}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || balance.Amount != 3.5 {
+		t.Fatalf("balance=%#v err=%v", balance, err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d", hits)
+	}
+}
+
+func TestGetInstanceStatusEmptyIsUnknown(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":[]}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-missing"}, "secret")
+	if err != nil || status != domain.StatusUnknown {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
+
+func TestGetTrafficTokyoIsInternational(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"ap-northeast-1","Traffic":3221225472}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "ap-northeast-1"}, "secret")
+	if err != nil || traffic != 3 {
+		t.Fatalf("tokyo traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestGetTrafficShanghaiIsChina(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-shanghai","Traffic":2147483648},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-shanghai"}, "secret")
+	if err != nil || traffic != 3 {
+		t.Fatalf("shanghai traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestGetTrafficSeoulIsInternational(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"ap-northeast-2","Traffic":2147483648}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "ap-northeast-2"}, "secret")
+	if err != nil || traffic != 2 {
+		t.Fatalf("seoul traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestGetInstanceStatusAcceptsSingleObject(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"InstanceStatuses":{"InstanceStatus":{"InstanceId":"i-test","Status":"Stopped"}}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	status, err := client.GetInstanceStatus(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret")
+	if err != nil || status != domain.StatusStopped {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
+
+func TestGetTrafficAcceptsSingleTrafficDetailsObject(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"TrafficDetails":{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824}}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	traffic, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || traffic != 1 {
+		t.Fatalf("traffic=%v err=%v", traffic, err)
+	}
+}
+
+func TestGetTrafficCacheIsPerAccessKey(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		body, _ := io.ReadAll(request.Body)
+		values, _ := url.ParseQuery(string(body))
+		traffic := "1073741824"
+		if values.Get("AccessKeyId") == "LTAItwo" {
+			traffic = "2147483648"
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"TrafficDetails":[{"BusinessRegionId":"cn-hangzhou","Traffic":` + traffic + `}]}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	one, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAIone", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || one != 1 {
+		t.Fatalf("one=%v err=%v", one, err)
+	}
+	two, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItwo", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || two != 2 {
+		t.Fatalf("two=%v err=%v", two, err)
+	}
+	if hits != 2 {
+		t.Fatalf("expected per-key CDT calls, hits=%d", hits)
+	}
+}
+
+func TestGetTrafficCacheIsPerTrafficClass(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[
+				{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824},
+				{"BusinessRegionId":"cn-shanghai","Traffic":2147483648},
+				{"BusinessRegionId":"cn-hongkong","Traffic":4294967296}
+			]}`)),
+			Header:  make(http.Header),
+			Request: request,
+		}, nil
+	})}
+	china, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}, "secret")
+	if err != nil || china != 3 {
+		t.Fatalf("hangzhou traffic=%v err=%v", china, err)
+	}
+	international, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if err != nil || international != 4 {
+		t.Fatalf("hongkong traffic=%v err=%v", international, err)
+	}
+	if hits != 2 {
+		t.Fatalf("china and international caches must be distinct, hits=%d", hits)
+	}
+	shanghai, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-shanghai"}, "secret")
+	if err != nil || shanghai != 3 {
+		t.Fatalf("shanghai cached traffic=%v err=%v", shanghai, err)
+	}
+	if hits != 2 {
+		t.Fatalf("same-class regions should share the cache, hits=%d", hits)
+	}
+}
+
+func TestGetAccountBalanceCacheIsPerSiteType(t *testing.T) {
+	var hits int
+	var hosts []string
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		hosts = append(hosts, request.URL.Host)
+		body := `{"Code":"200","Data":{"AvailableAmount":"50","Currency":"CNY"}}`
+		if request.URL.Host == "business.ap-southeast-1.aliyuncs.com" {
+			body = `{"Code":"200","Data":{"AvailableAmount":"1.5","Currency":"USD"}}`
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	empty, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest"}, "secret")
+	if err != nil || empty.Amount != 50 || empty.Currency != "CNY" {
+		t.Fatalf("empty site=%#v err=%v", empty, err)
+	}
+	china, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err != nil || china.Amount != 50 {
+		t.Fatalf("china site=%#v err=%v", china, err)
+	}
+	if hits != 1 {
+		t.Fatalf("empty SiteType should share the China cache, hits=%d", hits)
+	}
+	intl, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "international"}, "secret")
+	if err != nil || intl.Amount != 1.5 || intl.Currency != "USD" {
+		t.Fatalf("international site=%#v err=%v", intl, err)
+	}
+	if hits != 2 {
+		t.Fatalf("international cache must be distinct, hits=%d hosts=%v", hits, hosts)
+	}
+}
+
+func TestClientDoesNotFollowRedirects(t *testing.T) {
+	followed := false
+	client := NewClient()
+	client.httpClient.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host == "169.254.169.254" {
+			followed = true
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+		}
+		header := make(http.Header)
+		header.Set("Location", "https://169.254.169.254/latest/meta-data/")
+		return &http.Response{StatusCode: http.StatusFound, Body: io.NopCloser(strings.NewReader("")), Header: header, Request: request}, nil
+	})
+	_, err := client.GetTraffic(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong"}, "secret")
+	if !errors.Is(err, errAliyunRedirect) {
+		t.Fatalf("err=%v", err)
+	}
+	if followed {
+		t.Fatal("aliyun client followed a redirect")
+	}
+}
+
+func TestClientRequiresTLS12(t *testing.T) {
+	transport, ok := NewClient().httpClient.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("aliyun transport TLS = %#v", NewClient().httpClient.Transport)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("aliyun HTTP dialer must pin destinations at connect time")
+	}
+}
+
+func TestAliyunDialContextRejectsMetadataIP(t *testing.T) {
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("link-local dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("metadata dial err=%v", err)
+	}
+}
+
+func TestForbiddenAliyunIPIncludesPrivateAndLoopback(t *testing.T) {
+	for _, raw := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.8", "100.64.0.1", "100.100.100.200", "fd00:ec2::254", "224.0.0.1"} {
+		if !forbiddenAliyunIP(net.ParseIP(raw)) {
+			t.Fatalf("%s must be forbidden", raw)
+		}
+	}
+	if forbiddenAliyunIP(net.ParseIP("8.8.8.8")) {
+		t.Fatal("public IP must remain allowed after DNS")
+	}
+}
+
+func TestAliyunDialContextRejectsPrivateResolvedIPs(t *testing.T) {
+	original := lookupAliyunIPs
+	lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	t.Cleanup(func() { lookupAliyunIPs = original })
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("loopback rebind err=%v", err)
+	}
+}
+
+func TestAliyunDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupAliyunIPs
+	lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxAliyunResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupAliyunIPs = original })
+	_, err := aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("too many answers err=%v", err)
+	}
+}
+
+func TestAliyunDialContextRejectsNonTLSDestinations(t *testing.T) {
+	_, err := aliyunDialContext(context.Background(), "udp", net.JoinHostPort("cdt.aliyuncs.com", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("cdt.aliyuncs.com", "80"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("port 80 dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("evil.example.test", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("unknown host dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("1.1.1.1", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("ipv4 literal dial err=%v", err)
+	}
+	_, err = aliyunDialContext(context.Background(), "tcp", net.JoinHostPort("::1", "443"))
+	if !errors.Is(err, errAliyunForbiddenHost) {
+		t.Fatalf("ipv6 literal dial err=%v", err)
 	}
 }

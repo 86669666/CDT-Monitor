@@ -8,6 +8,8 @@ const (
 	StatusStopped  = "Stopped"
 	StatusStarting = "Starting"
 	StatusStopping = "Stopping"
+
+	ClearSecretSentinel = "__clear__"
 )
 
 type Account struct {
@@ -46,29 +48,33 @@ type EmailConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled         bool   `json:"enabled"`
-	Token           string `json:"token,omitempty"`
-	TokenConfigured bool   `json:"token_configured"`
-	ChatID          string `json:"chat_id"`
-	ProxyType       string `json:"proxy_type"`
-	ProxyURL        string `json:"proxy_url"`
-	ProxyIP         string `json:"proxy_ip"`
-	ProxyPort       string `json:"proxy_port"`
-	ProxyUser       string `json:"proxy_user"`
-	ProxyPass       string `json:"proxy_pass,omitempty"`
-	ProxyConfigured bool   `json:"proxy_password_configured"`
+	Enabled            bool   `json:"enabled"`
+	Token              string `json:"token,omitempty"`
+	TokenConfigured    bool   `json:"token_configured"`
+	ChatID             string `json:"chat_id"`
+	ProxyType          string `json:"proxy_type"`
+	ProxyURL           string `json:"proxy_url,omitempty"`
+	ProxyURLConfigured bool   `json:"proxy_url_configured"`
+	ProxyIP            string `json:"proxy_ip"`
+	ProxyPort          string `json:"proxy_port"`
+	ProxyUser          string `json:"proxy_user"`
+	ProxyPass          string `json:"proxy_pass,omitempty"`
+	ProxyConfigured    bool   `json:"proxy_password_configured"`
 }
 
 type WebhookConfig struct {
-	Enabled          bool   `json:"enabled"`
-	URL              string `json:"url"`
-	Method           string `json:"method"`
-	Type             string `json:"request_type"`
-	Headers          string `json:"headers,omitempty"`
-	Body             string `json:"body"`
-	Provider         string `json:"provider,omitempty"`
-	Secret           string `json:"secret,omitempty"`
-	SecretConfigured bool   `json:"secret_configured"`
+	Enabled           bool   `json:"enabled"`
+	URL               string `json:"url,omitempty"`
+	Method            string `json:"method"`
+	Type              string `json:"request_type"`
+	Headers           string `json:"headers,omitempty"`
+	Body              string `json:"body,omitempty"`
+	Provider          string `json:"provider,omitempty"`
+	Secret            string `json:"secret,omitempty"`
+	SecretConfigured  bool   `json:"secret_configured"`
+	HeadersConfigured bool   `json:"headers_configured"`
+	URLConfigured     bool   `json:"url_configured"`
+	BodyConfigured    bool   `json:"body_configured"`
 }
 
 type NotificationConfig struct {

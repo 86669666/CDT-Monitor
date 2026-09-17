@@ -1,13 +1,18 @@
 package httpapi
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/wang4386/CDT-Monitor/internal/domain"
@@ -31,6 +36,15 @@ func TestSecurityHeadersAllowFaviconEndpoint(t *testing.T) {
 	if !strings.Contains(csp, "connect-src 'self' https://api.github.com") {
 		t.Fatalf("GitHub API endpoint missing from CSP: %s", csp)
 	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
+	}
+	if response.Header().Get("Cross-Origin-Resource-Policy") != "same-origin" {
+		t.Fatalf("CORP = %q", response.Header().Get("Cross-Origin-Resource-Policy"))
+	}
+	if response.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
+		t.Fatalf("COOP = %q", response.Header().Get("Cross-Origin-Opener-Policy"))
+	}
 }
 
 func TestBeginPasskeyLoginIncludesRegisteredCredentialIDs(t *testing.T) {
@@ -46,6 +60,7 @@ func TestBeginPasskeyLoginIncludesRegisteredCredentialIDs(t *testing.T) {
 
 	server := &Server{store: st, limits: make(map[string]*rateWindow), passkeys: make(map[string]passkeySession)}
 	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.TLS = &tls.ConnectionState{}
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
 	server.beginPasskeyLogin(response, request)
@@ -75,6 +90,60 @@ func TestBeginPasskeyLoginIncludesRegisteredCredentialIDs(t *testing.T) {
 	}
 }
 
+func TestBeginPasskeyLoginIgnoresSpoofedForwardedHost(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err = st.SavePasskey(t.Context(), "laptop", webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")}); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{store: st, limits: make(map[string]*rateWindow), passkeys: make(map[string]passkeySession)}
+
+	spoofed := httptest.NewRequest(http.MethodPost, "https://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	spoofed.RemoteAddr = "203.0.113.10:443"
+	spoofed.TLS = &tls.ConnectionState{}
+	spoofed.Header.Set("X-Forwarded-Proto", "https")
+	spoofed.Header.Set("X-Forwarded-Host", "attacker.example")
+	spoofedResponse := httptest.NewRecorder()
+	server.beginPasskeyLogin(spoofedResponse, spoofed)
+	if spoofedResponse.Code != http.StatusOK {
+		t.Fatalf("spoofed host status = %d body = %s", spoofedResponse.Code, spoofedResponse.Body.String())
+	}
+	if rpID := passkeyRPID(t, spoofedResponse.Body.Bytes()); rpID != "monitor.example.com" {
+		t.Fatalf("spoofed X-Forwarded-Host changed RPID to %q", rpID)
+	}
+
+	proxied := httptest.NewRequest(http.MethodPost, "https://127.0.0.1/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	proxied.RemoteAddr = "127.0.0.1:8080"
+	proxied.Header.Set("X-Forwarded-Proto", "https")
+	proxied.Header.Set("X-Forwarded-Host", "cdt.internal")
+	proxiedResponse := httptest.NewRecorder()
+	server.beginPasskeyLogin(proxiedResponse, proxied)
+	if proxiedResponse.Code != http.StatusOK {
+		t.Fatalf("proxied host status = %d body = %s", proxiedResponse.Code, proxiedResponse.Body.String())
+	}
+	if rpID := passkeyRPID(t, proxiedResponse.Body.Bytes()); rpID != "cdt.internal" {
+		t.Fatalf("trusted proxy host RPID = %q", rpID)
+	}
+}
+
+func passkeyRPID(t *testing.T, body []byte) string {
+	t.Helper()
+	var payload struct {
+		PublicKey struct {
+			PublicKey struct {
+				RPID string `json:"rpId"`
+			} `json:"publicKey"`
+		} `json:"public_key"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload.PublicKey.PublicKey.RPID
+}
+
 func TestBeginPasskeyLoginRejectsEmptyCredentialList(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -83,6 +152,7 @@ func TestBeginPasskeyLoginRejectsEmptyCredentialList(t *testing.T) {
 	defer st.Close()
 	server := &Server{store: st, limits: make(map[string]*rateWindow), passkeys: make(map[string]passkeySession)}
 	request := httptest.NewRequest(http.MethodPost, "http://monitor.example.com/api/v1/auth/passkeys/begin", strings.NewReader(`{}`))
+	request.TLS = &tls.ConnectionState{}
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
 	server.beginPasskeyLogin(response, request)
@@ -127,5 +197,242 @@ func TestRefreshAllEnqueuesEveryConfiguredAccount(t *testing.T) {
 	}
 	if payload.Jobs[0].Type != engine.JobRefreshAccount || payload.Jobs[1].Type != engine.JobRefreshAccount || payload.Jobs[0].AccountID == payload.Jobs[1].AccountID {
 		t.Fatalf("unexpected refresh jobs: %#v", payload.Jobs)
+	}
+}
+
+func TestFetchLatestReleaseDoesNotFollowRedirects(t *testing.T) {
+	hit := false
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hit = true
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+
+	original := githubHTTPClient
+	githubHTTPClient = &http.Client{
+		Timeout:       original.Timeout,
+		CheckRedirect: original.CheckRedirect,
+	}
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", source.URL)
+	if !errors.Is(err, errGitHubRedirect) {
+		t.Fatalf("err=%v", err)
+	}
+	if hit {
+		t.Fatal("github release check followed a redirect")
+	}
+}
+
+func TestFetchLatestReleaseReadsTag(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "application/vnd.github+json" {
+			t.Errorf("accept = %q", r.Header.Get("Accept"))
+		}
+		_, _ = w.Write([]byte(`{"tag_name":"v1.2.3"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	got, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err != nil || got != "v1.2.3" {
+		t.Fatalf("got=%q err=%v", got, err)
+	}
+}
+
+func TestDecodeGitHubReleaseTagIgnoresUnknownFields(t *testing.T) {
+	got, err := decodeGitHubReleaseTag(strings.NewReader(`{"tag_name":"v1.2.3","html_url":"https://example.test/releases/v1.2.3"}`))
+	if err != nil || got != "v1.2.3" {
+		t.Fatalf("got=%q err=%v", got, err)
+	}
+}
+
+func TestDecodeGitHubReleaseTagRejectsTrailingJSON(t *testing.T) {
+	_, err := decodeGitHubReleaseTag(strings.NewReader(`{"tag_name":"v1.2.3"}{"tag_name":"v9.9.9"}`))
+	if err == nil || !strings.Contains(err.Error(), "response is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestGitHubUserAgentSanitizesVersion(t *testing.T) {
+	if got := githubUserAgent(""); got != "CDT-Monitor/dev" {
+		t.Fatalf("empty=%q", got)
+	}
+	if got := githubUserAgent("1.2.3"); got != "CDT-Monitor/1.2.3" {
+		t.Fatalf("normal=%q", got)
+	}
+	if got := githubUserAgent("1.2.3\r\nHost: evil.example"); got != "CDT-Monitor/dev" {
+		t.Fatalf("header break=%q", got)
+	}
+	got := githubUserAgent(strings.Repeat("v", maxGitHubTagRunes+8))
+	if got != "CDT-Monitor/"+strings.Repeat("v", maxGitHubTagRunes) {
+		t.Fatalf("oversized=%q", got)
+	}
+}
+
+func TestFetchLatestReleaseRejectsOversizedTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"` + strings.Repeat("v", maxGitHubTagRunes+1) + `"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err == nil || !strings.Contains(err.Error(), "tag is too long") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestFetchLatestReleaseRejectsInvalidTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v1.2.3<script>"}`))
+	}))
+	defer server.Close()
+	original := githubHTTPClient
+	githubHTTPClient = server.Client()
+	githubHTTPClient.CheckRedirect = original.CheckRedirect
+	t.Cleanup(func() { githubHTTPClient = original })
+
+	_, err := fetchLatestRelease(context.Background(), "test", server.URL)
+	if err == nil || !strings.Contains(err.Error(), "tag is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestGitHubHTTPClientRequiresTLS12(t *testing.T) {
+	transport, ok := githubHTTPClient.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("github transport TLS = %#v", githubHTTPClient.Transport)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("github HTTP dialer must pin destinations at connect time")
+	}
+}
+
+func TestGitHubDialContextRejectsMetadataIP(t *testing.T) {
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("169.254.169.254", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("link-local dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("100.100.100.200", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("aliyun metadata dial err=%v", err)
+	}
+}
+
+func TestForbiddenGitHubIPIncludesPrivateAndLoopback(t *testing.T) {
+	for _, raw := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.8", "100.64.0.1", "100.100.100.200", "fd00:ec2::254", "224.0.0.1"} {
+		if !forbiddenGitHubIP(net.ParseIP(raw)) {
+			t.Fatalf("%s must be forbidden", raw)
+		}
+	}
+	if forbiddenGitHubIP(net.ParseIP("8.8.8.8")) {
+		t.Fatal("public IP must remain allowed after DNS")
+	}
+}
+
+func TestGitHubDialContextRejectsPrivateResolvedIPs(t *testing.T) {
+	original := lookupGitHubIPs
+	lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	t.Cleanup(func() { lookupGitHubIPs = original })
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("loopback rebind err=%v", err)
+	}
+}
+
+func TestGitHubDialContextRejectsTooManyResolvedIPs(t *testing.T) {
+	original := lookupGitHubIPs
+	lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+		ips := make([]net.IP, maxGitHubResolvedIPs+1)
+		for i := range ips {
+			ips[i] = net.IPv4(8, 8, 8, byte(i+1))
+		}
+		return ips, nil
+	}
+	t.Cleanup(func() { lookupGitHubIPs = original })
+	_, err := githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("too many answers err=%v", err)
+	}
+}
+
+func TestGitHubDialContextRejectsNonTLSDestinations(t *testing.T) {
+	_, err := githubDialContext(context.Background(), "udp", net.JoinHostPort("api.github.com", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("udp dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("api.github.com", "80"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("port 80 dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("evil.example.test", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("unknown host dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("1.1.1.1", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("ipv4 literal dial err=%v", err)
+	}
+	_, err = githubDialContext(context.Background(), "tcp", net.JoinHostPort("::1", "443"))
+	if !errors.Is(err, errGitHubForbiddenHost) {
+		t.Fatalf("ipv6 literal dial err=%v", err)
+	}
+}
+
+func TestAllowRateExpiresStaleWindows(t *testing.T) {
+	server := &Server{limits: make(map[string]*rateWindow)}
+	if !server.allowRate("login:1.1.1.1", 1, time.Hour) {
+		t.Fatal("first attempt should pass")
+	}
+	if server.allowRate("login:1.1.1.1", 1, time.Hour) {
+		t.Fatal("same-window excess should be limited")
+	}
+	server.limits["login:1.1.1.1"].expires = time.Now().Add(-time.Second)
+	server.limits["setup:2.2.2.2"] = &rateWindow{start: time.Now().Add(-time.Hour), count: 9, expires: time.Now().Add(-time.Second)}
+	if !server.allowRate("login:1.1.1.1", 1, time.Hour) {
+		t.Fatal("expired window should reset")
+	}
+	if _, ok := server.limits["setup:2.2.2.2"]; ok {
+		t.Fatal("stale rate window must be collected")
+	}
+	if len(server.limits) != 1 {
+		t.Fatalf("limits = %#v", server.limits)
+	}
+}
+
+func TestSavePasskeySessionCapsLiveCeremonies(t *testing.T) {
+	server := &Server{passkeys: make(map[string]passkeySession)}
+	ids := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	for _, id := range ids {
+		if !server.savePasskeySession(id, passkeySession{kind: "login", expires: time.Now().Add(time.Minute)}) {
+			t.Fatalf("session %s rejected before cap", id)
+		}
+	}
+	if server.savePasskeySession("overflow", passkeySession{kind: "login", expires: time.Now().Add(time.Minute)}) {
+		t.Fatal("expected passkey ceremony cap")
+	}
+	session := server.passkeys["a"]
+	session.expires = time.Now().Add(-time.Second)
+	server.passkeys["a"] = session
+	if !server.savePasskeySession("after-expire", passkeySession{kind: "login", expires: time.Now().Add(time.Minute)}) {
+		t.Fatal("expired ceremony should free a slot")
+	}
+	if _, ok := server.passkeys["a"]; ok {
+		t.Fatal("expired ceremony must be collected")
+	}
+	if len(server.passkeys) != maxPasskeySessions {
+		t.Fatalf("passkeys = %d", len(server.passkeys))
 	}
 }

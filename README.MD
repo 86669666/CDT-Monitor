@@ -43,6 +43,8 @@ Go HTTP API ──► SQLite WAL 状态快照
 
 ## Docker 安装
 
+上游已发布镜像仍可按下面的 Compose / CLI 示例拉取。本 fork（`86669666/CDT-Monitor`）仓库内的 `docker-compose.yml` 改为本地构建 `cdt-monitor:local`（没有 GHCR/Hub 前缀，避免 `docker compose push` 有仓库可推）。本地步骤见 [本地 Docker](docs/local-docker.md)。
+
 ### Docker Compose
 
 ```yaml
@@ -190,7 +192,7 @@ GET /monitor.php?key=<具有 cron:run scope 的 API Key>
 
 ### Android 桌面小组件
 
-仓库中的 [`android-widget`](android-widget/README.md) 是基于 `/api/v1/widget/summary` 的 Android 小组件原型，源码暂时随主项目保存，供后续研究和完善。当前不作为正式稳定客户端发布。
+仓库中的 [`android-widget`](android-widget/README.md) 是基于 `/api/v1/widget/summary` 的 Android 小组件原型，源码暂时随主项目保存，供后续研究和完善。当前不作为正式稳定客户端发布。本机 ops 工作区缺少 JDK 17 / Android SDK / Gradle，本地出包记为 blocker；构建走手动 Actions workflow。
 
 ## 相关链接
 
@@ -199,6 +201,8 @@ GET /monitor.php?key=<具有 cron:run scope 的 API Key>
 - 技术社区：[NodeSeek](https://www.nodeseek.com/) · [Linux.do](https://linux.do/)
 
 ## 本地开发
+
+容器方式见 [本地 Docker](docs/local-docker.md)。不要使用 `docker compose push`。
 
 要求 Go 1.24 和 Node.js 22：
 
@@ -224,13 +228,16 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 
 | Workflow | 触发条件 | 输出 |
 | --- | --- | --- |
-| `CI` | `dev`/`main` push、PR | 前端构建、Go race test、vet、Linux build |
-| `Automatic Release` | `main` push 或手动 | 自动计算 patch 版本、创建 tag 并调用正式发布流程 |
-| `Release Binaries` | 自动发布、`v*.*.*` tag 或手动 | Linux/Windows/macOS 二进制、SHA-256 校验和及 GitHub Release |
-| `Container Images` | `dev`/`main`/tag | 同时发布 GHCR 与 Docker Hub 的 linux/amd64、linux/arm64 镜像 |
-| `Android Widget` | 仅手动触发 | Android 原型 APK/AAB workflow artifact |
+| `CI` | `dev`/`main`/`work/**` push、PR、手动 | 前端构建、Go race test、vet、Linux build（不发布镜像） |
+| `Publish Guard` | `dev`/`main`/`work/**` push、PR、手动 | 检查发布变量未打开；扫描 workflow YAML / Compose 是否回到 GHCR/Hub login、`packages: write`、带仓库前缀的镜像名，或把端口改成非 `127.0.0.1`（不发布） |
+| `Automatic Release` | 仅手动，且需 `ENABLE_PRODUCTION_PUBLISH` | 按输入版本打 tag，再调用 Release Binaries / Container Images |
+| `Release Binaries` | 手动或 Automatic Release `workflow_call`，且需 `ENABLE_PRODUCTION_PUBLISH` | 本 fork 只编 linux/amd64；SHA-256 校验和及 **draft** GitHub Release（不标 latest） |
+| `Container Images` | 仅手动或 Automatic Release `workflow_call`（无 `dev`/tag `on.push`） | runner 上 load 校验 linux/amd64 本地标签 `cdt-monitor:verify-amd64`；无 registry login / 镜像名 / push |
+| `Android Widget` | 仅手动；本 fork 默认分支尚未登记，dispatch 现为 404 | 原型 APK/AAB artifact（不是本机 JDK 出包，也不是 Play/GHCR）。不要为了登记它去合未加开关的 `main` |
 
-镜像标签：
+本 fork 默认不发布。`Automatic Release`、GitHub Release 和 GHCR push 需要仓库变量 `ENABLE_PRODUCTION_PUBLISH=true`。Container Images 不再 login，也不再给 GHCR / Docker Hub 打 metadata 名。审计记录见 [CI 发布与密钥审计](docs/ci-publish-audit.md)。不要在本 fork 打开发布变量。
+
+上游已发布镜像标签（不是本 fork 的本地标签）：
 
 - `dev` 分支：`ghcr.io/wang4386/cdt-monitor:dev`、`qninq/cdt-monitor:dev`
 - `main` 分支：`ghcr.io/wang4386/cdt-monitor:latest`、`qninq/cdt-monitor:latest`
@@ -238,7 +245,8 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o cdt-monitor ./cmd/cdt-monit
 
 ## 安全建议
 
-- 公网部署必须在反向代理或网关层启用 HTTPS。
+- 公网部署必须在反向代理或网关层启用 HTTPS。由代理写入 `X-Forwarded-Proto: https` 并覆盖客户端伪造的同名头；HSTS 加在代理层。应用在本地 HTTP Compose 下不会发 HSTS。
+- 本 fork 的 Compose 只绑定 `127.0.0.1:43210`。在 `CDT_TRUSTED_PROXIES` 落地前，不要把监听改到局域网或 `0.0.0.0` 并信任私网来源的转发头。说明见 [本地 Docker](docs/local-docker.md)。
 - 阿里云 RAM 用户只授予 CDT 查询、ECS 查询/启停和可选 BSS 查询所需的最小权限。
 - 小组件只使用 `widget:read` Key；不要把 `instance:control` Key 放入公开脚本。
 - 定期撤销不再使用的 Key，并备份整个数据目录。
