@@ -1599,6 +1599,12 @@ func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err != nil {
 		t.Fatalf("max job type err=%v", err)
 	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 0, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("account id err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "test_notification", 0, `{}`, "", 3); err != nil {
+		t.Fatalf("test notify err=%v", err)
+	}
 }
 
 func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
