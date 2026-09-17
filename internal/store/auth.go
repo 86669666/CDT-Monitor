@@ -233,6 +233,9 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 }
 
 func (s *Store) RevokeAPIKey(ctx context.Context, id int64) error {
+	if id < 1 {
+		return sql.ErrNoRows
+	}
 	_, err := s.db.ExecContext(ctx, `UPDATE api_keys SET revoked_at=unixepoch() WHERE id=?`, id)
 	return err
 }
@@ -373,6 +376,9 @@ func (s *Store) UpdatePasskeyCredential(ctx context.Context, credential webauthn
 }
 
 func (s *Store) DeletePasskey(ctx context.Context, id int64) error {
+	if id < 1 {
+		return sql.ErrNoRows
+	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM passkeys WHERE id=?`, id)
 	return err
 }
