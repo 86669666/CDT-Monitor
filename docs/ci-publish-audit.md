@@ -651,3 +651,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `lfs:`（含 gated auto-release）。不要拉 Git LFS 对象
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-16T23:59Z` / 2026-09-17 07:59 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `1243a31` 再加 Compose GPU/cgroup 扫描：
+
+- Publish Guard 现禁止 Compose `gpus:` 和 `device_cgroup_rules:`。不要把宿主机 GPU 或设备 cgroup 传进容器
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

@@ -1078,6 +1078,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+devices:' <<<"$body"; then
     bad "$f: devices: passthrough is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+gpus:' <<<"$body"; then
+    bad "$f: gpus: passthrough is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+device_cgroup_rules:' <<<"$body"; then
+    bad "$f: device_cgroup_rules is forbidden"
+  fi
   if grep -Eq '^[[:space:]]+sysctls:' <<<"$body"; then
     bad "$f: sysctls: is forbidden on this local Compose"
   fi
