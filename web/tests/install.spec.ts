@@ -10339,3 +10339,22 @@ test('logout surfaces the live not_found envelope', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   expect(logoutCalls).toBe(1)
 })
+
+test('logout surfaces the live internal_error envelope', async ({ page }) => {
+  let logoutCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/auth/logout', (route) => {
+    logoutCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '退出' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  expect(logoutCalls).toBe(1)
+})
