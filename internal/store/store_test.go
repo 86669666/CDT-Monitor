@@ -2323,6 +2323,21 @@ func TestAPIKeyLastUsedIsUpdatedOnValidate(t *testing.T) {
 	}
 }
 
+func TestRevokeAndDeleteRejectNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.RevokeAPIKey(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("revoke err=%v", err)
+	}
+	if err = st.DeletePasskey(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("delete passkey err=%v", err)
+	}
+}
+
 func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
