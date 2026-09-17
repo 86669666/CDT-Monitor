@@ -656,3 +656,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `gpus:` 和 `device_cgroup_rules:`。不要把宿主机 GPU 或设备 cgroup 传进容器
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-17T00:01Z` / 2026-09-17 08:01 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `255e0ea` 再加 checkout sparse-checkout 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `sparse-checkout` / `sparse-checkout-cone-mode`（含 gated auto-release）。保持 `fetch-depth: 1` 全量工作树
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

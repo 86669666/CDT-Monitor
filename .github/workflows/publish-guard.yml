@@ -27,6 +27,7 @@ name: Publish Guard
 # Do not pass checkout token: PATs.
 # Do not add checkout submodules: (including auto-release).
 # Do not add checkout lfs: (including auto-release).
+# Do not add checkout sparse-checkout (including auto-release).
 # Compose build stays context/dockerfile/args (VERSION/COMMIT/BUILT_AT/IMAGE_SOURCE only).
 # Compose cap_drop stays ALL only.
 # Do not add Compose gpus or device_cgroup_rules.

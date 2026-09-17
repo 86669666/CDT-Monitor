@@ -393,6 +393,9 @@ scan_checkout_credentials() {
     if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+lfs:' <<<"$body"; then
       bad "$f: checkout lfs: is forbidden; do not pull Git LFS objects"
     fi
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+sparse-checkout(-cone-mode)?:' <<<"$body"; then
+      bad "$f: checkout sparse-checkout is forbidden; keep a full fetch-depth 1 clone"
+    fi
     if [ "$base" = "auto-release.yml" ]; then
       if ! grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
         bad "$f: gated tag job must keep persist-credentials true for git push tag"
