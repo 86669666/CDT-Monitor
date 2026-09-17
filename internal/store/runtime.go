@@ -227,6 +227,8 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if len([]rune(job.Payload)) > maxJobPayloadRunes {
 		return domain.Job{}, errors.New("job payload is too long")
 	}
+	job.Result = clipRunes(job.Result, maxLogRunes)
+	job.Error = clipRunes(job.Error, maxLogRunes)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
 	return job, nil
 }

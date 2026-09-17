@@ -1486,6 +1486,29 @@ func TestGetJobRejectsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestGetJobClipsOversizedResultAndError(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-oversized-result"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,result,error,max_attempts,available_at,created_at,updated_at) VALUES(?,?,1,'{}','failed',?,?,3,unixepoch(),unixepoch(),unixepoch())`, id, "refresh_account", strings.Repeat("r", maxLogRunes+8), strings.Repeat("e", maxLogRunes+8)); err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.GetJob(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []rune(job.Result); len(got) != maxLogRunes {
+		t.Fatalf("result len=%d", len(got))
+	}
+	if got := []rune(job.Error); len(got) != maxLogRunes {
+		t.Fatalf("error len=%d", len(got))
+	}
+}
+
 func TestClaimJobFailsOversizedPayload(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
