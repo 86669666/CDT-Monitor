@@ -569,7 +569,14 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 	return accounts, rows.Err()
 }
 
+func validAccountID(id int64) bool {
+	return id >= 1
+}
+
 func (s *Store) GetAccount(ctx context.Context, id int64) (domain.Account, error) {
+	if !validAccountID(id) {
+		return domain.Account{}, sql.ErrNoRows
+	}
 	accounts, err := s.ListAccounts(ctx)
 	if err != nil {
 		return domain.Account{}, err
@@ -604,6 +611,9 @@ func (s *Store) AccountSecrets(ctx context.Context) ([]string, error) {
 }
 
 func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
+	if !validAccountID(id) {
+		return "", sql.ErrNoRows
+	}
 	var encrypted, accessKeyID string
 	err := s.db.QueryRowContext(ctx, `SELECT access_key_secret, access_key_id FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&encrypted, &accessKeyID)
 	if err != nil {
@@ -613,6 +623,9 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 }
 
 func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {
+	if !validAccountID(id) {
+		return sql.ErrNoRows
+	}
 	if !validTrafficSample(traffic) {
 		return errors.New("traffic sample is invalid")
 	}

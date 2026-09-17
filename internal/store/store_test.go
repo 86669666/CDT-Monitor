@@ -423,6 +423,27 @@ func TestListAccountsRejectsInvalidMaxTraffic(t *testing.T) {
 	}
 }
 
+func TestAccountLookupsRejectNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.GetAccount(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("get account err=%v", err)
+	}
+	if _, err = st.AccountSecret(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("secret err=%v", err)
+	}
+	if _, err = st.History(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("history err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 0, 1, domain.StatusRunning, time.Now().UTC()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("runtime err=%v", err)
+	}
+}
+
 func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

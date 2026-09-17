@@ -118,6 +118,9 @@ func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic fl
 }
 
 func (s *Store) History(ctx context.Context, accountID int64) (domain.History, error) {
+	if !validAccountID(accountID) {
+		return domain.History{}, sql.ErrNoRows
+	}
 	history := domain.History{Hourly: []domain.TrafficPoint{}, Daily: []domain.TrafficPoint{}}
 	for query, target := range map[string]*[]domain.TrafficPoint{
 		`SELECT traffic,recorded_at FROM traffic_hourly WHERE account_id=? ORDER BY recorded_at DESC LIMIT 25`: &history.Hourly,
