@@ -35,6 +35,7 @@ name: Publish Guard
 # Do not add Compose gpus or device_cgroup_rules.
 # Compose healthcheck stays test/interval/timeout/retries/start_period only.
 # Do not add Compose deploy: or cgroup_parent.
+# Do not add Compose secrets: or configs:.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
