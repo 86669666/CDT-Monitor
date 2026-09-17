@@ -74,6 +74,27 @@ func TestEnqueueRejectsUnknownJobType(t *testing.T) {
 	}
 }
 
+func TestEnqueueRejectsNonPositiveAccountID(t *testing.T) {
+	st, _ := setupAccount(t, nil)
+	defer st.Close()
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	ctx := context.Background()
+	_, err := eng.Enqueue(ctx, JobRefreshAccount, 0, `{}`, "refresh:0")
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("refresh err=%v", err)
+	}
+	if _, err = eng.Enqueue(ctx, JobTestNotify, 0, ParseNotifyPayload("webhook"), "notify:0"); err != nil {
+		t.Fatalf("test notify err=%v", err)
+	}
+	var count int
+	if err = st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("jobs count=%d", count)
+	}
+}
+
 func TestProcessJobsUnknownTypeRequeues(t *testing.T) {
 	st, _ := setupAccount(t, nil)
 	defer st.Close()

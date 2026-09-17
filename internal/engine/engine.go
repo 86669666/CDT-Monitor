@@ -77,6 +77,9 @@ func (e *Engine) Enqueue(ctx context.Context, jobType string, accountID int64, p
 	if !allowedJobType(jobType) {
 		return domain.Job{}, fmt.Errorf("unknown job type %q", jobType)
 	}
+	if jobType != JobTestNotify && accountID < 1 {
+		return domain.Job{}, errors.New("account id is invalid")
+	}
 	job, err := e.store.EnqueueJob(ctx, jobType, accountID, payload, uniqueKey, 3)
 	if err == nil {
 		e.signal()
