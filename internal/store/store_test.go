@@ -1353,6 +1353,21 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	}
 }
 
+func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.DeleteActionEvent(ctx, ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("empty key err=%v", err)
+	}
+	if err = st.DeleteActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1)); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("long key err=%v", err)
+	}
+}
+
 func TestActionEventCanBeReleasedAfterFailure(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
