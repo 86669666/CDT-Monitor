@@ -150,6 +150,27 @@ func TestGetConfigRejectsOversizedSetting(t *testing.T) {
 	}
 }
 
+func TestPutSettingTxRejectsOversizedValue(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	err = st.WithTx(ctx, func(tx *sql.Tx) error {
+		return putSettingTx(ctx, tx, "timezone", strings.Repeat("z", maxSettingValueBytes+1))
+	})
+	if err == nil || !strings.Contains(err.Error(), "setting is too large") {
+		t.Fatalf("value err=%v", err)
+	}
+	err = st.WithTx(ctx, func(tx *sql.Tx) error {
+		return putSettingTx(ctx, tx, strings.Repeat("k", maxSettingKeyRunes+1), "ok")
+	})
+	if err == nil || !strings.Contains(err.Error(), "setting is too large") {
+		t.Fatalf("key err=%v", err)
+	}
+}
+
 func TestOpenRejectsUnsupportedArgon2idParams(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
