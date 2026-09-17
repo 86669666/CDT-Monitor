@@ -182,6 +182,12 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes {
 		return domain.Job{}, errors.New("job type is invalid")
 	}
+	switch jobType {
+	case "monitor_account", "refresh_account", "control_instance":
+		if accountID < 1 {
+			return domain.Job{}, errors.New("account id is invalid")
+		}
+	}
 	if maxAttempts < 1 || maxAttempts > maxJobAttempts {
 		return domain.Job{}, errors.New("job attempts are invalid")
 	}
