@@ -98,6 +98,8 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("POST /api/v1/accounts/refresh", s.require("instance:control", http.HandlerFunc(s.refreshAll)))
 	mux.Handle("POST /api/v1/accounts/{id}/refresh", s.require("instance:control", http.HandlerFunc(s.refresh)))
 	mux.Handle("POST /api/v1/accounts/{id}/actions/{action}", s.require("instance:control", http.HandlerFunc(s.control)))
+	mux.Handle("PATCH /api/v1/accounts/{id}/settings", s.require("admin", http.HandlerFunc(s.updateAccountSettings)))
+	mux.Handle("POST /api/v1/notifications/daily-report", s.require("admin", http.HandlerFunc(s.triggerDailyReport)))
 	mux.Handle("GET /api/v1/jobs/{id}", s.require("widget:read", http.HandlerFunc(s.job)))
 	mux.Handle("GET /api/v1/logs", s.require("admin", http.HandlerFunc(s.logs)))
 	mux.Handle("DELETE /api/v1/logs", s.require("admin", http.HandlerFunc(s.clearLogs)))
@@ -923,6 +925,9 @@ func applyConfigDefaults(config *domain.Config) {
 	if config.Timezone == "" {
 		config.Timezone = "Asia/Shanghai"
 	}
+	if config.DailyReportTime == "" {
+		config.DailyReportTime = "22:00"
+	}
 	if config.Notifications.Email.Port == 0 {
 		config.Notifications.Email.Port = 465
 	}
@@ -970,4 +975,103 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return "CDT"
+}
+
+type NullableBool struct {
+	Present bool
+	Value   *bool
+}
+
+func (n *NullableBool) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	s := strings.TrimSpace(string(data))
+	if s == "null" || s == `"default"` {
+		n.Value = nil
+		return nil
+	}
+	var b bool
+	if err := json.Unmarshal(data, &b); err != nil {
+		return err
+	}
+	n.Value = &b
+	return nil
+}
+
+type accountSettingsInput struct {
+	KeepAlive       NullableBool `json:"keep_alive"`
+	ShutdownMode    *string      `json:"shutdown_mode"`
+	ScheduleEnabled *bool        `json:"schedule_enabled"`
+	StartTime       *string      `json:"start_time"`
+	StopTime        *string      `json:"stop_time"`
+	DailyReport     NullableBool `json:"daily_report"`
+}
+
+func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	account, err := s.store.GetAccount(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "实例不存在")
+		return
+	}
+	var input accountSettingsInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	keepAlive := account.KeepAlive
+	if input.KeepAlive.Present {
+		keepAlive = input.KeepAlive.Value
+	}
+	shutdownMode := account.ShutdownMode
+	if input.ShutdownMode != nil {
+		mode := *input.ShutdownMode
+		if mode != "" && mode != "default" && mode != "KeepCharging" && mode != "StopCharging" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "无效的停机模式")
+			return
+		}
+		if mode == "default" {
+			mode = ""
+		}
+		shutdownMode = mode
+	}
+	scheduleEnabled := account.ScheduleEnabled
+	if input.ScheduleEnabled != nil {
+		scheduleEnabled = *input.ScheduleEnabled
+	}
+	startTime := account.StartTime
+	if input.StartTime != nil {
+		startTime = *input.StartTime
+	}
+	stopTime := account.StopTime
+	if input.StopTime != nil {
+		stopTime = *input.StopTime
+	}
+	dailyReport := account.DailyReport
+	if input.DailyReport.Present {
+		dailyReport = input.DailyReport.Value
+	}
+	if err := s.store.UpdateAccountSettings(r.Context(), id, keepAlive, shutdownMode, scheduleEnabled, startTime, stopTime, dailyReport); err != nil {
+		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	_ = s.store.AddLog(r.Context(), "audit", fmt.Sprintf("管理员更新实例 [%s] 配置", account.Remark))
+	updated, err := s.store.GetAccount(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		return
+	}
+	updated.AccessKeySecret = ""
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
+	job, err := s.engine.EnqueueDailyReport(r.Context(), true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, job)
 }

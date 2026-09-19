@@ -141,6 +141,16 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
     UNIQUE(event_id, channel)
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_claim ON notification_outbox(status, available_at, created_at);
+CREATE TABLE IF NOT EXISTS daily_traffic_snapshots (
+    account_id INTEGER NOT NULL,
+    date_str TEXT NOT NULL,
+    start_traffic REAL NOT NULL DEFAULT -1,
+    stop_traffic REAL NOT NULL DEFAULT -1,
+    start_time TEXT NOT NULL DEFAULT '',
+    stop_time TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(account_id, date_str)
+);
 `
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -151,6 +161,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		{"remark", "TEXT NOT NULL DEFAULT ''"},
 		{"site_type", "TEXT NOT NULL DEFAULT 'china'"},
 		{"deleted_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"keep_alive", "INTEGER"},
+		{"shutdown_mode", "TEXT NOT NULL DEFAULT ''"},
+		{"daily_report", "INTEGER"},
 	} {
 		if err := s.ensureColumn(ctx, "accounts", col.name, col.definition); err != nil {
 			return err

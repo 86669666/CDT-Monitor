@@ -9,6 +9,8 @@ const config = {
   api_interval: 600,
   enable_billing: true,
   timezone: 'Asia/Shanghai',
+  enable_daily_report: false,
+  daily_report_time: '22:00',
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
     telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
@@ -261,6 +263,14 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await expect(page.locator('.metric--amber .metric-icon')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('dashboard-billing-desktop.png'), fullPage: true })
 
+  await page.getByRole('button', { name: '实例设置' }).click()
+  await expect(page.locator('.instance-settings-modal')).toBeVisible()
+  await expect(page.getByText('抢占式保活')).toBeVisible()
+  await expect(page.getByText('默认停机方式')).toBeVisible()
+  await expect(page.getByText('每日定时开关机')).toBeVisible()
+  await expect(page.getByText('参与日报推送')).toBeVisible()
+  await page.locator('.instance-settings-modal header').getByRole('button', { name: '关闭' }).click()
+
   await page.getByRole('button', { name: '查看历史流量' }).click()
   await expect(page.locator('.chart-modal')).toBeVisible()
   const latestSample = page.locator('.chart-area .recharts-line-dot').last()
@@ -277,7 +287,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.getByRole('button', { name: '24 小时' }).click()
   await page.locator('.chart-modal').getByRole('button', { name: '关闭' }).click()
 
-  await page.getByRole('button', { name: '设置' }).click()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
   const settingsSection = page.locator('.settings-section')
   const generalSectionWidth = await settingsSection.evaluate((element) => element.clientWidth)
   const refreshSelectDesktop = page.getByRole('combobox', { name: 'API 刷新间隔' })
@@ -301,6 +311,9 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.screenshot({ path: testInfo.outputPath('settings-region-select-desktop.png'), fullPage: true })
   await zhangjiakou.click()
   await expect(page.getByRole('combobox', { name: '地域' })).toContainText('cn-zhangjiakou')
+  await expect(page.getByRole('button', { name: '复制' })).toBeVisible()
+  await page.getByRole('button', { name: '复制' }).click()
+  await expect(page.locator('.account-editor')).toHaveCount(2)
 
   await page.getByRole('button', { name: '通知', exact: true }).click()
   const notificationSectionWidth = await settingsSection.evaluate((element) => element.clientWidth)
@@ -308,6 +321,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.getByRole('button', { name: 'Webhook' }).click()
   await page.getByTitle('插入 #TITLE#').click()
   await expect(page.getByLabel('Body 模板')).toHaveValue('#TITLE#')
+  await expect(page.getByRole('button', { name: '发送日报测试' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('settings-select-desktop.png'), fullPage: true })
 
   await page.getByRole('button', { name: '关于' }).click()
@@ -335,7 +349,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
 
   await page.setViewportSize({ width: 320, height: 720 })
   await page.getByRole('button', { name: '菜单' }).click()
-  await page.getByRole('button', { name: '设置' }).click()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
   const panel = page.locator('.settings-panel')
   await expect(panel).toBeVisible()
   const panelBox = await panel.boundingBox()
