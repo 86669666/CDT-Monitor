@@ -1450,6 +1450,54 @@ func TestGetConfigRejectsInvalidNotifyIdentities(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsInvalidNotifyPayloads(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_proxy_user'`, "user\nadmin"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("proxy user err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_proxy_user'`); err != nil {
+		t.Fatal(err)
+	}
+	headers, err := st.EncryptAAD("{\"X-Bad\":\"a\\nb\"}", "notify_wh_headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_headers',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, headers); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("headers err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_wh_headers'`); err != nil {
+		t.Fatal(err)
+	}
+	body, err := st.EncryptAAD(strings.Repeat("b", 8193), "notify_wh_body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_body',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, body); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification payload is too long") {
+		t.Fatalf("body err=%v", err)
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -213,6 +213,15 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err = notify.ValidateTelegramChatID(config.Notifications.Telegram.ChatID); err != nil {
 		return domain.Config{}, err
 	}
+	if err = notify.ValidateWebhookHeaders(config.Notifications.Webhook.Headers); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateWebhookBody(config.Notifications.Webhook.Body); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateNotifyCredentials(config.Notifications); err != nil {
+		return domain.Config{}, err
+	}
 	return config, nil
 }
 
