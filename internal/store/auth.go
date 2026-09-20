@@ -246,6 +246,9 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		if created <= 0 || (expires.Valid && expires.Int64 <= 0) {
 			return nil, errors.New("api key timestamp is invalid")
 		}
+		if strings.TrimSpace(key.Name) == "" || len([]rune(key.Name)) > maxAPIKeyNameRunes {
+			return nil, errors.New("api key name is invalid")
+		}
 		key.Scopes = parsed
 		key.CreatedAt = time.Unix(created, 0).UTC()
 		key.LastUsedAt, key.ExpiresAt, key.RevokedAt = nullTime(lastUsed), nullTime(expires), nullTime(revoked)
@@ -328,6 +331,9 @@ func (s *Store) ListPasskeys(ctx context.Context) ([]domain.Passkey, error) {
 		}
 		if created <= 0 {
 			return nil, errors.New("passkey timestamp is invalid")
+		}
+		if strings.TrimSpace(item.Name) == "" || len([]rune(item.Name)) > maxPasskeyNameRunes {
+			return nil, errors.New("passkey name is invalid")
 		}
 		item.CreatedAt = time.Unix(created, 0).UTC()
 		item.LastUsedAt = nullTime(lastUsed)
