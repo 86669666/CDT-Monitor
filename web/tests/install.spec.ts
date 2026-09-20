@@ -10941,3 +10941,26 @@ test('instance stop surfaces the live job_not_found envelope', async ({ page }) 
   await expect(page.locator('.toast--error').filter({ hasText: '任务不存在' }).first()).toBeVisible()
   expect(stopCalls).toBe(1)
 })
+
+test('instance start surfaces the live job unauthorized envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-unauth', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
