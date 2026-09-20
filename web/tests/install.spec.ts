@@ -10752,3 +10752,14 @@ test('init-status failure surfaces the live unauthorized envelope', async ({ pag
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
   await expect(page.getByText('请登录或提供有效 API Key')).toBeVisible()
 })
+
+test('init-status failure surfaces the live forbidden envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('API Key 权限不足')).toBeVisible()
+})
