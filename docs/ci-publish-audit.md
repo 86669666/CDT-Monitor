@@ -821,3 +821,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 Compose `cgroup:` / `cgroupns` / `cgroupns_mode`（host 本来就禁止）。`cgroup_parent` 仍单独禁止。保持默认 cgroup 命名空间
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:48Z` / 2026-09-20 22:48 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `6bd0d6b` 再加 packages permission 扫描：
+
+- Publish Guard 现禁止任何 `packages:` permission（含 job 级 `packages: read`）。不要给 GITHUB_TOKEN 开 GHCR
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

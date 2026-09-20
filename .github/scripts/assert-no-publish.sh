@@ -41,6 +41,9 @@ scan_workflows() {
     if grep -Eq 'packages:[[:space:]]*write' <<<"$body"; then
       bad "$f: packages: write is forbidden on this fork"
     fi
+    if grep -Eq '^[[:space:]]+packages:' <<<"$body"; then
+      bad "$f: packages permission is forbidden on this fork"
+    fi
     if grep -Eq 'docker/login-action' <<<"$body"; then
       bad "$f: docker/login-action is forbidden on this fork"
     fi
