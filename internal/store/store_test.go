@@ -3238,6 +3238,32 @@ func TestLastMonitorRunRejectsInvalidValue(t *testing.T) {
 	}
 }
 
+func TestSetLastMonitorRunRejectsInvalidValue(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, at := range []time.Time{time.Time{}, time.Unix(0, 0).UTC(), time.Unix(-1, 0).UTC()} {
+		if err = st.SetLastMonitorRun(ctx, at); err == nil || !strings.Contains(err.Error(), "last monitor run is invalid") {
+			t.Fatalf("at=%v err=%v", at, err)
+		}
+	}
+	var stored string
+	if err = st.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='last_monitor_run'`).Scan(&stored); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("invalid writes must not store last_monitor_run: stored=%q err=%v", stored, err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	if err = st.SetLastMonitorRun(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LastMonitorRun(ctx)
+	if err != nil || !got.Equal(now) {
+		t.Fatalf("got=%v err=%v", got, err)
+	}
+}
+
 func TestOutboxRetriesThenExhausts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

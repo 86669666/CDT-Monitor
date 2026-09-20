@@ -173,6 +173,9 @@ func (s *Store) LastMonitorRun(ctx context.Context) (time.Time, error) {
 }
 
 func (s *Store) SetLastMonitorRun(ctx context.Context, at time.Time) error {
+	if at.IsZero() || at.Unix() <= 0 {
+		return errors.New("last monitor run is invalid")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('last_monitor_run',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.FormatInt(at.Unix(), 10))
 	return err
 }
