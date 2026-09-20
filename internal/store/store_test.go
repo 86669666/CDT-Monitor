@@ -1203,6 +1203,50 @@ func TestGetConfigRejectsInvalidNumericSetting(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsOutOfRangeNumericSetting(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		key   string
+		value string
+		err   string
+		reset string
+	}{
+		{key: "traffic_threshold", value: "0", err: "traffic threshold must be between 1 and 100", reset: "95"},
+		{key: "traffic_threshold", value: "101", err: "traffic threshold must be between 1 and 100", reset: "95"},
+		{key: "notify_port", value: "-1", err: "notification port is invalid", reset: "465"},
+		{key: "notify_port", value: "65536", err: "notification port is invalid", reset: "465"},
+		{key: "api_interval", value: "86401", err: "api interval must be between 30 and 86400 seconds", reset: "600"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.value, tc.key); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), tc.err) {
+			t.Fatalf("%s=%s err=%v", tc.key, tc.value, err)
+		}
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.reset, tc.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.TrafficThreshold != 95 || loaded.APIInterval != 600 || loaded.Notifications.Email.Port != 465 {
+		t.Fatalf("restored config = %#v", loaded)
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

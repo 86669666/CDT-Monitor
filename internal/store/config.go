@@ -106,12 +106,21 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if apiInterval < minAPIIntervalSeconds {
 		apiInterval = minAPIIntervalSeconds
 	}
+	if apiInterval > 86400 {
+		return domain.Config{}, errors.New("api interval must be between 30 and 86400 seconds")
+	}
 	trafficThreshold, err := intSetting(settings, "traffic_threshold", 95)
 	if err != nil {
 		return domain.Config{}, err
 	}
+	if trafficThreshold < 1 || trafficThreshold > 100 {
+		return domain.Config{}, errors.New("traffic threshold must be between 1 and 100")
+	}
 	notifyPort, err := intSetting(settings, "notify_port", 465)
 	if err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateTCPPort(notifyPort); err != nil {
 		return domain.Config{}, err
 	}
 	config := domain.Config{
