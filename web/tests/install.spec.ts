@@ -11137,3 +11137,27 @@ test('settings email test surfaces the live job unauthorized envelope', async ({
   await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings email test surfaces the live job forbidden envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email-forbidden', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
