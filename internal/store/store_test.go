@@ -2415,6 +2415,29 @@ func TestMonitorJobKeepsMinuteDeduplicationAfterCompletion(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsInvalidTTL(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, ttl := range []time.Duration{0, -time.Second} {
+		token, err := st.CreateSession(ctx, "127.0.0.1", "test", ttl)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "session ttl is invalid") {
+			t.Fatalf("create ttl=%v token=%q err=%v", ttl, token, err)
+		}
+		token, err = st.CreateExclusiveSession(ctx, "127.0.0.1", "test", ttl)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "session ttl is invalid") {
+			t.Fatalf("exclusive ttl=%v token=%q err=%v", ttl, token, err)
+		}
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid ttl must not store a session, count=%d err=%v", count, err)
+	}
+}
+
 func TestCreateExclusiveSessionReplacesPrevious(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2503,8 +2526,11 @@ func TestSessionExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	token, err := st.CreateSession(context.Background(), "127.0.0.1", "test", -time.Second)
+	token, err := st.CreateSession(context.Background(), "127.0.0.1", "test", time.Hour)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(context.Background(), `UPDATE sessions SET expires_at=unixepoch()-1`); err != nil {
 		t.Fatal(err)
 	}
 	valid, err := st.ValidateSession(context.Background(), token)
@@ -2621,12 +2647,15 @@ func TestPruneDeletesExpiredSessionsOnly(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	expired, err := st.CreateSession(ctx, "127.0.0.1", "expired", -time.Second)
+	expired, err := st.CreateSession(ctx, "127.0.0.1", "expired", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	live, err := st.CreateSession(ctx, "127.0.0.1", "live", time.Hour)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE sessions SET expires_at=unixepoch()-1 WHERE user_agent='expired'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = st.Prune(ctx); err != nil {
