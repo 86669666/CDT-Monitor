@@ -49,7 +49,7 @@ name: Publish Guard
 # Compose named volumes stay cdt-data only, with no driver/options.
 # Do not add Compose annotations, cpu_shares, cpu_quota/period, or cpuset.
 # Do not add Compose blkio_config or oom_score_adj.
-# Do not add Compose mem_reservation.
+# Do not add Compose mem_reservation or mem_swappiness.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
