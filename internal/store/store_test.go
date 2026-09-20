@@ -3275,6 +3275,23 @@ func TestValidateAPIKeyIgnoresUnknownScopes(t *testing.T) {
 	}
 }
 
+func TestValidateAPIKeyDeduplicatesScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	token := "cdt_duplicate_scopes_token"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('dup',?,'["widget:read","widget:read"]',unixepoch())`, security.TokenHash(token)); err != nil {
+		t.Fatal(err)
+	}
+	scopes, err := st.ValidateAPIKey(ctx, token)
+	if err != nil || len(scopes) != 1 || scopes[0] != "widget:read" {
+		t.Fatalf("scopes=%v err=%v", scopes, err)
+	}
+}
+
 func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
