@@ -192,6 +192,9 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err = notify.ValidateNotifyOptions(config.Notifications); err != nil {
 		return domain.Config{}, err
 	}
+	if err = notify.ValidateTCPPortString(config.Notifications.Telegram.ProxyPort); err != nil {
+		return domain.Config{}, err
+	}
 	return config, nil
 }
 
