@@ -3113,6 +3113,16 @@ func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
 	if _, _, err = st.CreateAPIKey(context.Background(), "old", []string{"widget:read"}, &past); err == nil {
 		t.Fatal("expected past expiry to be rejected")
 	}
+	now := time.Now().UTC()
+	sameSecond := now.Add(time.Millisecond)
+	if sameSecond.Unix() != now.Unix() {
+		sameSecond = time.Unix(now.Unix(), int64(time.Second)-1).UTC()
+	}
+	if sameSecond.After(now) {
+		if _, _, err = st.CreateAPIKey(context.Background(), "same-second", []string{"widget:read"}, &sameSecond); err == nil || !strings.Contains(err.Error(), "expiry must be in the future") {
+			t.Fatalf("same-second expiry err=%v", err)
+		}
+	}
 	future := time.Now().Add(time.Hour)
 	_, token, err := st.CreateAPIKey(context.Background(), "fresh", []string{"widget:read"}, &future)
 	if err != nil {
