@@ -1033,6 +1033,9 @@ scan_compose() {
   if ! grep -Eq 'mem_limit:[[:space:]]*512m' <<<"$body"; then
     bad "$f: mem_limit must stay 512m"
   fi
+  if grep -Eq '^[[:space:]]+(mem_reservation|memory_reservation):' <<<"$body"; then
+    bad "$f: mem_reservation is forbidden; keep mem_limit 512m"
+  fi
   if ! grep -Eq 'cpus:[[:space:]]*1\.0' <<<"$body"; then
     bad "$f: cpus must stay 1.0"
   fi

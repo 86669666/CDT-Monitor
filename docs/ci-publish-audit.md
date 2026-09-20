@@ -756,3 +756,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `show-progress:`（含 gated auto-release）。保持 action 默认。`path:` 仍不扫
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T13:23Z` / 2026-09-20 21:23 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c6019b1` 再加 Compose mem_reservation 扫描：
+
+- Publish Guard 现禁止 Compose `mem_reservation` / `memory_reservation`。内存上限仍只靠 `mem_limit: 512m`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
