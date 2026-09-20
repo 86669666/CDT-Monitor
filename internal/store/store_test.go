@@ -2977,8 +2977,14 @@ func TestRevokeAndDeleteRejectNonPositiveID(t *testing.T) {
 	if err = st.RevokeAPIKey(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("revoke err=%v", err)
 	}
+	if err = st.RevokeAPIKey(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing revoke err=%v", err)
+	}
 	if err = st.DeletePasskey(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("delete passkey err=%v", err)
+	}
+	if err = st.DeletePasskey(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing delete err=%v", err)
 	}
 }
 
