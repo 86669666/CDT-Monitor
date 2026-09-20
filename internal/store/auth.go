@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -354,15 +355,16 @@ func (s *Store) ListPasskeys(ctx context.Context) ([]domain.Passkey, error) {
 }
 
 func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credential, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT credential_json FROM passkeys ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT credential_id,credential_json FROM passkeys ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	credentials := make([]webauthn.Credential, 0)
 	for rows.Next() {
+		var storedID []byte
 		var encoded string
-		if err = rows.Scan(&encoded); err != nil {
+		if err = rows.Scan(&storedID, &encoded); err != nil {
 			return nil, err
 		}
 		if len(encoded) > maxPasskeyJSONBytes {
@@ -374,6 +376,9 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 		}
 		if err = validPasskeyCredential(credential); err != nil {
 			return nil, err
+		}
+		if len(storedID) == 0 || !bytes.Equal(storedID, credential.ID) {
+			return nil, errors.New("passkey credential is invalid")
 		}
 		credentials = append(credentials, credential)
 	}

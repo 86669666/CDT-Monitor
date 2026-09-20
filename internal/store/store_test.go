@@ -3565,6 +3565,26 @@ func TestLoadPasskeyCredentialsRejectsEmptyPublicKey(t *testing.T) {
 	}
 }
 
+func TestLoadPasskeyCredentialsRejectsCredentialIDMismatch(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	raw, err := json.Marshal(webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, []byte("other-id"), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestSavePasskeyRejectsOversizedName(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
