@@ -706,3 +706,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `working_dir:` 和 `platform:`。不要改镜像 WORKDIR 或强制另一架构
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T12:02Z` / 2026-09-20 20:02 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `0fc8cb2` 再加 Compose scale/links 扫描：
+
+- Publish Guard 现禁止 Compose `scale:` 和 `links` / `external_links`。不要扩副本或加遗留网络链接
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

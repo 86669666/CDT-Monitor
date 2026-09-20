@@ -39,6 +39,7 @@ name: Publish Guard
 # Do not add Compose secrets: or configs:.
 # Do not add Compose credential_spec or isolation.
 # Do not add Compose working_dir or platform overrides.
+# Do not add Compose scale or links/external_links.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 

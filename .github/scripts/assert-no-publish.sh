@@ -1185,6 +1185,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+depends_on:' <<<"$body"; then
     bad "$f: depends_on is forbidden; this Compose has no sidecars"
   fi
+  if grep -Eq '^[[:space:]]+scale:' <<<"$body"; then
+    bad "$f: scale: is forbidden; keep a single local cdt-monitor"
+  fi
+  if grep -Eq '^[[:space:]]+(external_)?links:' <<<"$body"; then
+    bad "$f: links/external_links are forbidden; keep the default bridge and loopback publish"
+  fi
   if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
     bad "$f: external: true is forbidden; keep the named cdt-data volume local"
   fi
