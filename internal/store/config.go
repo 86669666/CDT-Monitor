@@ -41,12 +41,19 @@ var sensitiveSettings = map[string]bool{
 	"notify_tg_proxy_url":  true,
 }
 
-func boolSetting(settings map[string]string, key string, fallback bool) bool {
+func boolSetting(settings map[string]string, key string, fallback bool) (bool, error) {
 	value, ok := settings[key]
 	if !ok {
-		return fallback
+		return fallback, nil
 	}
-	return value == "1" || strings.EqualFold(value, "true")
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true":
+		return true, nil
+	case "0", "false", "":
+		return false, nil
+	default:
+		return false, fmt.Errorf("setting %s is invalid", key)
+	}
 }
 
 func intSetting(settings map[string]string, key string, fallback int) (int, error) {
@@ -138,19 +145,43 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if _, err = time.LoadLocation(timezone); err != nil {
 		return domain.Config{}, errors.New("invalid timezone")
 	}
+	enableScheduleMail, err := boolSetting(settings, "enable_schedule_email", false)
+	if err != nil {
+		return domain.Config{}, err
+	}
+	keepAlive, err := boolSetting(settings, "keep_alive", false)
+	if err != nil {
+		return domain.Config{}, err
+	}
+	enableBilling, err := boolSetting(settings, "enable_billing", false)
+	if err != nil {
+		return domain.Config{}, err
+	}
+	notifyEmailEnabled, err := boolSetting(settings, "notify_email_enabled", true)
+	if err != nil {
+		return domain.Config{}, err
+	}
+	notifyTGEnabled, err := boolSetting(settings, "notify_tg_enabled", false)
+	if err != nil {
+		return domain.Config{}, err
+	}
+	notifyWHEnabled, err := boolSetting(settings, "notify_wh_enabled", false)
+	if err != nil {
+		return domain.Config{}, err
+	}
 	config := domain.Config{
 		TrafficThreshold:   trafficThreshold,
-		EnableScheduleMail: boolSetting(settings, "enable_schedule_email", false),
+		EnableScheduleMail: enableScheduleMail,
 		ShutdownMode:       shutdownMode,
 		ThresholdAction:    thresholdAction,
-		KeepAlive:          boolSetting(settings, "keep_alive", false),
+		KeepAlive:          keepAlive,
 		APIInterval:        apiInterval,
-		EnableBilling:      boolSetting(settings, "enable_billing", false),
+		EnableBilling:      enableBilling,
 		Timezone:           timezone,
 		Accounts:           accounts,
 		Notifications: domain.NotificationConfig{
 			Email: domain.EmailConfig{
-				Enabled:            boolSetting(settings, "notify_email_enabled", true),
+				Enabled:            notifyEmailEnabled,
 				To:                 valueOr(settings, "notify_email", ""),
 				Host:               valueOr(settings, "notify_host", ""),
 				Port:               notifyPort,
@@ -160,7 +191,7 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				Security:           valueOr(settings, "notify_secure", "ssl"),
 			},
 			Telegram: domain.TelegramConfig{
-				Enabled:            boolSetting(settings, "notify_tg_enabled", false),
+				Enabled:            notifyTGEnabled,
 				Token:              valueOr(settings, "notify_tg_token", ""),
 				TokenConfigured:    settings["notify_tg_token"] != "",
 				ChatID:             valueOr(settings, "notify_tg_chat_id", ""),
@@ -174,7 +205,7 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				ProxyConfigured:    settings["notify_tg_proxy_pass"] != "",
 			},
 			Webhook: domain.WebhookConfig{
-				Enabled:           boolSetting(settings, "notify_wh_enabled", false),
+				Enabled:           notifyWHEnabled,
 				URL:               valueOr(settings, "notify_wh_url", ""),
 				Method:            valueOr(settings, "notify_wh_method", "GET"),
 				Type:              valueOr(settings, "notify_wh_request_type", "JSON"),

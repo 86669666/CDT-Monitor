@@ -1321,6 +1321,42 @@ func TestGetConfigRejectsInvalidNumericSetting(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsInvalidBooleanSetting(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		key   string
+		reset string
+	}{
+		{key: "keep_alive", reset: "false"},
+		{key: "enable_billing", reset: "false"},
+		{key: "enable_schedule_email", reset: "false"},
+		{key: "notify_email_enabled", reset: "true"},
+		{key: "notify_tg_enabled", reset: "false"},
+		{key: "notify_wh_enabled", reset: "false"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='yes' WHERE key=?`, tc.key); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "setting "+tc.key+" is invalid") {
+			t.Fatalf("%s err=%v", tc.key, err)
+		}
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.reset, tc.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestGetConfigRejectsOutOfRangeNumericSetting(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
