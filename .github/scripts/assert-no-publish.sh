@@ -44,6 +44,9 @@ scan_workflows() {
     if grep -Eq '^[[:space:]]+packages:' <<<"$body"; then
       bad "$f: packages permission is forbidden on this fork"
     fi
+    if grep -Eq "ENABLE_(PRODUCTION|DOCKERHUB)_PUBLISH:[[:space:]]*['\"]?true" <<<"$body"; then
+      bad "$f: do not set ENABLE_PRODUCTION_PUBLISH or ENABLE_DOCKERHUB_PUBLISH true in YAML"
+    fi
     if grep -Eq 'docker/login-action' <<<"$body"; then
       bad "$f: docker/login-action is forbidden on this fork"
     fi
