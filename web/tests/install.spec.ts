@@ -10774,3 +10774,14 @@ test('init-status failure surfaces the live not_found envelope', async ({ page }
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
   await expect(page.getByText('接口不存在')).toBeVisible()
 })
+
+test('init-status failure surfaces the live internal_error envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('服务暂时不可用')).toBeVisible()
+})
