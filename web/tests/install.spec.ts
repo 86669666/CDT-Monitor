@@ -12552,3 +12552,27 @@ test('boot config unauthorized opens login', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
 })
+
+test('dashboard status poll keeps the console on the live status_failed envelope', async ({ page }) => {
+  await page.clock.install()
+  let failPoll = false
+  let pollCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failPoll) return route.fulfill({ json: dashboardStatus })
+    pollCalls += 1
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'status_failed', message: '状态加载失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  failPoll = true
+  await page.clock.fastForward(31_000)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.locator('.toast--error')).toHaveCount(0)
+  expect(pollCalls).toBeGreaterThan(0)
+})
