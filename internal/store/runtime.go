@@ -818,6 +818,9 @@ func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cy
 	if len(data) > maxBillingCacheBytes {
 		return false, errors.New("billing cache payload is too long")
 	}
+	if !json.Valid([]byte(data)) {
+		return false, errors.New("billing cache payload is invalid")
+	}
 	return true, json.Unmarshal([]byte(data), target)
 }
 
