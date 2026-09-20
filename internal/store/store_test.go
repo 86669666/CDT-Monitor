@@ -3030,6 +3030,44 @@ func TestClaimOutboxFailsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestClaimOutboxFailsInvalidStoredItem(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	cases := []struct {
+		id      string
+		channel string
+		payload string
+		err     string
+	}{
+		{id: "evt-sms:sms", channel: "sms", payload: `{"id":"evt-sms","type":"threshold","title":"t","summary":"s"}`, err: "channel is invalid"},
+		{id: "evt-badjson:email", channel: "email", payload: "{", err: "payload is invalid"},
+		{id: "evt-type:email", channel: "email", payload: `{"id":"evt-type","type":"unknown","title":"t","summary":"s"}`, err: "event type is invalid"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',unixepoch(),unixepoch(),unixepoch())`, tc.id, strings.Split(tc.id, ":")[0], tc.channel, tc.payload); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.ClaimOutbox(ctx)
+		if err == nil || !strings.Contains(err.Error(), tc.err) {
+			t.Fatalf("%s err=%v", tc.id, err)
+		}
+		var status, lastError string
+		if err = st.db.QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE id=?`, tc.id).Scan(&status, &lastError); err != nil {
+			t.Fatal(err)
+		}
+		if status != "failed" || !strings.Contains(lastError, tc.err) {
+			t.Fatalf("%s status=%q last_error=%q", tc.id, status, lastError)
+		}
+	}
+	if _, err = st.ClaimOutbox(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("poisoned rows must not stay queued: err=%v", err)
+	}
+}
+
 func TestValidateOutboxItem(t *testing.T) {
 	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
 	if err := ValidateOutboxItem("webhook", event); err != nil {
@@ -3271,7 +3309,7 @@ func TestOutboxRetriesThenExhausts(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	_, err = st.db.Exec(`INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES('out-1','evt-1','telegram','{}','queued',0,2,unixepoch(),'',unixepoch(),unixepoch())`)
+	_, err = st.db.Exec(`INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES('out-1','evt-1','telegram','{"id":"evt-1","type":"threshold","title":"t","summary":"s"}','queued',0,2,unixepoch(),'',unixepoch(),unixepoch())`)
 	if err != nil {
 		t.Fatal(err)
 	}

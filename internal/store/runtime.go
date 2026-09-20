@@ -501,16 +501,25 @@ type OutboxItem struct {
 
 func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 	var item OutboxItem
-	var oversized bool
+	var claimErr error
 	err := s.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT id,channel,payload,attempts,max_attempts FROM notification_outbox WHERE status='queued' AND available_at<=unixepoch() ORDER BY created_at LIMIT 1`).Scan(&item.ID, &item.Channel, &item.Payload, &item.Attempts, &item.MaxAttempts); err != nil {
 			return err
 		}
 		if len(item.Payload) > maxOutboxPayloadRunes {
-			if _, failErr := tx.ExecContext(ctx, `UPDATE notification_outbox SET status='failed',last_error=?,updated_at=unixepoch() WHERE id=? AND status='queued'`, "notification payload is too long", item.ID); failErr != nil {
+			claimErr = errors.New("notification payload is too long")
+		} else {
+			var event domain.NotificationEvent
+			if err := json.Unmarshal([]byte(item.Payload), &event); err != nil {
+				claimErr = errors.New("notification payload is invalid")
+			} else {
+				claimErr = ValidateOutboxItem(item.Channel, event)
+			}
+		}
+		if claimErr != nil {
+			if _, failErr := tx.ExecContext(ctx, `UPDATE notification_outbox SET status='failed',last_error=?,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), item.ID); failErr != nil {
 				return failErr
 			}
-			oversized = true
 			return nil
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE notification_outbox SET status='sending',attempts=attempts+1,updated_at=unixepoch() WHERE id=? AND status='queued'`, item.ID)
@@ -527,8 +536,8 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 	if err != nil {
 		return OutboxItem{}, err
 	}
-	if oversized {
-		return OutboxItem{}, errors.New("notification payload is too long")
+	if claimErr != nil {
+		return OutboxItem{}, claimErr
 	}
 	return item, nil
 }
