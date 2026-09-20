@@ -1366,6 +1366,50 @@ func TestGetConfigRejectsInvalidNotifyProxyPort(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_host'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL host is not allowed") {
+		t.Fatalf("smtp host err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_host'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_tg_proxy_ip'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL host is not allowed") {
+		t.Fatalf("proxy ip err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_proxy_ip'`); err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := st.EncryptAAD("file:///etc/passwd", "notify_wh_url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, encrypted); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL must use http or https") {
+		t.Fatalf("webhook url err=%v", err)
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

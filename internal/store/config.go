@@ -195,6 +195,18 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err = notify.ValidateTCPPortString(config.Notifications.Telegram.ProxyPort); err != nil {
 		return domain.Config{}, err
 	}
+	if err = notify.ValidateCallbackURL(config.Notifications.Webhook.URL); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateProxyURL(config.Notifications.Telegram.ProxyURL); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateDialHost(config.Notifications.Telegram.ProxyIP); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateDialHost(config.Notifications.Email.Host); err != nil {
+		return domain.Config{}, err
+	}
 	return config, nil
 }
 
