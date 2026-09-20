@@ -12390,3 +12390,35 @@ test('settings API key create stays disabled for whitespace names', async ({ pag
   await expect(page.getByRole('button', { name: '创建 Key' })).toBeDisabled()
   expect(createCalls).toBe(0)
 })
+
+test('settings API key create posts a trimmed name', async ({ page }) => {
+  const created = {
+    id: 18,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      expect(JSON.parse(route.request().postData() || '{}')).toEqual({
+        name: '桌面小组件',
+        scopes: ['widget:read'],
+      })
+      return route.fulfill({ status: 201, json: { key: created, token: 'cdt_trimmed_token' } })
+    }
+    return route.fulfill({ json: { keys: createCalls > 0 ? [created] : [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByLabel('名称').fill('  桌面小组件  ')
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.getByText('仅显示一次')).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(createCalls).toBe(1)
+})
