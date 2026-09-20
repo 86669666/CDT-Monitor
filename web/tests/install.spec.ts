@@ -10879,3 +10879,22 @@ test('instance start surfaces the live invalid_id envelope', async ({ page }) =>
   await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
   expect(startCalls).toBe(1)
 })
+
+test('instance stop surfaces the live invalid_id envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_id', message: '无效 ID' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
