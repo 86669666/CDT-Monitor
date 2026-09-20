@@ -1051,6 +1051,12 @@ scan_compose() {
   if grep -Eq 'oom_kill_disable:[[:space:]]*true' <<<"$body"; then
     bad "$f: oom_kill_disable is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+oom_score_adj:' <<<"$body"; then
+    bad "$f: oom_score_adj is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+blkio_config:' <<<"$body"; then
+    bad "$f: blkio_config is forbidden"
+  fi
   if ! grep -Eq 'CDT_LISTEN:[[:space:]]*:8080' <<<"$body"; then
     bad "$f: CDT_LISTEN must stay :8080"
   fi
