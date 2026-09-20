@@ -221,6 +221,15 @@ func validJobType(jobType string) bool {
 	}
 }
 
+func validJobStatus(status string) bool {
+	switch status {
+	case "queued", "running", "completed", "failed":
+		return true
+	default:
+		return false
+	}
+}
+
 func validateJobAccount(jobType string, accountID int64) error {
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
@@ -314,6 +323,9 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if !validJobType(job.Type) {
 		return domain.Job{}, errors.New("job type is invalid")
 	}
+	if !validJobStatus(job.Status) {
+		return domain.Job{}, errors.New("job status is invalid")
+	}
 	if err := validateJobAccount(job.Type, job.AccountID); err != nil {
 		return domain.Job{}, err
 	}
@@ -346,6 +358,8 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 			claimErr = errors.New("job payload is too long")
 		} else if !validJobType(job.Type) {
 			claimErr = errors.New("job type is invalid")
+		} else if job.Status != "queued" || !validJobStatus(job.Status) {
+			claimErr = errors.New("job status is invalid")
 		} else if err := validateJobAccount(job.Type, job.AccountID); err != nil {
 			claimErr = err
 		} else if available <= 0 || created <= 0 || updated <= 0 {
