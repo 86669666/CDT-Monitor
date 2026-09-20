@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,16 +149,17 @@ func TestDailyReportGenerationAndExclusion(t *testing.T) {
 
 	// Set traffic for accounts
 	accs, _ := st.ListAccounts(ctx)
-	now := time.Now().UTC()
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
 	// Record snapshots
 	_ = st.UpdateRuntime(ctx, accs[0].ID, 15.0, domain.StatusStopped, now)
 	_ = st.RecordTrafficSnapshot(ctx, accs[0].ID, now.Format("2006-01-02"), "start", 10.0, "08:00")
 	_ = st.RecordTrafficSnapshot(ctx, accs[0].ID, now.Format("2006-01-02"), "stop", 14.5, "22:00")
 
 	_ = st.UpdateRuntime(ctx, accs[1].ID, 8.0, domain.StatusRunning, now)
-	// For accs[1], simulate hourly traffic at midnight = 5.0
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.FixedZone("CST", 8*3600)).Unix()
-	_ = st.AddTrafficStats(ctx, accs[1].ID, 5.0, time.Unix(todayStart, 0))
+	// For accs[1] (non-scheduled), baseline traffic 24 hours ago = 5.0
+	t24Ago := now.Add(-24 * time.Hour)
+	_ = st.AddTrafficStats(ctx, accs[1].ID, 5.0, t24Ago)
 	_ = st.AddTrafficStats(ctx, accs[1].ID, 8.0, now)
 
 	_ = st.UpdateRuntime(ctx, accs[2].ID, 20.0, domain.StatusRunning, now)
@@ -194,5 +196,80 @@ func TestDailyReportGenerationAndExclusion(t *testing.T) {
 	// total consumed = 7.50 GB
 	if event.Fields["流量消耗总和"] != "7.50 GB" {
 		t.Fatalf("expected 7.50 GB total consumed, got %s", event.Fields["流量消耗总和"])
+	}
+}
+
+func TestDailyReportSmallAmountPrecisionAndSingleInstance(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+
+	cfg := domain.Config{
+		AdminPassword:     "Strong-Password-42!",
+		TrafficThreshold:  95,
+		ShutdownMode:      "KeepCharging",
+		ThresholdAction:   "stop_and_notify",
+		APIInterval:       600,
+		Timezone:          "Asia/Shanghai",
+		EnableDailyReport: true,
+		Notifications: domain.NotificationConfig{
+			Webhook: domain.WebhookConfig{
+				Enabled: true,
+				URL:     "https://webhook.example.com/test",
+			},
+		},
+		Accounts: []domain.Account{
+			{
+				AccessKeyID:      "LTAI_PRECISION",
+				AccessKeySecret:  "sec",
+				RegionID:         "cn-hongkong",
+				InstanceID:       "i-precision",
+				MaxTraffic:       200,
+				Remark:           "高精度测试节点",
+				ScheduleEnabled:  false,
+				DailyReportTime:  "00:00",
+			},
+		},
+	}
+	if err = st.Setup(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := New(st, nil, notify.New(), nil, 1)
+	accs, _ := st.ListAccounts(ctx)
+	acc := accs[0]
+
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+	t24Ago := now.Add(-24 * time.Hour)
+
+	// Baseline 24 hours ago was 1.000 GB, current is 1.292 GB -> consumed = 0.292 GB
+	_ = st.AddTrafficStats(ctx, acc.ID, 1.000, t24Ago)
+	_ = st.UpdateRuntime(ctx, acc.ID, 1.292, domain.StatusRunning, now)
+
+	result, err := eng.generateAndSendDailyReport(ctx, true, acc.ID)
+	if err != nil {
+		t.Fatalf("generateAndSendDailyReport failed: %v", err)
+	}
+	if !strings.Contains(result, "0.292 GB") {
+		t.Fatalf("expected result message to contain 0.292 GB, got: %s", result)
+	}
+
+	outboxItem, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatalf("expected outbox item: %v", err)
+	}
+	var event domain.NotificationEvent
+	if err = json.Unmarshal([]byte(outboxItem.Payload), &event); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if event.Fields["消耗流量"] != "0.292 GB" {
+		t.Fatalf("expected 0.292 GB in event fields, got: %s", event.Fields["消耗流量"])
+	}
+	if !strings.Contains(event.Title, "高精度测试节点") {
+		t.Fatalf("expected title to contain remark, got: %s", event.Title)
 	}
 }

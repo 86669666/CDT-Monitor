@@ -264,12 +264,19 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.screenshot({ path: testInfo.outputPath('dashboard-billing-desktop.png'), fullPage: true })
 
   await page.getByRole('button', { name: '实例设置' }).click()
-  await expect(page.locator('.instance-settings-modal')).toBeVisible()
-  await expect(page.getByText('抢占式保活')).toBeVisible()
-  await expect(page.getByText('默认停机方式')).toBeVisible()
-  await expect(page.getByText('每日定时开关机')).toBeVisible()
-  await expect(page.getByText('参与日报推送')).toBeVisible()
-  await page.locator('.instance-settings-modal header').getByRole('button', { name: '关闭' }).click()
+  const modal = page.locator('.instance-settings-modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('抢占式保活')).toBeVisible()
+  await expect(modal.getByText('默认停机方式')).toBeVisible()
+  await expect(modal.getByText('每日定时开关机')).toBeVisible()
+  await expect(modal.getByText('参与日报推送')).toBeVisible()
+  // Non-scheduled: daily report time input is visible
+  await expect(modal.getByLabel('日报推送时间')).toBeVisible()
+  // Enable schedule: daily report time input is hidden, hint shown
+  await modal.locator('.toggle-row:has-text("每日定时开关机")').click()
+  await expect(modal.getByLabel('日报推送时间')).not.toBeVisible()
+  await expect(modal.getByText('已启用定时开关机，将在每日关机时')).toBeVisible()
+  await modal.locator('header').getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '查看历史流量' }).click()
   await expect(page.locator('.chart-modal')).toBeVisible()
@@ -288,6 +295,9 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.locator('.chart-modal').getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '设置', exact: true }).click()
+  // Verify General Settings has daily report toggle but NO time setting option
+  await expect(page.getByText('每日消费与流量日报')).toBeVisible()
+  await expect(page.locator('.settings-panel').getByLabel('日报推送时间')).toHaveCount(0)
   const settingsSection = page.locator('.settings-section')
   const generalSectionWidth = await settingsSection.evaluate((element) => element.clientWidth)
   const refreshSelectDesktop = page.getByRole('combobox', { name: 'API 刷新间隔' })

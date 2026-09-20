@@ -211,10 +211,11 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		return "notification sent", e.notify.Send(ctx, payload.Channel, event, config)
 	case JobDailyReport:
 		var payload struct {
-			Force bool `json:"force"`
+			Force     bool  `json:"force"`
+			AccountID int64 `json:"account_id"`
 		}
 		_ = json.Unmarshal([]byte(job.Payload), &payload)
-		return e.generateAndSendDailyReport(ctx, payload.Force)
+		return e.generateAndSendDailyReport(ctx, payload.Force, payload.AccountID)
 	default:
 		return "", fmt.Errorf("unknown job type %q", job.Type)
 	}
@@ -312,6 +313,24 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 		if trafficErr == nil {
 			_ = e.store.AddTrafficStats(ctx, account.ID, traffic, now)
+		}
+		if statusChangedBySchedule {
+			if slices.Contains(actions, "scheduled_start") {
+				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, now.Format("2006-01-02"), "start", traffic, now.Format("15:04"))
+			}
+			if slices.Contains(actions, "scheduled_stop") {
+				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, now.Format("2006-01-02"), "stop", traffic, now.Format("15:04"))
+				if config.EnableDailyReport && (account.DailyReport == nil || *account.DailyReport) {
+					reportKey := fmt.Sprintf("daily_report:%d:%s", account.ID, now.Format("20060102"))
+					freshReport, _ := e.store.RecordActionEvent(ctx, reportKey, account.ID, "daily_report", "attempting", "")
+					if freshReport {
+						payload, _ := json.Marshal(map[string]any{"force": false, "account_id": account.ID})
+						if _, err = e.Enqueue(ctx, JobDailyReport, account.ID, string(payload), reportKey); err != nil {
+							_ = e.store.DeleteActionEvent(ctx, reportKey)
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -598,7 +617,7 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 			FlowTotal: account.MaxTraffic, FlowUsed: math.Round(account.TrafficUsed*100) / 100, Percentage: percentage, Threshold: config.TrafficThreshold,
 			OverThreshold: percentage >= float64(config.TrafficThreshold), InstanceStatus: account.InstanceStatus, LastUpdated: account.UpdatedAt,
 			Stale: account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) > time.Duration(max(config.APIInterval*2, 180))*time.Second,
-			KeepAlive: account.KeepAlive, ShutdownMode: account.ShutdownMode, ScheduleEnabled: account.ScheduleEnabled, StartTime: account.StartTime, StopTime: account.StopTime, DailyReport: account.DailyReport,
+			KeepAlive: account.KeepAlive, ShutdownMode: account.ShutdownMode, ScheduleEnabled: account.ScheduleEnabled, StartTime: account.StartTime, StopTime: account.StopTime, DailyReport: account.DailyReport, DailyReportTime: account.DailyReportTime,
 		}
 		if config.EnableBilling {
 			var billingError struct {
@@ -658,35 +677,57 @@ func (e *Engine) checkDailyReport(ctx context.Context, now time.Time) {
 		location = time.FixedZone("CST", 8*3600)
 	}
 	localNow := now.In(location)
-	reportTime := config.DailyReportTime
-	if reportTime == "" {
-		reportTime = "22:00"
-	}
-	if !dueWithin(localNow, reportTime, 10*time.Minute) {
-		return
-	}
-	key := fmt.Sprintf("daily_report:%s", localNow.Format("20060102"))
-	fresh, err := e.store.RecordActionEvent(ctx, key, 0, "daily_report", "attempting", "")
-	if err != nil || !fresh {
-		return
-	}
-	payload, _ := json.Marshal(map[string]bool{"force": false})
-	if _, err = e.Enqueue(ctx, JobDailyReport, 0, string(payload), key); err != nil {
-		_ = e.store.DeleteActionEvent(ctx, key)
+	dateStr := localNow.Format("20060102")
+
+	for _, acc := range config.Accounts {
+		if acc.DailyReport != nil && !*acc.DailyReport {
+			continue
+		}
+		var targetTime string
+		if acc.ScheduleEnabled {
+			targetTime = acc.StopTime
+			if targetTime == "" {
+				targetTime = "23:30"
+			}
+		} else {
+			targetTime = acc.DailyReportTime
+			if targetTime == "" {
+				targetTime = "00:00"
+			}
+		}
+		if !dueWithin(localNow, targetTime, 10*time.Minute) {
+			continue
+		}
+		key := fmt.Sprintf("daily_report:%d:%s", acc.ID, dateStr)
+		fresh, err := e.store.RecordActionEvent(ctx, key, acc.ID, "daily_report", "attempting", "")
+		if err != nil || !fresh {
+			continue
+		}
+		payload, _ := json.Marshal(map[string]any{"force": false, "account_id": acc.ID})
+		if _, err = e.Enqueue(ctx, JobDailyReport, acc.ID, string(payload), key); err != nil {
+			_ = e.store.DeleteActionEvent(ctx, key)
+		}
 	}
 }
 
-func (e *Engine) EnqueueDailyReport(ctx context.Context, force bool) (domain.Job, error) {
+func (e *Engine) EnqueueDailyReportForAccount(ctx context.Context, force bool, accountID int64) (domain.Job, error) {
 	uniqueKey := ""
 	if !force {
 		minute := time.Now().UTC().Format("200601021504")
-		uniqueKey = fmt.Sprintf("daily_report:%s", minute)
+		uniqueKey = fmt.Sprintf("daily_report:%d:%s", accountID, minute)
 	}
-	payload, _ := json.Marshal(map[string]bool{"force": force})
-	return e.Enqueue(ctx, JobDailyReport, 0, string(payload), uniqueKey)
+	payload, _ := json.Marshal(map[string]any{"force": force, "account_id": accountID})
+	return e.Enqueue(ctx, JobDailyReport, accountID, string(payload), uniqueKey)
+}
+
+func (e *Engine) EnqueueDailyReport(ctx context.Context, force bool) (domain.Job, error) {
+	return e.EnqueueDailyReportForAccount(ctx, force, 0)
 }
 
 func (e *Engine) findStartTrafficForDay(ctx context.Context, accountID int64, now time.Time) float64 {
+	if traffic, ok := e.store.Traffic24HoursAgo(ctx, accountID, now); ok {
+		return traffic
+	}
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 	if traffic, ok := e.store.EarliestTrafficSince(ctx, accountID, todayStart); ok {
 		return traffic
@@ -700,10 +741,61 @@ func (e *Engine) findStartTrafficForSchedule(ctx context.Context, accountID int6
 		return e.findStartTrafficForDay(ctx, accountID, now)
 	}
 	target := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
-	if traffic, ok := e.store.EarliestTrafficSince(ctx, accountID, target.Unix()-1800); ok {
+	if traffic, ok := e.store.TrafficAroundTime(ctx, accountID, target); ok {
 		return traffic
 	}
 	return e.findStartTrafficForDay(ctx, accountID, now)
+}
+
+func formatTrafficGB(gb float64) string {
+	if gb < 0 {
+		return "0.00 GB"
+	}
+	if gb < 1.0 && gb > 0 {
+		rounded3 := math.Round(gb*1000) / 1000
+		if math.Abs(rounded3-math.Round(gb*100)/100) > 1e-4 {
+			return fmt.Sprintf("%.3f GB", rounded3)
+		}
+	}
+	return fmt.Sprintf("%.2f GB", gb)
+}
+
+func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Account, now time.Time, dateStr string) (float64, string) {
+	snap, _ := e.store.GetTrafficSnapshot(ctx, acc.ID, dateStr)
+	consumed := 0.0
+	periodDesc := ""
+	if acc.ScheduleEnabled {
+		periodDesc = fmt.Sprintf("定时时段 (%s ~ %s)", acc.StartTime, acc.StopTime)
+		startTraffic := snap.StartTraffic
+		if startTraffic < 0 {
+			startTraffic = e.findStartTrafficForSchedule(ctx, acc.ID, now, acc.StartTime)
+		}
+		if snap.StopTraffic >= 0 {
+			consumed = snap.StopTraffic - startTraffic
+		} else {
+			consumed = acc.TrafficUsed - startTraffic
+		}
+	} else {
+		periodDesc = "前24小时运行"
+		startTraffic, ok := e.store.Traffic24HoursAgo(ctx, acc.ID, now)
+		if ok {
+			consumed = acc.TrafficUsed - startTraffic
+		} else {
+			consumed = 0
+		}
+	}
+	if acc.TrafficUsed < 0 {
+		consumed = 0
+	}
+	if consumed < 0 {
+		if now.Day() == 1 || now.Day() == 2 {
+			consumed = acc.TrafficUsed
+		} else {
+			consumed = 0
+		}
+	}
+	consumed = math.Round(consumed*1000) / 1000
+	return consumed, periodDesc
 }
 
 type instanceReportItem struct {
@@ -715,7 +807,7 @@ type instanceReportItem struct {
 	currency    string
 }
 
-func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (string, error) {
+func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, targetAccountID ...int64) (string, error) {
 	config, err := e.store.GetConfig(ctx)
 	if err != nil {
 		return "", err
@@ -730,6 +822,109 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (st
 	now := time.Now().In(location)
 	dateStr := now.Format("2006-01-02")
 
+	var targetID int64
+	if len(targetAccountID) > 0 {
+		targetID = targetAccountID[0]
+	}
+
+	if targetID > 0 {
+		var targetAcc *domain.Account
+		for i := range config.Accounts {
+			if config.Accounts[i].ID == targetID {
+				targetAcc = &config.Accounts[i]
+				break
+			}
+		}
+		if targetAcc == nil {
+			return "account not found", nil
+		}
+		if !force && targetAcc.DailyReport != nil && !*targetAcc.DailyReport {
+			return "daily report disabled for this account", nil
+		}
+
+		consumed, periodDesc := e.calculateInstanceConsumption(ctx, *targetAcc, now, dateStr)
+		instName := targetAcc.Remark
+		if instName == "" {
+			instName = targetAcc.InstanceID
+		}
+		if instName == "" {
+			instName = masked(targetAcc.AccessKeyID)
+		}
+
+		currency := "¥"
+		if targetAcc.SiteType == "international" {
+			currency = "$"
+		}
+		var monthlyCost *float64
+		var balance *float64
+		if config.EnableBilling {
+			var bal aliyun.BillingBalance
+			if ok, _ := e.store.BillingCache(ctx, targetAcc.ID, "balance", "", 7*24*time.Hour, &bal); ok {
+				val := bal.Amount
+				balance = &val
+				if bal.Currency == "USD" {
+					currency = "$"
+				}
+			}
+			var bill aliyun.BillingBill
+			if ok, _ := e.store.BillingCache(ctx, targetAcc.ID, "instance_bill", now.Format("2006-01"), 7*24*time.Hour, &bill); ok {
+				val := bill.TotalCost
+				monthlyCost = &val
+			}
+		}
+
+		var sb strings.Builder
+		sb.WriteString("【CDT Monitor · 实例流量与账单日报】\n")
+		sb.WriteString(fmt.Sprintf("📅 统计日期：%s (%s)\n", dateStr, config.Timezone))
+		sb.WriteString(fmt.Sprintf("🖥️ 实例名称：%s (%s / %s)\n", instName, RegionName(targetAcc.RegionID), masked(targetAcc.AccessKeyID)))
+		sb.WriteString(fmt.Sprintf("⏱️ 运行模式：%s\n", periodDesc))
+		sb.WriteString(fmt.Sprintf("📊 消耗流量：%s\n", formatTrafficGB(consumed)))
+		sb.WriteString(fmt.Sprintf("📈 当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(targetAcc.TrafficUsed), targetAcc.MaxTraffic, usagePercent(targetAcc.TrafficUsed, targetAcc.MaxTraffic)))
+		if config.EnableBilling {
+			costText := "待同步"
+			if monthlyCost != nil {
+				costText = fmt.Sprintf("%s%.2f", currency, *monthlyCost)
+			}
+			balText := "待同步"
+			if balance != nil {
+				balText = fmt.Sprintf("%s%.2f", currency, *balance)
+			}
+			sb.WriteString(fmt.Sprintf("💰 当月产生费用：%s\n", costText))
+			sb.WriteString(fmt.Sprintf("💳 账户可用余额：%s\n", balText))
+		}
+
+		fields := map[string]string{
+			"统计日期": dateStr,
+			"实例名称": instName,
+			"运行模式": periodDesc,
+			"消耗流量": formatTrafficGB(consumed),
+			"当月累计": fmt.Sprintf("%s / %.0f GB", formatTrafficGB(targetAcc.TrafficUsed), targetAcc.MaxTraffic),
+		}
+		if config.EnableBilling {
+			if monthlyCost != nil {
+				fields["本月费用"] = fmt.Sprintf("%s%.2f", currency, *monthlyCost)
+			}
+			if balance != nil {
+				fields["账户余额"] = fmt.Sprintf("%s%.2f", currency, *balance)
+			}
+		}
+
+		title := fmt.Sprintf("CDT Monitor · 实例 [%s] 流量与账单日报 (%s)", instName, dateStr)
+		event := newEvent("daily_report", title, sb.String(), targetAcc.ID, fields)
+		channels := notify.EnabledChannels(config)
+		if len(channels) == 0 {
+			msg := fmt.Sprintf("实例 [%s] 日报已生成，但未启用任何通知渠道 (消耗: %s)", instName, formatTrafficGB(consumed))
+			_ = e.store.AddLog(ctx, "info", msg)
+			return msg, nil
+		}
+		if err = e.store.AddOutbox(ctx, event, channels); err != nil {
+			return "", err
+		}
+		msg := fmt.Sprintf("实例 [%s] 流量与账单日报已发送 (消耗: %s)", instName, formatTrafficGB(consumed))
+		_ = e.store.AddLog(ctx, "info", msg)
+		return msg, nil
+	}
+
 	var items []instanceReportItem
 	var excludedCount int
 	for _, acc := range config.Accounts {
@@ -737,36 +932,7 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (st
 			excludedCount++
 			continue
 		}
-		snap, _ := e.store.GetTrafficSnapshot(ctx, acc.ID, dateStr)
-		consumed := 0.0
-		periodDesc := ""
-		if acc.ScheduleEnabled {
-			periodDesc = fmt.Sprintf("定时时段 (%s ~ %s)", acc.StartTime, acc.StopTime)
-			startTraffic := snap.StartTraffic
-			if startTraffic < 0 {
-				startTraffic = e.findStartTrafficForSchedule(ctx, acc.ID, now, acc.StartTime)
-			}
-			if snap.StopTraffic >= 0 {
-				consumed = snap.StopTraffic - startTraffic
-			} else {
-				consumed = acc.TrafficUsed - startTraffic
-			}
-		} else {
-			periodDesc = "全天运行"
-			startTraffic := e.findStartTrafficForDay(ctx, acc.ID, now)
-			consumed = acc.TrafficUsed - startTraffic
-		}
-		if acc.TrafficUsed < 0 {
-			consumed = 0
-		}
-		if consumed < 0 {
-			if now.Day() == 1 {
-				consumed = acc.TrafficUsed
-			} else {
-				consumed = 0
-			}
-		}
-		consumed = math.Round(consumed*100) / 100
+		consumed, periodDesc := e.calculateInstanceConsumption(ctx, acc, now, dateStr)
 
 		item := instanceReportItem{
 			account:    acc,
@@ -849,8 +1015,8 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (st
 		sb.WriteString(fmt.Sprintf("（已排除 %d 台未开启日报实例）", excludedCount))
 	}
 	sb.WriteString("\n\n📊 汇总统计：\n")
-	sb.WriteString(fmt.Sprintf("• 今日/时段消耗流量总和：%.2f GB\n", totalConsumed))
-	sb.WriteString(fmt.Sprintf("• 当月累计使用流量总和：%.2f GB / %.0f GB", totalMonthTraffic, totalMaxTraffic))
+	sb.WriteString(fmt.Sprintf("• 今日/时段消耗流量总和：%s\n", formatTrafficGB(totalConsumed)))
+	sb.WriteString(fmt.Sprintf("• 当月累计使用流量总和：%s / %.0f GB", formatTrafficGB(totalMonthTraffic), totalMaxTraffic))
 	if totalMaxTraffic > 0 {
 		sb.WriteString(fmt.Sprintf(" (%.2f%%)", (totalMonthTraffic/totalMaxTraffic)*100))
 	}
@@ -890,9 +1056,9 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (st
 			instName = masked(it.account.AccessKeyID)
 		}
 		sb.WriteString(fmt.Sprintf("%d. %s (%s / %s)\n", idx+1, instName, RegionName(it.account.RegionID), masked(it.account.AccessKeyID)))
-		sb.WriteString(fmt.Sprintf("   • 运行模式：%s\n", it.periodDesc))
-		sb.WriteString(fmt.Sprintf("   • 消耗流量：%.2f GB\n", it.consumed))
-		sb.WriteString(fmt.Sprintf("   • 当月累计：%.2f GB / %.0f GB (%.2f%%)\n", it.account.TrafficUsed, it.account.MaxTraffic, usagePercent(it.account.TrafficUsed, it.account.MaxTraffic)))
+	sb.WriteString(fmt.Sprintf("   • 运行模式：%s\n", it.periodDesc))
+		sb.WriteString(fmt.Sprintf("   • 消耗流量：%s\n", formatTrafficGB(it.consumed)))
+		sb.WriteString(fmt.Sprintf("   • 当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(it.account.TrafficUsed), it.account.MaxTraffic, usagePercent(it.account.TrafficUsed, it.account.MaxTraffic)))
 		if config.EnableBilling {
 			costText := "待同步"
 			if it.monthlyCost != nil {
@@ -909,8 +1075,8 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (st
 	fields := map[string]string{
 		"统计日期":   dateStr,
 		"纳入实例":   fmt.Sprintf("%d 台", len(items)),
-		"流量消耗总和": fmt.Sprintf("%.2f GB", totalConsumed),
-		"当月累计流量": fmt.Sprintf("%.2f GB / %.0f GB", totalMonthTraffic, totalMaxTraffic),
+		"流量消耗总和": formatTrafficGB(totalConsumed),
+		"当月累计流量": fmt.Sprintf("%s / %.0f GB", formatTrafficGB(totalMonthTraffic), totalMaxTraffic),
 	}
 	if excludedCount > 0 {
 		fields["排除实例"] = fmt.Sprintf("%d 台", excludedCount)
@@ -947,22 +1113,22 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool) (st
 		if config.EnableBilling && it.monthlyCost != nil {
 			billDetail = fmt.Sprintf(" | 费用: %s%.2f", it.currency, *it.monthlyCost)
 		}
-		fields[fmt.Sprintf("实例%d [%s]", idx+1, instName)] = fmt.Sprintf("消耗: %.2f GB (%s) | 累计: %.2f/%.0f GB%s",
-			it.consumed, it.periodDesc, it.account.TrafficUsed, it.account.MaxTraffic, billDetail)
+		fields[fmt.Sprintf("实例%d [%s]", idx+1, instName)] = fmt.Sprintf("消耗: %s (%s) | 累计: %s/%.0f GB%s",
+			formatTrafficGB(it.consumed), it.periodDesc, formatTrafficGB(it.account.TrafficUsed), it.account.MaxTraffic, billDetail)
 	}
 
 	title := fmt.Sprintf("CDT Monitor · 每日流量与账单日报 (%s)", dateStr)
 	event := newEvent("daily_report", title, sb.String(), 0, fields)
 	channels := notify.EnabledChannels(config)
 	if len(channels) == 0 {
-		msg := fmt.Sprintf("日报已生成，但未启用任何通知通道 (消耗总和: %.2f GB)", totalConsumed)
+		msg := fmt.Sprintf("日报已生成，但未启用任何通知通道 (消耗总和: %s)", formatTrafficGB(totalConsumed))
 		_ = e.store.AddLog(ctx, "info", msg)
 		return msg, nil
 	}
 	if err = e.store.AddOutbox(ctx, event, channels); err != nil {
 		return "", err
 	}
-	msg := fmt.Sprintf("每日流量与账单日报已发送 (纳入 %d 台实例，消耗总和: %.2f GB)", len(items), totalConsumed)
+	msg := fmt.Sprintf("每日流量与账单日报已发送 (纳入 %d 台实例，消耗总和: %s)", len(items), formatTrafficGB(totalConsumed))
 	_ = e.store.AddLog(ctx, "info", msg)
 	return msg, nil
 }

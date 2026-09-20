@@ -119,6 +119,40 @@ func (s *Store) EarliestTrafficSince(ctx context.Context, accountID int64, since
 	return 0, false
 }
 
+func (s *Store) Traffic24HoursAgo(ctx context.Context, accountID int64, now time.Time) (float64, bool) {
+	target := now.Add(-24 * time.Hour).Unix()
+	var traffic float64
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+1800).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+1800).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	var earliestTraffic float64
+	var earliestTime int64
+	err = s.db.QueryRowContext(ctx, `SELECT traffic, recorded_at FROM traffic_hourly WHERE account_id=? ORDER BY recorded_at ASC LIMIT 1`, accountID).Scan(&earliestTraffic, &earliestTime)
+	if err == nil && now.Unix()-earliestTime >= 900 {
+		return earliestTraffic, true
+	}
+	return 0, false
+}
+
+func (s *Store) TrafficAroundTime(ctx context.Context, accountID int64, targetTime time.Time) (float64, bool) {
+	target := targetTime.Unix()
+	var traffic float64
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+2700).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at>=? ORDER BY recorded_at ASC LIMIT 1`, accountID, target-2700).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	return 0, false
+}
+
 func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic float64, now time.Time) error {
 	hour := now.Truncate(time.Hour).Unix()
 	year, month, day := now.Date()

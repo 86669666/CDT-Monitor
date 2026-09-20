@@ -152,7 +152,7 @@ func TestUpdateAccountSettingsEndpoint(t *testing.T) {
 	accounts, _ := st.ListAccounts(t.Context())
 	id := accounts[0].ID
 
-	body := `{"keep_alive":true,"shutdown_mode":"StopCharging","schedule_enabled":true,"start_time":"09:00","stop_time":"23:00","daily_report":false}`
+	body := `{"keep_alive":true,"shutdown_mode":"StopCharging","schedule_enabled":true,"start_time":"09:00","stop_time":"23:00","daily_report":false,"daily_report_time":"02:45"}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/accounts/1/settings", strings.NewReader(body))
 	req.SetPathValue("id", "1")
 	resp := httptest.NewRecorder()

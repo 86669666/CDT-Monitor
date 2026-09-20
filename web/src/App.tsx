@@ -293,6 +293,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         start_time: accountSummary.start_time ?? found.start_time,
         stop_time: accountSummary.stop_time ?? found.stop_time,
         daily_report: accountSummary.daily_report ?? found.daily_report,
+        daily_report_time: accountSummary.daily_report_time ?? found.daily_report_time ?? '00:00',
       })
     } else {
       setConfiguringAccount({
@@ -310,6 +311,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         keep_alive: accountSummary.keep_alive,
         shutdown_mode: (accountSummary.shutdown_mode as Account['shutdown_mode']) || '',
         daily_report: accountSummary.daily_report,
+        daily_report_time: accountSummary.daily_report_time || '00:00',
       })
     }
   }
@@ -458,6 +460,7 @@ function InstanceSettingsModal({
     start_time: string
     stop_time: string
     daily_report?: boolean | null
+    daily_report_time: string
   }>({
     keep_alive: account.keep_alive,
     shutdown_mode: (account.shutdown_mode as '' | 'KeepCharging' | 'StopCharging') || '',
@@ -465,6 +468,7 @@ function InstanceSettingsModal({
     start_time: account.start_time || '08:00',
     stop_time: account.stop_time || '23:30',
     daily_report: account.daily_report,
+    daily_report_time: account.daily_report_time || '00:00',
   })
 
   const save = async () => {
@@ -477,6 +481,7 @@ function InstanceSettingsModal({
         start_time: form.start_time,
         stop_time: form.stop_time,
         daily_report: form.daily_report,
+        daily_report_time: form.daily_report_time || '00:00',
       }
       const updated = await api<Account>(`/api/v1/accounts/${account.id}/settings`, {
         method: 'PATCH',
@@ -567,6 +572,20 @@ function InstanceSettingsModal({
               onChange={(val) => setForm({ ...form, daily_report: val === 'default' ? null : val === 'enabled' })}
             />
           </div>
+          {!form.schedule_enabled ? (
+            <div className="field">
+              <Field label="日报推送时间">
+                <input
+                  type="time"
+                  value={form.daily_report_time || '00:00'}
+                  onChange={(e) => setForm({ ...form, daily_report_time: e.target.value })}
+                />
+              </Field>
+              <p className="hint" style={{ margin: '4px 0 0' }}>默认每日 00:00 推送前 24 小时的流量消耗及账单</p>
+            </div>
+          ) : (
+            <p className="hint" style={{ margin: '4px 0 0' }}>💡 已启用定时开关机，将在每日关机时（{form.stop_time || '关机时刻'}）自动推送本次运行的流量与账单消耗。</p>
+          )}
         </div>
         <footer>
           <button className="button button--secondary" onClick={onClose} disabled={busy}>取消</button>
@@ -643,17 +662,6 @@ function GeneralSettings({ config, onChange }: { config: Config; onChange: (conf
       <ToggleRow title="每日消费与流量日报" icon={<FileText />} checked={config.enable_daily_report} onChange={(checked) => onChange({ ...config, enable_daily_report: checked })} />
       <ToggleRow title="账单与余额" icon={<CircleDollarSign />} checked={config.enable_billing} onChange={(checked) => onChange({ ...config, enable_billing: checked })} />
     </div>
-    {config.enable_daily_report && (
-      <div className="daily-report-time-row">
-        <Field label="日报推送时间">
-          <input
-            type="time"
-            value={config.daily_report_time || '22:00'}
-            onChange={(event) => onChange({ ...config, daily_report_time: event.target.value })}
-          />
-        </Field>
-      </div>
-    )}
   </div>
 }
 
@@ -669,6 +677,7 @@ function AccountSettings({ config, onChange }: { config: Config; onChange: (conf
       remark: source.remark ? `${source.remark} (副本)` : '',
       secret_configured: source.secret_configured || Boolean(source.access_key_secret),
       access_key_secret: source.access_key_secret || '',
+      daily_report_time: source.daily_report_time || '00:00',
     }
     const accounts = [...config.accounts]
     accounts.splice(index + 1, 0, copy)
@@ -707,6 +716,22 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
             })}
           />
         </div>
+        {!account.schedule_enabled ? (
+          <div className="field">
+            <Field label="日报推送时间">
+              <input
+                type="time"
+                value={account.daily_report_time || '00:00'}
+                onChange={(e) => onChange({ ...account, daily_report_time: e.target.value })}
+              />
+            </Field>
+            <p className="hint" style={{ margin: '4px 0 0' }}>默认每日 00:00 推送前 24 小时的流量消耗及账单</p>
+          </div>
+        ) : (
+          <p className="hint" style={{ margin: '4px 0 0', gridColumn: 'span 2' }}>
+            💡 已启用定时开关机，将在每日关机时（{account.stop_time || '关机时刻'}）自动推送本次运行的流量与账单消耗。
+          </p>
+        )}
       </div>
     )}
   </div>

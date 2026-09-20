@@ -14,6 +14,7 @@ export type Account = {
   keep_alive?: boolean | null
   shutdown_mode?: '' | 'KeepCharging' | 'StopCharging'
   daily_report?: boolean | null
+  daily_report_time?: string
 }
 
 export type Config = {
@@ -60,6 +61,7 @@ export type AccountSummary = {
   start_time?: string
   stop_time?: string
   daily_report?: boolean | null
+  daily_report_time?: string
 }
 
 export type StatusResponse = { accounts: AccountSummary[]; system_last_run: string }
@@ -86,6 +88,7 @@ export const emptyAccount = (): Account => ({
   keep_alive: undefined,
   shutdown_mode: '',
   daily_report: undefined,
+  daily_report_time: "00:00",
 })
 
 export const defaultConfig = (): Config => ({

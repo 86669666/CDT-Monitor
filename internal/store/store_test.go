@@ -483,7 +483,7 @@ func TestUpdateAccountSettingsDirectly(t *testing.T) {
 
 	newKeepAlive := true
 	newDailyReport := false
-	if err = st.UpdateAccountSettings(ctx, id, &newKeepAlive, "StopCharging", true, "09:30", "21:30", &newDailyReport); err != nil {
+	if err = st.UpdateAccountSettings(ctx, id, &newKeepAlive, "StopCharging", true, "09:30", "21:30", &newDailyReport, "01:15"); err != nil {
 		t.Fatalf("UpdateAccountSettings failed: %v", err)
 	}
 
@@ -526,5 +526,32 @@ func TestTrafficSnapshotRoundtrip(t *testing.T) {
 	}
 	if snap.StartTraffic != 12.34 || snap.StopTraffic != 15.67 || snap.StartTime != "08:00" || snap.StopTime != "22:00" {
 		t.Fatalf("unexpected snapshot: %+v", snap)
+	}
+}
+
+func TestTraffic24HoursAgoAndAroundTime(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	now := time.Now().UTC()
+	t24Ago := now.Add(-24 * time.Hour)
+	t12Ago := now.Add(-12 * time.Hour)
+
+	_ = st.AddTrafficStats(ctx, 201, 10.0, t24Ago)
+	_ = st.AddTrafficStats(ctx, 201, 12.5, t12Ago)
+	_ = st.AddTrafficStats(ctx, 201, 15.292, now)
+
+	traffic24, ok := st.Traffic24HoursAgo(ctx, 201, now)
+	if !ok || traffic24 != 10.0 {
+		t.Fatalf("expected 10.0 from 24h ago, got %v (ok=%v)", traffic24, ok)
+	}
+
+	trafficAround, ok := st.TrafficAroundTime(ctx, 201, t12Ago)
+	if !ok || trafficAround != 12.5 {
+		t.Fatalf("expected 12.5 around 12h ago, got %v (ok=%v)", trafficAround, ok)
 	}
 }

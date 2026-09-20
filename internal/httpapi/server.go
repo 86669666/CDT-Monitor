@@ -1004,6 +1004,7 @@ type accountSettingsInput struct {
 	StartTime       *string      `json:"start_time"`
 	StopTime        *string      `json:"stop_time"`
 	DailyReport     NullableBool `json:"daily_report"`
+	DailyReportTime *string      `json:"daily_report_time"`
 }
 
 func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
@@ -1053,7 +1054,11 @@ func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
 	if input.DailyReport.Present {
 		dailyReport = input.DailyReport.Value
 	}
-	if err := s.store.UpdateAccountSettings(r.Context(), id, keepAlive, shutdownMode, scheduleEnabled, startTime, stopTime, dailyReport); err != nil {
+	dailyReportTime := account.DailyReportTime
+	if input.DailyReportTime != nil {
+		dailyReportTime = *input.DailyReportTime
+	}
+	if err := s.store.UpdateAccountSettings(r.Context(), id, keepAlive, shutdownMode, scheduleEnabled, startTime, stopTime, dailyReport, dailyReportTime); err != nil {
 		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
@@ -1068,7 +1073,11 @@ func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
-	job, err := s.engine.EnqueueDailyReport(r.Context(), true)
+	var body struct {
+		AccountID int64 `json:"account_id"`
+	}
+	_ = decodeJSON(r, &body)
+	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, body.AccountID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
 		return

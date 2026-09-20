@@ -35,6 +35,7 @@ type Account struct {
 	KeepAlive        *bool     `json:"keep_alive"`
 	ShutdownMode     string    `json:"shutdown_mode"`
 	DailyReport      *bool     `json:"daily_report"`
+	DailyReportTime  string    `json:"daily_report_time"`
 }
 
 type EmailConfig struct {
@@ -120,6 +121,7 @@ type AccountSummary struct {
 	StartTime      string    `json:"start_time,omitempty"`
 	StopTime       string    `json:"stop_time,omitempty"`
 	DailyReport    *bool     `json:"daily_report"`
+	DailyReportTime string    `json:"daily_report_time,omitempty"`
 }
 
 type Job struct {

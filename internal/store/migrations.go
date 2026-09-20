@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     last_keep_alive_at INTEGER NOT NULL DEFAULT 0,
     remark TEXT NOT NULL DEFAULT '',
     site_type TEXT NOT NULL DEFAULT 'china',
-    deleted_at INTEGER NOT NULL DEFAULT 0
+    deleted_at INTEGER NOT NULL DEFAULT 0,
+    daily_report_time TEXT NOT NULL DEFAULT '00:00'
 );
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,6 +165,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		{"keep_alive", "INTEGER"},
 		{"shutdown_mode", "TEXT NOT NULL DEFAULT ''"},
 		{"daily_report", "INTEGER"},
+		{"daily_report_time", "TEXT NOT NULL DEFAULT '00:00'"},
 	} {
 		if err := s.ensureColumn(ctx, "accounts", col.name, col.definition); err != nil {
 			return err
