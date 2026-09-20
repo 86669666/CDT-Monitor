@@ -179,6 +179,13 @@ func TestGetConfigRejectsInvalidSettingKey(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
 		t.Fatalf("blank key err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET key=' timezone' WHERE key='   '`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
+		t.Fatalf("padded key err=%v", err)
+	}
 }
 
 func TestPutSettingTxRejectsOversizedValue(t *testing.T) {

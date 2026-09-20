@@ -80,7 +80,7 @@ func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
 		if err = rows.Scan(&key, &value); err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(key) == "" {
+		if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) {
 			return nil, errors.New("setting key is invalid")
 		}
 		if len([]rune(key)) > maxSettingKeyRunes || len(value) > maxSettingValueBytes {
