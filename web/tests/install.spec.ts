@@ -12370,3 +12370,32 @@ test('refresh-all timeout hides missing-account store error', async ({ page }) =
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
   expect(refreshCalls).toBe(1)
 })
+
+test('settings API key create surfaces empty-name envelope for whitespace names', async ({ page }) => {
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { name?: string; scopes?: string[] }
+      expect(body.name).toBe('   ')
+      expect(body.scopes).toEqual(['widget:read'])
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'api_key_failed', message: 'API Key 名称和权限不能为空' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByLabel('名称').fill('   ')
+  await expect(page.getByRole('button', { name: '创建 Key' })).toBeEnabled()
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 名称和权限不能为空' }).first()).toBeVisible()
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
