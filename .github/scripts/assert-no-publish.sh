@@ -29,7 +29,7 @@ require_file() {
 }
 
 scan_workflows() {
-  local f body extra
+  local f body extra extra_on
   shopt -s nullglob
   local files=(.github/workflows/*.yml)
   if [ "${#files[@]}" -eq 0 ]; then
@@ -103,6 +103,14 @@ scan_workflows() {
     fi
     if grep -Eq '^[[:space:]]+watch:' <<<"$body"; then
       bad "$f: watch triggers are forbidden on this fork"
+    fi
+    extra_on="$(awk '
+      $0 ~ /^on:[[:space:]]*$/ { in_o=1; next }
+      in_o && $0 ~ /^[^[:space:]]/ { in_o=0 }
+      in_o && $0 ~ /^  [A-Za-z0-9_-]+:/ { print }
+    ' <<<"$body" | grep -Ev '^  (pull_request|push|workflow_dispatch|workflow_call):' || true)"
+    if [ -n "$extra_on" ]; then
+      bad "$f: extra on: triggers are forbidden: $extra_on"
     fi
     if grep -Eq '^[[:space:]]+services:' <<<"$body"; then
       bad "$f: job services: sidecars are forbidden on this fork"

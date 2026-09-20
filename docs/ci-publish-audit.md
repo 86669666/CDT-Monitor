@@ -791,3 +791,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 Compose `network_mode:`（含 `none` / 显式 `bridge`）。保持默认 bridge 加 loopback 发布
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:05Z` / 2026-09-20 22:05 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `37fac18` 再加 workflow on: 白名单扫描：
+
+- Publish Guard 现只允许 `on:` 为 `pull_request` / `push` / `workflow_dispatch` / `workflow_call`。不要加 `release` / `create` 等触发
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
