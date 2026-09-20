@@ -12448,3 +12448,16 @@ test('boot status_failed surfaces the live fatal envelope', async ({ page }) => 
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
   await expect(page.getByText('状态加载失败')).toBeVisible()
 })
+
+test('boot status forbidden surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: dashboardConfig }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('API Key 权限不足')).toBeVisible()
+})
