@@ -12448,3 +12448,81 @@ test('boot status_failed surfaces the live fatal envelope', async ({ page }) => 
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
   await expect(page.getByText('状态加载失败')).toBeVisible()
 })
+
+test('boot status forbidden surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: dashboardConfig }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('API Key 权限不足')).toBeVisible()
+})
+
+test('boot status not_found surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: dashboardConfig }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('接口不存在')).toBeVisible()
+})
+
+test('boot status internal_error surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: dashboardConfig }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('服务暂时不可用')).toBeVisible()
+})
+
+test('boot config forbidden surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: dashboardStatus }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('API Key 权限不足')).toBeVisible()
+})
+
+test('boot config not_found surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: dashboardStatus }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('接口不存在')).toBeVisible()
+})
+
+test('boot config internal_error surfaces the live fatal envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: dashboardStatus }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('服务暂时不可用')).toBeVisible()
+})
