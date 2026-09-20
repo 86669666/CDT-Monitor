@@ -2176,6 +2176,12 @@ func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job.ID).Scan(&status); err != nil || status != "queued" {
 		t.Fatalf("invalid fail must not mutate job, status=%q err=%v", status, err)
 	}
+	if err = st.FailJob(ctx, domain.Job{ID: "missing-job", Attempts: 1, MaxAttempts: 3}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing fail err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, "missing-job", "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing complete err=%v", err)
+	}
 }
 
 func TestClaimJobFailsInvalidAttempts(t *testing.T) {
@@ -2971,8 +2977,14 @@ func TestRevokeAndDeleteRejectNonPositiveID(t *testing.T) {
 	if err = st.RevokeAPIKey(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("revoke err=%v", err)
 	}
+	if err = st.RevokeAPIKey(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing revoke err=%v", err)
+	}
 	if err = st.DeletePasskey(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("delete passkey err=%v", err)
+	}
+	if err = st.DeletePasskey(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing delete err=%v", err)
 	}
 }
 
@@ -3428,6 +3440,12 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt-1:email", Attempts: -1, MaxAttempts: 5}, errors.New("boom")); err == nil || !strings.Contains(err.Error(), "outbox attempts are invalid") {
 		t.Fatalf("negative attempts err=%v", err)
 	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "missing:email", Attempts: 1, MaxAttempts: 5}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing fail err=%v", err)
+	}
+	if err = st.CompleteOutbox(ctx, "missing:email"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing complete err=%v", err)
+	}
 }
 
 func TestClaimOutboxFailsInvalidAttempts(t *testing.T) {
@@ -3505,6 +3523,15 @@ func TestAddTrafficStatsRejectsNonFiniteValues(t *testing.T) {
 	if err = st.AddTrafficStats(ctx, 1, 0, now); err != nil {
 		t.Fatal(err)
 	}
+	for _, at := range []time.Time{time.Time{}, time.Unix(0, 0).UTC(), time.Unix(-1, 0).UTC()} {
+		if err = st.AddTrafficStats(ctx, 1, 1, at); err == nil || !strings.Contains(err.Error(), "traffic timestamp is invalid") {
+			t.Fatalf("at=%v err=%v", at, err)
+		}
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM traffic_hourly`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("invalid traffic timestamp must not insert, count=%d err=%v", count, err)
+	}
 }
 
 func TestUpdateRuntimeRejectsInvalidStatusAndTraffic(t *testing.T) {
@@ -3526,6 +3553,33 @@ func TestUpdateRuntimeRejectsInvalidStatusAndTraffic(t *testing.T) {
 	}
 	if err = st.UpdateRuntime(ctx, 1, 1, "Pending", now); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUpdateRuntimeRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []time.Time{time.Time{}, time.Unix(0, 0).UTC(), time.Unix(-1, 0).UTC()} {
+		if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, at); err == nil || !strings.Contains(err.Error(), "runtime timestamp is invalid") {
+			t.Fatalf("runtime at=%v err=%v", at, err)
+		}
+		if err = st.UpdateKeepAliveAt(ctx, 1, at); err == nil || !strings.Contains(err.Error(), "keepalive timestamp is invalid") {
+			t.Fatalf("keepalive at=%v err=%v", at, err)
+		}
+	}
+	var updated, keepAlive int64
+	if err = st.db.QueryRowContext(ctx, `SELECT updated_at,last_keep_alive_at FROM accounts WHERE id=1`).Scan(&updated, &keepAlive); err != nil {
+		t.Fatal(err)
+	}
+	if updated != 0 || keepAlive != 0 {
+		t.Fatalf("invalid timestamps must not persist, updated=%d keepalive=%d", updated, keepAlive)
 	}
 }
 

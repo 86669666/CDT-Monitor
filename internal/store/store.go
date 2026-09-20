@@ -131,4 +131,8 @@ func nullTime(unix sql.NullInt64) *time.Time {
 	return &t
 }
 
+func validUnixTime(at time.Time) bool {
+	return !at.IsZero() && at.Unix() > 0
+}
+
 func isNotFound(err error) bool { return errors.Is(err, sql.ErrNoRows) }
