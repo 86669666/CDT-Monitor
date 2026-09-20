@@ -11430,3 +11430,24 @@ test('refresh-all job poll unauthorized surfaces the all-failed refresh message'
   await expect(page.locator('.toast-stack')).not.toContainText('请登录或提供有效 API Key')
   expect(refreshCalls).toBe(1)
 })
+
+test('refresh-all job poll forbidden surfaces the all-failed refresh message', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-all-forbidden', 'queued', 1)] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '全部实例刷新失败，请查看运行日志' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('API Key 权限不足')
+  expect(refreshCalls).toBe(1)
+})
