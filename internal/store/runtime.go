@@ -230,6 +230,16 @@ func validJobStatus(status string) bool {
 	}
 }
 
+func validJobPayload(payload string) error {
+	if len([]rune(payload)) > maxJobPayloadRunes {
+		return errors.New("job payload is too long")
+	}
+	if !json.Valid([]byte(payload)) {
+		return errors.New("job payload is invalid")
+	}
+	return nil
+}
+
 func validateJobAccount(jobType string, accountID int64) error {
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
@@ -263,8 +273,8 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 	if maxAttempts < 1 || maxAttempts > maxJobAttempts {
 		return domain.Job{}, errors.New("job attempts are invalid")
 	}
-	if len([]rune(payload)) > maxJobPayloadRunes {
-		return domain.Job{}, errors.New("job payload is too long")
+	if err := validJobPayload(payload); err != nil {
+		return domain.Job{}, err
 	}
 	if len([]rune(uniqueKey)) > maxJobUniqueKeyRunes {
 		return domain.Job{}, errors.New("job unique key is too long")
@@ -317,8 +327,8 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if err != nil {
 		return domain.Job{}, err
 	}
-	if len([]rune(job.Payload)) > maxJobPayloadRunes {
-		return domain.Job{}, errors.New("job payload is too long")
+	if err := validJobPayload(job.Payload); err != nil {
+		return domain.Job{}, err
 	}
 	if !validJobType(job.Type) {
 		return domain.Job{}, errors.New("job type is invalid")
@@ -354,8 +364,8 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 		if err != nil {
 			return err
 		}
-		if len([]rune(job.Payload)) > maxJobPayloadRunes {
-			claimErr = errors.New("job payload is too long")
+		if err := validJobPayload(job.Payload); err != nil {
+			claimErr = err
 		} else if !validJobType(job.Type) {
 			claimErr = errors.New("job type is invalid")
 		} else if job.Status != "queued" || !validJobStatus(job.Status) {

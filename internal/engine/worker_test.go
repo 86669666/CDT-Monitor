@@ -167,16 +167,15 @@ func TestProcessJobsInvalidControlPayloadRequeues(t *testing.T) {
 	provider := newFakeProvider()
 	eng := New(st, provider, notify.New(), quietLogger(), 1)
 	ctx := context.Background()
-	job, err := st.EnqueueJob(ctx, JobControlInstance, account.ID, `{`, "control-bad", 3)
-	if err != nil {
+	if _, err := st.DB().ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,unique_key,status,max_attempts,available_at,created_at,updated_at) VALUES('control-bad',?,?,'{','control-bad','queued',3,unixepoch(),unixepoch(),unixepoch())`, JobControlInstance, account.ID); err != nil {
 		t.Fatal(err)
 	}
 	eng.processJobs(ctx, 0)
 	var status, jobErr string
-	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+	if err := st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id='control-bad'`).Scan(&status, &jobErr); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || jobErr == "" {
+	if status != "failed" || !strings.Contains(jobErr, "payload is invalid") {
 		t.Fatalf("status=%q error=%q", status, jobErr)
 	}
 	if got := provider.controlActions(); len(got) != 0 {

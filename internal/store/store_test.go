@@ -2342,6 +2342,27 @@ func TestGetJobRejectsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-bad-payload"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,1,'{','queued',3,unixepoch(),unixepoch(),unixepoch())`, id, "refresh_account"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, id)
+	if err == nil || !strings.Contains(err.Error(), "payload is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, id).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("get must not mutate stored job, status=%q err=%v", status, err)
+	}
+}
+
 func TestGetJobRejectsInvalidStoredItem(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2486,6 +2507,30 @@ func TestClaimJobFailsOversizedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	if status != "failed" || !strings.Contains(jobErr, "payload is too long") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+}
+
+func TestClaimJobFailsInvalidPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-claim-bad-payload"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,1,'{','queued',3,unixepoch(),unixepoch(),unixepoch())`, id, "refresh_account"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimJob(ctx)
+	if err == nil || !strings.Contains(err.Error(), "payload is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, jobErr string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, id).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(jobErr, "payload is invalid") {
 		t.Fatalf("status=%q error=%q", status, jobErr)
 	}
 }
@@ -2701,11 +2746,15 @@ func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, strings.Repeat("x", maxJobPayloadRunes+1), "", 3); err == nil || !strings.Contains(err.Error(), "payload is too long") {
 		t.Fatalf("payload err=%v", err)
 	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{`, "", 3); err == nil || !strings.Contains(err.Error(), "payload is invalid") {
+		t.Fatalf("invalid json err=%v", err)
+	}
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, strings.Repeat("k", maxJobUniqueKeyRunes+1), 3); err == nil || !strings.Contains(err.Error(), "unique key is too long") {
 		t.Fatalf("unique key err=%v", err)
 	}
 	insertTestAccount(t, st, 1)
-	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, strings.Repeat("x", maxJobPayloadRunes), strings.Repeat("k", maxJobUniqueKeyRunes), 3); err != nil {
+	maxPayload := `"` + strings.Repeat("x", maxJobPayloadRunes-2) + `"`
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, maxPayload, strings.Repeat("k", maxJobUniqueKeyRunes), 3); err != nil {
 		t.Fatalf("max job fields err=%v", err)
 	}
 }
