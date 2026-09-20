@@ -751,6 +751,10 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	history, err := s.store.History(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "not_found", "账号不存在")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "history_failed", "历史记录加载失败")
 		return

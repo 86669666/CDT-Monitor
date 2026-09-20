@@ -3788,12 +3788,15 @@ func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	empty, err := st.History(ctx, 1)
-	if err != nil || empty.Hourly == nil || empty.Daily == nil || len(empty.Hourly) != 0 || len(empty.Daily) != 0 {
-		t.Fatalf("empty history = %#v err=%v", empty, err)
+	if _, err = st.History(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account history err=%v", err)
 	}
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAIone','cn-hongkong','i-one','china','Unknown',200)`); err != nil {
 		t.Fatal(err)
+	}
+	empty, err := st.History(ctx, 1)
+	if err != nil || empty.Hourly == nil || empty.Daily == nil || len(empty.Hourly) != 0 || len(empty.Daily) != 0 {
+		t.Fatalf("empty history = %#v err=%v", empty, err)
 	}
 	now := time.Date(2026, 9, 8, 15, 30, 0, 0, time.UTC)
 	if err = st.AddTrafficStats(ctx, 1, 10.5, now); err != nil {
@@ -3839,9 +3842,8 @@ func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
 	if err != nil || len(two.Hourly) != 1 || two.Hourly[0].Traffic != 22 {
 		t.Fatalf("account 2 history = %#v err=%v", two.Hourly, err)
 	}
-	missing, err := st.History(ctx, 3)
-	if err != nil || missing.Hourly == nil || len(missing.Hourly) != 0 || missing.Daily == nil || len(missing.Daily) != 0 {
-		t.Fatalf("missing account history = %#v err=%v", missing, err)
+	if _, err = st.History(ctx, 3); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account history err=%v", err)
 	}
 	if err = st.AddTrafficStats(ctx, 3, 33, now); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("missing account stats err=%v", err)
@@ -3855,6 +3857,7 @@ func TestHistoryRejectsInvalidTrafficSamples(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
+	insertTestAccount(t, st, 1)
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO traffic_hourly(account_id,traffic,recorded_at) VALUES(1,-1,unixepoch())`); err != nil {
 		t.Fatal(err)
 	}

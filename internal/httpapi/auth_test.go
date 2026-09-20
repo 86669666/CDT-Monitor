@@ -1982,7 +1982,7 @@ func TestHistoryDoesNotLeakOtherAccountTraffic(t *testing.T) {
 	if err = st.AddTrafficStats(t.Context(), accounts[0].ID, 11, now); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.AddTrafficStats(t.Context(), accounts[0].ID+99, 99, now); err != nil {
+	if _, err = st.DB().ExecContext(t.Context(), `INSERT INTO traffic_hourly(account_id,traffic,recorded_at) VALUES(?,99,?)`, accounts[0].ID+99, now.Unix()); err != nil {
 		t.Fatal(err)
 	}
 	_, token, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
@@ -1997,7 +1997,7 @@ func TestHistoryDoesNotLeakOtherAccountTraffic(t *testing.T) {
 		t.Fatalf("own history leaked other account: %s", own.Body.String())
 	}
 	missing := doRequest(t, handler, http.MethodGet, "/api/v1/accounts/3/history", "", nil, map[string]string{"X-API-Key": token})
-	if missing.Code != http.StatusOK || !strings.Contains(missing.Body.String(), `"hourly":[]`) || strings.Contains(missing.Body.String(), `"traffic":11`) {
+	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "not_found") {
 		t.Fatalf("missing history status = %d body = %s", missing.Code, missing.Body.String())
 	}
 }
