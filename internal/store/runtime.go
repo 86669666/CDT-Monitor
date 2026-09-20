@@ -642,11 +642,17 @@ func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cy
 	var data string
 	var updated int64
 	err := s.db.QueryRowContext(ctx, `SELECT data,updated_at FROM billing_cache WHERE account_id=? AND cache_type=? AND billing_cycle=?`, accountID, cacheType, cycle).Scan(&data, &updated)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && time.Since(time.Unix(updated, 0)) > maxAge) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	if updated <= 0 {
+		return false, errors.New("billing cache timestamp is invalid")
+	}
+	if time.Since(time.Unix(updated, 0).UTC()) > maxAge {
+		return false, nil
 	}
 	if len(data) > maxBillingCacheBytes {
 		return false, errors.New("billing cache payload is too long")
