@@ -710,6 +710,9 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if strings.TrimSpace(encrypted) == "" {
+		return "", errors.New("account is missing access key secret")
+	}
 	return s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
 }
 

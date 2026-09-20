@@ -467,6 +467,31 @@ func TestAccountLookupsRejectNonPositiveID(t *testing.T) {
 	}
 }
 
+func TestAccountSecretRejectsEmptyAndDeleted(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	insertTestAccount(t, st, 1)
+	if _, err = st.AccountSecret(ctx, 1); err == nil || !strings.Contains(err.Error(), "missing access key secret") {
+		t.Fatalf("empty secret err=%v", err)
+	}
+	if _, err = st.GetAccount(ctx, 2); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing get err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET deleted_at=unixepoch() WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.AccountSecret(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted secret err=%v", err)
+	}
+	if _, err = st.GetAccount(ctx, 1); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted get err=%v", err)
+	}
+}
+
 func TestAccountWritesRejectNonPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
