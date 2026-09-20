@@ -417,6 +417,9 @@ scan_checkout_credentials() {
     if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+filter:' <<<"$body"; then
       bad "$f: checkout filter: is forbidden; do not use a partial clone"
     fi
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+set-safe-directory:' <<<"$body"; then
+      bad "$f: checkout set-safe-directory: is forbidden; keep the action default"
+    fi
     if [ "$base" = "auto-release.yml" ]; then
       if ! grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
         bad "$f: gated tag job must keep persist-credentials true for git push tag"
