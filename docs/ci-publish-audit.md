@@ -741,3 +741,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `cpu_quota` / `cpu_period` 和 `cpuset`。CPU 上限仍只靠 `cpus: 1.0`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T12:59Z` / 2026-09-20 20:59 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `7547fef` 再加 checkout fetch-tags 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `fetch-tags:`（含 gated auto-release）。保持 `fetch-depth: 1`，不要额外拉 tag。`path:` 仍不扫
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
