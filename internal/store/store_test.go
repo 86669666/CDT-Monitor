@@ -1722,6 +1722,16 @@ func TestListAPIKeysRejectsInvalidTimestamp(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "api key timestamp is invalid") {
 		t.Fatalf("expires_at err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM api_keys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at,last_used_at) VALUES('used-zero','hash-used','["widget:read"]',unixepoch(),-1)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key timestamp is invalid") {
+		t.Fatalf("last_used_at err=%v", err)
+	}
 }
 
 func TestListAPIKeysRejectsNonPositiveID(t *testing.T) {
@@ -1839,6 +1849,36 @@ func TestListAPIKeysRejectsEmptyScopes(t *testing.T) {
 	_, err = st.ListAPIKeys(ctx)
 	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
 		t.Fatalf("null scopes err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='[]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("empty scope list err=%v", err)
+	}
+}
+
+func TestListAPIKeysRejectsPaddedScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('pad','hash-pad','[" widget:read"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("padded scope err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='["widget:read"," widget:read"]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("mixed padded scope err=%v", err)
 	}
 }
 
@@ -3472,6 +3512,41 @@ func TestValidateAPIKeyRejectsEmptyScopes(t *testing.T) {
 	if lastUsed.Valid {
 		t.Fatal("empty scope must not record last_used_at")
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='[]',last_used_at=NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, token); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("empty scope list err=%v", err)
+	}
+	if err = st.db.QueryRowContext(ctx, `SELECT last_used_at FROM api_keys`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("empty scope list must not record last_used_at")
+	}
+}
+
+func TestValidateAPIKeyRejectsPaddedScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	token := "cdt_padded_scopes_token"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('pad',?,'["widget:read"," widget:read"]',unixepoch())`, security.TokenHash(token)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, token); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("padded scope err=%v", err)
+	}
+	var lastUsed sql.NullInt64
+	if err = st.db.QueryRowContext(ctx, `SELECT last_used_at FROM api_keys`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("padded scope must not record last_used_at")
+	}
 }
 
 func TestValidateAPIKeyRejectsOversizedScopesJSON(t *testing.T) {
@@ -3514,6 +3589,16 @@ func TestListPasskeysRejectsInvalidTimestamp(t *testing.T) {
 	_, err = st.ListPasskeys(ctx)
 	if err == nil || !strings.Contains(err.Error(), "passkey timestamp is invalid") {
 		t.Fatalf("err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM passkeys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at,last_used_at) VALUES('used',?,?,unixepoch(),-1)`, []byte("id"), `{"id":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListPasskeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "passkey timestamp is invalid") {
+		t.Fatalf("last_used_at err=%v", err)
 	}
 }
 
