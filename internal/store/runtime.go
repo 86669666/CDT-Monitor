@@ -219,10 +219,10 @@ func validateJobAccount(jobType string, accountID int64) error {
 	return nil
 }
 
-func requireClaimAccount(ctx context.Context, tx *sql.Tx, jobType string, accountID int64) error {
+func requireClaimAccount(ctx context.Context, q accountLookup, jobType string, accountID int64) error {
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
-		if err := requireActiveAccountOn(ctx, tx, accountID); err != nil {
+		if err := requireActiveAccountOn(ctx, q, accountID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return errors.New("account id is invalid")
 			}
@@ -307,6 +307,9 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	}
 	if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
 		return domain.Job{}, errors.New("job attempts are invalid")
+	}
+	if err := requireClaimAccount(ctx, s.db, job.Type, job.AccountID); err != nil {
+		return domain.Job{}, err
 	}
 	job.Result = clipRunes(job.Result, maxLogRunes)
 	job.Error = clipRunes(job.Error, maxLogRunes)
