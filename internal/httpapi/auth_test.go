@@ -2468,6 +2468,14 @@ func TestDeletePasskeyRequiresCSRF(t *testing.T) {
 	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"passkeys":[]`) {
 		t.Fatalf("after delete status = %d body = %s", empty.Code, empty.Body.String())
 	}
+	again := doRequest(t, handler, http.MethodDelete, path, "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if again.Code != http.StatusNotFound || !strings.Contains(again.Body.String(), "not_found") {
+		t.Fatalf("repeat delete status = %d body = %s", again.Code, again.Body.String())
+	}
+	absent := doRequest(t, handler, http.MethodDelete, "/api/v1/admin/passkeys/99", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if absent.Code != http.StatusNotFound || !strings.Contains(absent.Body.String(), "not_found") {
+		t.Fatalf("missing delete status = %d body = %s", absent.Code, absent.Body.String())
+	}
 }
 
 func TestMutationsRejectInvalidJSON(t *testing.T) {
