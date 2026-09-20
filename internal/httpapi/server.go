@@ -874,7 +874,8 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
-	if strings.TrimSpace(request.Name) == "" || len(request.Scopes) == 0 {
+	request.Name = strings.TrimSpace(request.Name)
+	if request.Name == "" || len(request.Scopes) == 0 {
 		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称和权限不能为空")
 		return
 	}
@@ -882,13 +883,16 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_scope", "invalid API key scope")
 		return
 	}
+	scopes := make([]string, 0, len(request.Scopes))
 	for _, scope := range request.Scopes {
+		scope = strings.TrimSpace(scope)
 		if scope != "widget:read" && scope != "instance:control" && scope != "cron:run" {
 			writeError(w, http.StatusBadRequest, "invalid_scope", "invalid API key scope")
 			return
 		}
+		scopes = append(scopes, scope)
 	}
-	key, token, err := s.store.CreateAPIKey(r.Context(), request.Name, request.Scopes, request.ExpiresAt)
+	key, token, err := s.store.CreateAPIKey(r.Context(), request.Name, scopes, request.ExpiresAt)
 	if err != nil {
 		writeStoreValidationError(w, "api_key_failed", "API Key 创建失败", err)
 		return
