@@ -251,6 +251,9 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
 		if err := s.requireActiveAccount(ctx, accountID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return domain.Job{}, errors.New("account id is invalid")
+			}
 			return domain.Job{}, err
 		}
 	}
@@ -441,7 +444,10 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 	if err != nil {
 		return false, err
 	}
-	count, _ := result.RowsAffected()
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
 	if count == 1 {
 		return true, nil
 	}

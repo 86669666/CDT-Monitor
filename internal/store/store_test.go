@@ -2326,13 +2326,13 @@ func TestEnqueueJobRequiresActiveAccount(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3); !errors.Is(err, sql.ErrNoRows) {
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "account id is invalid") {
 		t.Fatalf("missing account err=%v", err)
 	}
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic,deleted_at) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200,unixepoch())`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3); !errors.Is(err, sql.ErrNoRows) {
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "account id is invalid") {
 		t.Fatalf("deleted account err=%v", err)
 	}
 	var count int
