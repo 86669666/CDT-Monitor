@@ -2369,6 +2369,26 @@ func TestGetJobRejectsInvalidStoredItem(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidStatus(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-status','refresh_account',1,'{}','exploded',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-bad-status")
+	if err == nil || !strings.Contains(err.Error(), "job status is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id='job-bad-status'`).Scan(&status); err != nil || status != "exploded" {
+		t.Fatalf("get must not mutate stored job, status=%q err=%v", status, err)
+	}
+}
+
 func TestGetJobRejectsInvalidTimestamp(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
