@@ -724,6 +724,9 @@ func (s *Store) SetBillingCache(ctx context.Context, accountID int64, cacheType,
 	if len(data) > maxBillingCacheBytes {
 		return errors.New("billing cache payload is too long")
 	}
+	if err = s.requireActiveAccount(ctx, accountID); err != nil {
+		return err
+	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(?,?,?,?,unixepoch()) ON CONFLICT(account_id,cache_type,billing_cycle) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at`, accountID, cacheType, cycle, string(data))
 	return err
 }

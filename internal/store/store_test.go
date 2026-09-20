@@ -2562,6 +2562,12 @@ func TestBillingCacheRejectsInvalidKeysAndOversizedPayload(t *testing.T) {
 	if err = st.SetBillingCache(ctx, 1, "error", "", map[string]string{"message": strings.Repeat("m", maxBillingCacheBytes)}); err == nil || !strings.Contains(err.Error(), "payload is too long") {
 		t.Fatalf("payload err=%v", err)
 	}
+	if err = st.SetBillingCache(ctx, 1, "instance_bill", "2026-09", map[string]float64{"total": 1}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.SetBillingCache(ctx, 1, "instance_bill", "2026-09", map[string]float64{"total": 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -2609,6 +2615,9 @@ func TestBillingCacheIsIsolatedPerAccount(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAIone','cn-hongkong','i-one','china','Unknown',200),(2,'LTAItwo','cn-hongkong','i-two','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.SetBillingCache(ctx, 1, "balance", "", map[string]float64{"amount": 10.5}); err != nil {
 		t.Fatal(err)
 	}
@@ -2630,6 +2639,9 @@ func TestBillingCacheExpiresByMaxAge(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.SetBillingCache(ctx, 1, "balance", "", map[string]float64{"amount": 8}); err != nil {
 		t.Fatal(err)
 	}
@@ -2640,6 +2652,28 @@ func TestBillingCacheExpiresByMaxAge(t *testing.T) {
 	ok, err := st.BillingCache(ctx, 1, "balance", "", 30*time.Second, &got)
 	if err != nil || ok {
 		t.Fatalf("stale cache must miss, ok=%v err=%v", ok, err)
+	}
+}
+
+func TestSetBillingCacheRequiresActiveAccount(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.SetBillingCache(ctx, 1, "balance", "", map[string]float64{"amount": 1}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic,deleted_at) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.SetBillingCache(ctx, 1, "balance", "", map[string]float64{"amount": 1}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted account err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM billing_cache`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("inactive account must not store cache, count=%d err=%v", count, err)
 	}
 }
 
