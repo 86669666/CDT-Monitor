@@ -3183,6 +3183,23 @@ func TestPasskeyCredentialRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUpdatePasskeyCredentialRequiresMatchingRow(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	missing := webauthn.Credential{ID: []byte("missing-credential"), PublicKey: []byte("public-key")}
+	if err = st.UpdatePasskeyCredential(ctx, missing); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing credential err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passkeys`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("missing update must not insert, count=%d err=%v", count, err)
+	}
+}
+
 func TestInterruptedWorkRecoversOnOpen(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
