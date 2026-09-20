@@ -392,8 +392,11 @@ func (s *Store) UpdatePasskeyCredential(ctx context.Context, credential webauthn
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE passkeys SET credential_json=?,last_used_at=unixepoch() WHERE credential_id=?`, encoded, credential.ID)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE passkeys SET credential_json=?,last_used_at=unixepoch() WHERE credential_id=?`, encoded, credential.ID)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func (s *Store) DeletePasskey(ctx context.Context, id int64) error {
