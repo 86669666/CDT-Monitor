@@ -11978,3 +11978,23 @@ test('failed start job with missing-account store error uses generic toast', asy
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
+
+test('failed stop job with missing-account store error uses generic toast', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-missing-account', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('stop-missing-account', 'failed', 1)
+    failed.error = leaked
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
