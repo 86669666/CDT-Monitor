@@ -1170,6 +1170,39 @@ func TestAPIIntervalMinimum(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsInvalidNumericSetting(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		key   string
+		reset string
+	}{
+		{key: "api_interval", reset: "600"},
+		{key: "traffic_threshold", reset: "95"},
+		{key: "notify_port", reset: "465"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='abc' WHERE key=?`, tc.key); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "setting "+tc.key+" is invalid") {
+			t.Fatalf("%s err=%v", tc.key, err)
+		}
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.reset, tc.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

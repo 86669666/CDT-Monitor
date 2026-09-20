@@ -49,16 +49,16 @@ func boolSetting(settings map[string]string, key string, fallback bool) bool {
 	return value == "1" || strings.EqualFold(value, "true")
 }
 
-func intSetting(settings map[string]string, key string, fallback int) int {
+func intSetting(settings map[string]string, key string, fallback int) (int, error) {
 	value, ok := settings[key]
-	if !ok {
-		return fallback
+	if !ok || strings.TrimSpace(value) == "" {
+		return fallback, nil
 	}
-	parsed, err := strconv.Atoi(value)
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("setting %s is invalid", key)
 	}
-	return parsed
+	return parsed, nil
 }
 
 func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
@@ -99,12 +99,23 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if accounts == nil {
 		accounts = []domain.Account{}
 	}
-	apiInterval := intSetting(settings, "api_interval", 600)
+	apiInterval, err := intSetting(settings, "api_interval", 600)
+	if err != nil {
+		return domain.Config{}, err
+	}
 	if apiInterval < minAPIIntervalSeconds {
 		apiInterval = minAPIIntervalSeconds
 	}
+	trafficThreshold, err := intSetting(settings, "traffic_threshold", 95)
+	if err != nil {
+		return domain.Config{}, err
+	}
+	notifyPort, err := intSetting(settings, "notify_port", 465)
+	if err != nil {
+		return domain.Config{}, err
+	}
 	config := domain.Config{
-		TrafficThreshold:   intSetting(settings, "traffic_threshold", 95),
+		TrafficThreshold:   trafficThreshold,
 		EnableScheduleMail: boolSetting(settings, "enable_schedule_email", false),
 		ShutdownMode:       valueOr(settings, "shutdown_mode", "KeepCharging"),
 		ThresholdAction:    valueOr(settings, "threshold_action", "stop_and_notify"),
@@ -118,7 +129,7 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 				Enabled:            boolSetting(settings, "notify_email_enabled", true),
 				To:                 valueOr(settings, "notify_email", ""),
 				Host:               valueOr(settings, "notify_host", ""),
-				Port:               intSetting(settings, "notify_port", 465),
+				Port:               notifyPort,
 				Username:           valueOr(settings, "notify_username", ""),
 				Password:           valueOr(settings, "notify_password", ""),
 				PasswordConfigured: settings["notify_password"] != "",
