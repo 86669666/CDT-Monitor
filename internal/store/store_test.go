@@ -1544,6 +1544,32 @@ func TestListAPIKeysReturnsEmptyArrayWhenNoneExist(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('zero','hash-zero','["widget:read"]',0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key timestamp is invalid") {
+		t.Fatalf("created_at err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM api_keys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at,expires_at) VALUES('expired-zero','hash-exp','["widget:read"]',unixepoch(),0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key timestamp is invalid") {
+		t.Fatalf("expires_at err=%v", err)
+	}
+}
+
 func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1919,6 +1945,22 @@ func TestGetJobRejectsInvalidTimestamp(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-attempts','refresh_account',1,'{}','queued',-1,3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-bad-attempts")
+	if err == nil || !strings.Contains(err.Error(), "job attempts are invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestGetJobClipsOversizedResultAndError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2046,6 +2088,37 @@ func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	}
 	if err = st.FailJob(ctx, job, nil); err == nil || !strings.Contains(err.Error(), "job error is required") {
 		t.Fatalf("nil error err=%v", err)
+	}
+	job.Attempts = -1
+	if err = st.FailJob(ctx, job, errors.New("boom")); err == nil || !strings.Contains(err.Error(), "job attempts are invalid") {
+		t.Fatalf("negative attempts err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job.ID).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("invalid fail must not mutate job, status=%q err=%v", status, err)
+	}
+}
+
+func TestClaimJobFailsInvalidAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-attempts','refresh_account',1,'{}','queued',-1,3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimJob(ctx)
+	if err == nil || !strings.Contains(err.Error(), "job attempts are invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, jobErr string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id='job-bad-attempts'`).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(jobErr, "job attempts are invalid") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
 	}
 }
 
@@ -2424,6 +2497,23 @@ func TestBillingCacheRejectsOversizedStoredPayload(t *testing.T) {
 	_, err = st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
 	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestBillingCacheRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(1,'balance','','{"amount":1}',0)`); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]float64
+	ok, err := st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
+	if ok || err == nil || !strings.Contains(err.Error(), "billing cache timestamp is invalid") {
+		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 }
 
@@ -2856,6 +2946,22 @@ func TestValidateAPIKeyRejectsOversizedScopesJSON(t *testing.T) {
 	}
 }
 
+func TestListPasskeysRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('zero',?,?,0)`, []byte("id"), `{"id":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListPasskeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "passkey timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestSavePasskeyRejectsWhenAtCap(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3223,6 +3329,33 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	}
 	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt-1:email"}, nil); err == nil || !strings.Contains(err.Error(), "outbox error is required") {
 		t.Fatalf("nil error err=%v", err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt-1:email", Attempts: -1, MaxAttempts: 5}, errors.New("boom")); err == nil || !strings.Contains(err.Error(), "outbox attempts are invalid") {
+		t.Fatalf("negative attempts err=%v", err)
+	}
+}
+
+func TestClaimOutboxFailsInvalidAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	payload := `{"id":"evt-attempts","type":"threshold","title":"t","summary":"s"}`
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES('evt-attempts:email','evt-attempts','email',?,'queued',0,0,unixepoch(),unixepoch(),unixepoch())`, payload); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimOutbox(ctx)
+	if err == nil || !strings.Contains(err.Error(), "outbox attempts are invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, lastError string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE id='evt-attempts:email'`).Scan(&status, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(lastError, "outbox attempts are invalid") {
+		t.Fatalf("status=%q last_error=%q", status, lastError)
 	}
 }
 

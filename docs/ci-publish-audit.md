@@ -716,3 +716,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `clean:`（含 gated auto-release）。保持默认干净工作区，不要 `clean: false`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T12:20Z` / 2026-09-20 20:20 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `7b59c32` 再加 Compose 顶层 volume 白名单扫描：
+
+- Publish Guard 现只允许顶层 named volume `cdt-data`，且不能加 driver/options。不要再声明 cache 或其它卷
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

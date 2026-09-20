@@ -834,7 +834,7 @@ scan_dockerignore() {
 scan_compose() {
   local f="docker-compose.yml"
   require_file "$f" || return
-  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg extra_cap extra_hc
+  local body images svc_keys image_count port_count extra_env extra_secopt extra_log extra_logopt extra_vol extra_build extra_barg extra_cap extra_hc extra_named extra_namedopt
   body="$(strip_comments "$f")"
   images="$(grep -E '^[[:space:]]*image:' <<<"$body" || true)"
   if [ -z "$images" ]; then
@@ -1061,6 +1061,23 @@ scan_compose() {
   ' <<<"$body" | grep -Ev '^      - cdt-data:/data$' || true)"
   if [ -n "$extra_vol" ]; then
     bad "$f: extra service volumes are forbidden; keep only cdt-data:/data"
+  fi
+  extra_named="$(awk '
+    $0 ~ /^volumes:[[:space:]]*$/ { in_n=1; next }
+    in_n && $0 ~ /^[^[:space:]]/ { in_n=0 }
+    in_n && $0 ~ /^  [A-Za-z0-9._-]+:/ { print }
+  ' <<<"$body" | grep -Ev '^  cdt-data:' || true)"
+  if [ -n "$extra_named" ]; then
+    bad "$f: extra named volumes are forbidden; keep only cdt-data"
+  fi
+  extra_namedopt="$(awk '
+    $0 ~ /^  cdt-data:[[:space:]]*$/ { in_d=1; next }
+    in_d && $0 ~ /^  [A-Za-z]/ { in_d=0 }
+    in_d && $0 ~ /^[^[:space:]]/ { in_d=0 }
+    in_d && $0 ~ /^    [A-Za-z0-9._-]+:/ { print }
+  ' <<<"$body")"
+  if [ -n "$extra_namedopt" ]; then
+    bad "$f: cdt-data volume options are forbidden; keep an empty local named volume"
   fi
   if grep -Fq './data:/data' <<<"$body"; then
     bad "$f: do not bind-mount host ./data (master.key would sit on the host path)"

@@ -280,6 +280,9 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if available <= 0 || created <= 0 || updated <= 0 {
 		return domain.Job{}, errors.New("job timestamp is invalid")
 	}
+	if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
+		return domain.Job{}, errors.New("job attempts are invalid")
+	}
 	job.Result = clipRunes(job.Result, maxLogRunes)
 	job.Error = clipRunes(job.Error, maxLogRunes)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
@@ -304,6 +307,8 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 			claimErr = err
 		} else if available <= 0 || created <= 0 || updated <= 0 {
 			claimErr = errors.New("job timestamp is invalid")
+		} else if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
+			claimErr = errors.New("job attempts are invalid")
 		}
 		if claimErr != nil {
 			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), job.ID); failErr != nil {
@@ -340,12 +345,22 @@ func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
 	return err
 }
 
+func validRetryBudget(attempts, maxAttempts int) error {
+	if attempts < 0 || maxAttempts < 1 {
+		return errors.New("attempts are invalid")
+	}
+	return nil
+}
+
 func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error {
 	if !validJobID(job.ID) {
 		return sql.ErrNoRows
 	}
 	if jobErr == nil {
 		return errors.New("job error is required")
+	}
+	if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
+		return errors.New("job attempts are invalid")
 	}
 	status := "failed"
 	available := time.Now().UTC()
@@ -547,6 +562,8 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 		}
 		if len(item.Payload) > maxOutboxPayloadRunes {
 			claimErr = errors.New("notification payload is too long")
+		} else if err := validRetryBudget(item.Attempts, item.MaxAttempts); err != nil {
+			claimErr = errors.New("outbox attempts are invalid")
 		} else {
 			var event domain.NotificationEvent
 			if err := json.Unmarshal([]byte(item.Payload), &event); err != nil {
@@ -600,6 +617,9 @@ func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) 
 	if sendErr == nil {
 		return errors.New("outbox error is required")
 	}
+	if err := validRetryBudget(item.Attempts, item.MaxAttempts); err != nil {
+		return errors.New("outbox attempts are invalid")
+	}
 	status := "failed"
 	available := time.Now().UTC()
 	if item.Attempts < item.MaxAttempts {
@@ -642,11 +662,17 @@ func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cy
 	var data string
 	var updated int64
 	err := s.db.QueryRowContext(ctx, `SELECT data,updated_at FROM billing_cache WHERE account_id=? AND cache_type=? AND billing_cycle=?`, accountID, cacheType, cycle).Scan(&data, &updated)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && time.Since(time.Unix(updated, 0)) > maxAge) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	if updated <= 0 {
+		return false, errors.New("billing cache timestamp is invalid")
+	}
+	if time.Since(time.Unix(updated, 0).UTC()) > maxAge {
+		return false, nil
 	}
 	if len(data) > maxBillingCacheBytes {
 		return false, errors.New("billing cache payload is too long")
