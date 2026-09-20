@@ -423,6 +423,9 @@ scan_checkout_credentials() {
     if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+fetch-tags:' <<<"$body"; then
       bad "$f: checkout fetch-tags: is forbidden; keep fetch-depth 1 without extra tags"
     fi
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+show-progress:' <<<"$body"; then
+      bad "$f: checkout show-progress: is forbidden; keep the action default"
+    fi
     if [ "$base" = "auto-release.yml" ]; then
       if ! grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
         bad "$f: gated tag job must keep persist-credentials true for git push tag"
