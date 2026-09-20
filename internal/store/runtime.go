@@ -642,10 +642,12 @@ func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, c
 	if len(channels) > maxOutboxChannels {
 		return errors.New("too many notification channels")
 	}
+	seen := make(map[string]bool, len(channels))
 	for _, channel := range channels {
-		if !validOutboxChannel(channel) {
+		if !validOutboxChannel(channel) || seen[channel] {
 			return errors.New("notification channel is invalid")
 		}
+		seen[channel] = true
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {

@@ -4156,6 +4156,9 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	if err = st.AddOutbox(ctx, event, []string{"sms"}); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
 		t.Fatalf("channel err=%v", err)
 	}
+	if err = st.AddOutbox(ctx, event, []string{"email", "email"}); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
+		t.Fatalf("duplicate channel err=%v", err)
+	}
 	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("empty id err=%v", err)
 	}
