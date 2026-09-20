@@ -133,8 +133,8 @@ func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic fl
 }
 
 func (s *Store) History(ctx context.Context, accountID int64) (domain.History, error) {
-	if !validAccountID(accountID) {
-		return domain.History{}, sql.ErrNoRows
+	if err := s.requireActiveAccount(ctx, accountID); err != nil {
+		return domain.History{}, err
 	}
 	history := domain.History{Hourly: []domain.TrafficPoint{}, Daily: []domain.TrafficPoint{}}
 	for query, target := range map[string]*[]domain.TrafficPoint{
