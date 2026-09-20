@@ -1850,6 +1850,13 @@ func TestListAPIKeysRejectsEmptyScopes(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
 		t.Fatalf("null scopes err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='[]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("empty scope list err=%v", err)
+	}
 }
 
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
@@ -3481,6 +3488,18 @@ func TestValidateAPIKeyRejectsEmptyScopes(t *testing.T) {
 	}
 	if lastUsed.Valid {
 		t.Fatal("empty scope must not record last_used_at")
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='[]',last_used_at=NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, token); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("empty scope list err=%v", err)
+	}
+	if err = st.db.QueryRowContext(ctx, `SELECT last_used_at FROM api_keys`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("empty scope list must not record last_used_at")
 	}
 }
 
