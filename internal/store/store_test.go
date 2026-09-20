@@ -1908,6 +1908,43 @@ func TestClaimJobFailsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestClaimJobFailsInvalidStoredItem(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	cases := []struct {
+		id        string
+		jobType   string
+		accountID int64
+		err       string
+	}{
+		{id: "job-unknown-type", jobType: "wipe_disk", accountID: 1, err: "job type is invalid"},
+		{id: "job-missing-account", jobType: "refresh_account", accountID: 0, err: "account id is invalid"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',3,unixepoch(),unixepoch(),unixepoch())`, tc.id, tc.jobType, tc.accountID, `{}`); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.ClaimJob(ctx)
+		if err == nil || !strings.Contains(err.Error(), tc.err) {
+			t.Fatalf("%s err=%v", tc.id, err)
+		}
+		var status, jobErr string
+		if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, tc.id).Scan(&status, &jobErr); err != nil {
+			t.Fatal(err)
+		}
+		if status != "failed" || !strings.Contains(jobErr, tc.err) {
+			t.Fatalf("%s status=%q error=%q", tc.id, status, jobErr)
+		}
+	}
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("poisoned jobs must not stay queued: err=%v", err)
+	}
+}
+
 func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1949,8 +1986,8 @@ func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", maxJobAttempts+1); err == nil || !strings.Contains(err.Error(), "attempts are invalid") {
 		t.Fatalf("max attempts err=%v", err)
 	}
-	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err != nil {
-		t.Fatalf("max job type err=%v", err)
+	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("unknown type err=%v", err)
 	}
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 0, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "account id is invalid") {
 		t.Fatalf("account id err=%v", err)

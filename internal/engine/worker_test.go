@@ -109,22 +109,21 @@ func TestRunJobRejectsNonPositiveAccountID(t *testing.T) {
 	}
 }
 
-func TestProcessJobsUnknownTypeRequeues(t *testing.T) {
+func TestProcessJobsUnknownTypeFailsClosed(t *testing.T) {
 	st, _ := setupAccount(t, nil)
 	defer st.Close()
 	provider := newFakeProvider()
 	eng := New(st, provider, notify.New(), quietLogger(), 1)
 	ctx := context.Background()
-	job, err := st.EnqueueJob(ctx, "not_a_job", 0, `{}`, "unknown:1", 3)
-	if err != nil {
+	if _, err := st.DB().ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-unknown','not_a_job',0,'{}','queued',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
 		t.Fatal(err)
 	}
 	eng.processJobs(ctx, 0)
 	var status, jobErr string
-	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
+	if err := st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id='job-unknown'`).Scan(&status, &jobErr); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || !strings.Contains(jobErr, "unknown job type") {
+	if status != "failed" || !strings.Contains(jobErr, "job type is invalid") {
 		t.Fatalf("status=%q error=%q", status, jobErr)
 	}
 	if got := provider.controlActions(); len(got) != 0 {

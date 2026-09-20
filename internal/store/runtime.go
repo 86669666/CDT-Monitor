@@ -188,15 +188,31 @@ const (
 	maxJobIDBytes        = 64
 )
 
-func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
-	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes {
-		return domain.Job{}, errors.New("job type is invalid")
+func validJobType(jobType string) bool {
+	switch jobType {
+	case "monitor_account", "refresh_account", "control_instance", "test_notification":
+		return true
+	default:
+		return false
 	}
+}
+
+func validateJobAccount(jobType string, accountID int64) error {
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
 		if accountID < 1 {
-			return domain.Job{}, errors.New("account id is invalid")
+			return errors.New("account id is invalid")
 		}
+	}
+	return nil
+}
+
+func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
+	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes || !validJobType(jobType) {
+		return domain.Job{}, errors.New("job type is invalid")
+	}
+	if err := validateJobAccount(jobType, accountID); err != nil {
+		return domain.Job{}, err
 	}
 	if maxAttempts < 1 || maxAttempts > maxJobAttempts {
 		return domain.Job{}, errors.New("job attempts are invalid")
@@ -257,7 +273,7 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 
 func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 	var job domain.Job
-	var oversized bool
+	var claimErr error
 	err := s.WithTx(ctx, func(tx *sql.Tx) error {
 		var available, created, updated int64
 		err := tx.QueryRowContext(ctx, `SELECT id,type,account_id,payload,status,result,error,attempts,max_attempts,available_at,created_at,updated_at FROM jobs WHERE status='queued' AND available_at<=unixepoch() ORDER BY created_at LIMIT 1`).
@@ -266,10 +282,16 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 			return err
 		}
 		if len([]rune(job.Payload)) > maxJobPayloadRunes {
-			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, "job payload is too long", job.ID); failErr != nil {
+			claimErr = errors.New("job payload is too long")
+		} else if !validJobType(job.Type) {
+			claimErr = errors.New("job type is invalid")
+		} else {
+			claimErr = validateJobAccount(job.Type, job.AccountID)
+		}
+		if claimErr != nil {
+			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), job.ID); failErr != nil {
 				return failErr
 			}
-			oversized = true
 			return nil
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE jobs SET status='running',locked_at=unixepoch(),attempts=attempts+1,updated_at=unixepoch() WHERE id=? AND status='queued'`, job.ID)
@@ -287,8 +309,8 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 	if err != nil {
 		return domain.Job{}, err
 	}
-	if oversized {
-		return domain.Job{}, errors.New("job payload is too long")
+	if claimErr != nil {
+		return domain.Job{}, claimErr
 	}
 	return job, nil
 }
