@@ -137,13 +137,17 @@ func (s *Store) History(ctx context.Context, accountID int64) (domain.History, e
 		return domain.History{}, err
 	}
 	history := domain.History{Hourly: []domain.TrafficPoint{}, Daily: []domain.TrafficPoint{}}
-	for query, target := range map[string]*[]domain.TrafficPoint{
-		`SELECT traffic,recorded_at FROM traffic_hourly WHERE account_id=? ORDER BY recorded_at DESC LIMIT 25`: &history.Hourly,
-		`SELECT traffic,recorded_at FROM traffic_daily WHERE account_id=? ORDER BY recorded_at DESC LIMIT 31`:  &history.Daily,
-	} {
-		rows, err := s.db.QueryContext(ctx, query, accountID)
+	queries := []struct {
+		sql    string
+		target *[]domain.TrafficPoint
+	}{
+		{`SELECT traffic,recorded_at FROM traffic_hourly WHERE account_id=? ORDER BY recorded_at DESC LIMIT 25`, &history.Hourly},
+		{`SELECT traffic,recorded_at FROM traffic_daily WHERE account_id=? ORDER BY recorded_at DESC LIMIT 31`, &history.Daily},
+	}
+	for _, query := range queries {
+		rows, err := s.db.QueryContext(ctx, query.sql, accountID)
 		if err != nil {
-			return history, err
+			return domain.History{}, err
 		}
 		var reverse []domain.TrafficPoint
 		for rows.Next() {
@@ -151,18 +155,26 @@ func (s *Store) History(ctx context.Context, accountID int64) (domain.History, e
 			var at int64
 			if err = rows.Scan(&point.Traffic, &at); err != nil {
 				rows.Close()
-				return history, err
+				return domain.History{}, err
 			}
-			if !validTrafficSample(point.Traffic) || at <= 0 {
+			if !validTrafficSample(point.Traffic) {
 				rows.Close()
 				return domain.History{}, errors.New("traffic sample is invalid")
+			}
+			if at <= 0 {
+				rows.Close()
+				return domain.History{}, errors.New("traffic timestamp is invalid")
 			}
 			point.At = time.Unix(at, 0).UTC()
 			reverse = append(reverse, point)
 		}
+		err = rows.Err()
 		rows.Close()
+		if err != nil {
+			return domain.History{}, err
+		}
 		for index := len(reverse) - 1; index >= 0; index-- {
-			*target = append(*target, reverse[index])
+			*query.target = append(*query.target, reverse[index])
 		}
 	}
 	return history, nil

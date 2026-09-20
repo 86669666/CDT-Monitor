@@ -4234,6 +4234,26 @@ func TestHistoryRejectsInvalidTrafficSamples(t *testing.T) {
 	}
 }
 
+func TestHistoryRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	insertTestAccount(t, st, 1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO traffic_hourly(account_id,traffic,recorded_at) VALUES(1,1.5,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO traffic_daily(account_id,traffic,recorded_at) VALUES(1,1.5,0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.History(ctx, 1)
+	if err == nil || !strings.Contains(err.Error(), "traffic timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestLastMonitorRunRejectsInvalidValue(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
