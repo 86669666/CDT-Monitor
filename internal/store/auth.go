@@ -240,6 +240,9 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		if len(parsed) > maxAPIKeyScopes || !validAPIKeyScopes(parsed) {
+			return nil, errors.New("invalid API key scope")
+		}
 		if key.ID < 1 {
 			return nil, errors.New("api key id is invalid")
 		}
@@ -360,6 +363,9 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 		var credential webauthn.Credential
 		if err = json.Unmarshal([]byte(encoded), &credential); err != nil {
 			return nil, err
+		}
+		if len(credential.ID) == 0 {
+			return nil, errors.New("passkey credential is invalid")
 		}
 		credentials = append(credentials, credential)
 	}

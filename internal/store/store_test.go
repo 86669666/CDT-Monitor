@@ -1690,6 +1690,29 @@ func TestListAPIKeysRejectsInvalidName(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsUnknownScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('admin','hash-admin','["admin"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("admin scope err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='["widget:read","admin"]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("mixed scope err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3422,6 +3445,22 @@ func TestLoadPasskeyCredentialsRejectsOversizedJSON(t *testing.T) {
 	}
 	_, err = st.LoadPasskeyCredentials(ctx)
 	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestLoadPasskeyCredentialsRejectsEmptyID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,'{}',unixepoch())`, []byte("id")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "credential is invalid") {
 		t.Fatalf("err=%v", err)
 	}
 }
