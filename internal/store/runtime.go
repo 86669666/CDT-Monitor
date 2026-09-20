@@ -277,6 +277,9 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if err := validateJobAccount(job.Type, job.AccountID); err != nil {
 		return domain.Job{}, err
 	}
+	if available <= 0 || created <= 0 || updated <= 0 {
+		return domain.Job{}, errors.New("job timestamp is invalid")
+	}
 	job.Result = clipRunes(job.Result, maxLogRunes)
 	job.Error = clipRunes(job.Error, maxLogRunes)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
@@ -297,8 +300,10 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 			claimErr = errors.New("job payload is too long")
 		} else if !validJobType(job.Type) {
 			claimErr = errors.New("job type is invalid")
-		} else {
-			claimErr = validateJobAccount(job.Type, job.AccountID)
+		} else if err := validateJobAccount(job.Type, job.AccountID); err != nil {
+			claimErr = err
+		} else if available <= 0 || created <= 0 || updated <= 0 {
+			claimErr = errors.New("job timestamp is invalid")
 		}
 		if claimErr != nil {
 			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), job.ID); failErr != nil {

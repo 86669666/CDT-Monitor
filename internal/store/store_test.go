@@ -1903,6 +1903,22 @@ func TestGetJobRejectsInvalidStoredItem(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-ts','refresh_account',1,'{}','queued',3,0,unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-bad-ts")
+	if err == nil || !strings.Contains(err.Error(), "job timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestGetJobClipsOversizedResultAndError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1985,6 +2001,29 @@ func TestClaimJobFailsInvalidStoredItem(t *testing.T) {
 	}
 	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("poisoned jobs must not stay queued: err=%v", err)
+	}
+}
+
+func TestClaimJobFailsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-ts','refresh_account',1,'{}','queued',3,unixepoch(),0,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimJob(ctx)
+	if err == nil || !strings.Contains(err.Error(), "job timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, jobErr string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id='job-bad-ts'`).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(jobErr, "job timestamp is invalid") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
 	}
 }
 
