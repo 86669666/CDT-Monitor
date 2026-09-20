@@ -235,6 +235,12 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 	if len([]rune(uniqueKey)) > maxJobUniqueKeyRunes {
 		return domain.Job{}, errors.New("job unique key is too long")
 	}
+	switch jobType {
+	case "monitor_account", "refresh_account", "control_instance":
+		if err := s.requireActiveAccount(ctx, accountID); err != nil {
+			return domain.Job{}, err
+		}
+	}
 	id, err := security.NewToken(18)
 	if err != nil {
 		return domain.Job{}, err
