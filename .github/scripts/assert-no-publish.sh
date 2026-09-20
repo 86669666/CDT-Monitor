@@ -1145,6 +1145,9 @@ scan_compose() {
   if grep -Eq 'network_mode:[[:space:]]*"?(container:|service:)' <<<"$body"; then
     bad "$f: network_mode container/service is forbidden; keep loopback publish"
   fi
+  if grep -Eq '^[[:space:]]+network_mode:' <<<"$body"; then
+    bad "$f: network_mode: is forbidden; keep the default bridge and loopback publish"
+  fi
   if grep -Eq 'pid:[[:space:]]*(host|shareable|service:|container:)' <<<"$body"; then
     bad "$f: pid namespace sharing is forbidden; keep loopback publish"
   fi
