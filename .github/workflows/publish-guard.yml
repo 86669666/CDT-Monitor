@@ -10,6 +10,7 @@ name: Publish Guard
 # Do not set continue-on-error or dump toJSON(secrets).
 # Do not add issue_comment, schedule, discussion, watch, or other extra on: triggers.
 # Do not add on.push tags:.
+# Do not set ENABLE_PRODUCTION_PUBLISH or ENABLE_DOCKERHUB_PUBLISH true in YAML.
 # Do not add job services: sidecars, job container:, uses: docker://, or type=gha/registry build cache.
 # Do not add GitHub Environment jobs (production, staging, or otherwise).
 # Workflow secrets.* allowlist is the optional Android keystore names only.

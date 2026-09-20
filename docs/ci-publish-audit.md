@@ -831,3 +831,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `volumes_from:` 和 `extends:`。不要从别的容器继承卷或服务定义
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:54Z` / 2026-09-20 22:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `4bf8e02` 再加 YAML 发布变量赋值扫描：
+
+- Publish Guard 现禁止在 workflow YAML 里把 `ENABLE_PRODUCTION_PUBLISH` / `ENABLE_DOCKERHUB_PUBLISH` 写成 true。jobs 仍只读 `vars.*` 比较。不要在 YAML 里打开发布
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
