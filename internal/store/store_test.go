@@ -1664,6 +1664,32 @@ func TestListAPIKeysRejectsNonPositiveID(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsInvalidName(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('   ','hash-blank','["widget:read"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key name is invalid") {
+		t.Fatalf("blank name err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM api_keys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES(?,'hash-long','["widget:read"]',unixepoch())`, strings.Repeat("n", maxAPIKeyNameRunes+1)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key name is invalid") {
+		t.Fatalf("long name err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
