@@ -1706,6 +1706,22 @@ func TestListLogsRejectsInvalidStoredRows(t *testing.T) {
 	}
 }
 
+func TestListLogsRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(id,type,message,created_at) VALUES(0,'error','boom',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListLogs(ctx, "action", 10)
+	if err == nil || !strings.Contains(err.Error(), "log id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

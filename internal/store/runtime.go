@@ -58,6 +58,9 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 		if err = rows.Scan(&entry.ID, &entry.Type, &entry.Message, &created); err != nil {
 			return nil, err
 		}
+		if entry.ID < 1 {
+			return nil, errors.New("log id is invalid")
+		}
 		if !validLogType(entry.Type) {
 			return nil, errors.New("log type is invalid")
 		}
