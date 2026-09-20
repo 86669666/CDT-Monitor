@@ -12254,3 +12254,119 @@ test('instance refresh timeout hides missing-account store error', async ({ page
   await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
+
+test('email notify timeout hides missing-account store error', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email-timeout-missing', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('notify-email-timeout-missing', 'queued')
+    queued.type = 'test_notification'
+    queued.error = leaked
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  const jobPolled = page.waitForRequest('**/api/v1/jobs/**')
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await jobPolled
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
+
+test('telegram notify timeout hides missing-account store error', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/telegram', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-telegram-timeout-missing', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('notify-telegram-timeout-missing', 'queued')
+    queued.type = 'test_notification'
+    queued.error = leaked
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Telegram' }).click()
+  const jobPolled = page.waitForRequest('**/api/v1/jobs/**')
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await jobPolled
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
+
+test('webhook notify timeout hides missing-account store error', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-timeout-missing', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('notify-webhook-timeout-missing', 'queued')
+    queued.type = 'test_notification'
+    queued.error = leaked
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const jobPolled = page.waitForRequest('**/api/v1/jobs/**')
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await jobPolled
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '任务仍在后台执行，请稍后刷新' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
+
+test('refresh-all timeout hides missing-account store error', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  let refreshCalls = 0
+  await page.clock.install()
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-all-timeout-missing', 'queued', 1)] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const queued = jobFixture('refresh-all-timeout-missing', 'queued', 1)
+    queued.error = leaked
+    return route.fulfill({ json: queued })
+  })
+
+  await page.goto('/')
+  const jobPolled = page.waitForRequest('**/api/v1/jobs/**')
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await jobPolled
+  await page.clock.fastForward(71_000)
+  await expect(page.locator('.toast--error').filter({ hasText: '全部实例刷新失败，请查看运行日志' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+  expect(refreshCalls).toBe(1)
+})
