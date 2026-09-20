@@ -110,6 +110,9 @@ scan_workflows() {
     if grep -Eq '^    container:' <<<"$body"; then
       bad "$f: job container: is forbidden; keep ubuntu-latest"
     fi
+    if grep -Eq 'uses:[[:space:]]*docker://' <<<"$body"; then
+      bad "$f: uses: docker:// container actions are forbidden on this fork"
+    fi
     if grep -Eq 'cache-to:|cache-from:|type=gha' <<<"$body"; then
       bad "$f: GHA/registry build cache is forbidden on this fork"
     fi
