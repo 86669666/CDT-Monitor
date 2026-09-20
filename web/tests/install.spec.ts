@@ -12127,3 +12127,55 @@ test('settings API key create surfaces the live past expiry api_key_failed envel
   await expect(page.getByText('仅显示一次')).toHaveCount(0)
   expect(createCalls).toBe(1)
 })
+
+test('settings API key revoke surfaces the live missing-key not_found envelope', async ({ page }) => {
+  const existing = {
+    id: 17,
+    name: '桌面小组件',
+    scopes: ['widget:read'],
+    created_at: new Date().toISOString(),
+  }
+  let revokeCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => route.fulfill({ json: { keys: [existing] } }))
+  await page.route('**/api/v1/api-keys/**', (route) => {
+    revokeCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: 'API Key 不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByRole('button', { name: '撤销' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 不存在' }).first()).toBeVisible()
+  await expect(page.locator('.key-row')).toContainText('桌面小组件')
+  expect(revokeCalls).toBe(1)
+})
+
+test('admin passkey delete surfaces the live missing-passkey not_found envelope', async ({ page }) => {
+  const existing = { id: 9, name: '办公室电脑', created_at: new Date().toISOString() }
+  let deleteCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/admin/passkeys', (route) => route.fulfill({ json: { passkeys: [existing] } }))
+  await page.route('**/api/v1/admin/passkeys/**', (route) => {
+    deleteCalls += 1
+    expect(route.request().method()).toBe('DELETE')
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: 'Passkey 不存在' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '管理员' }).click()
+  await page.getByRole('button', { name: '删除 Passkey' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'Passkey 不存在' }).first()).toBeVisible()
+  await expect(page.locator('.passkey-row')).toContainText('办公室电脑')
+  expect(deleteCalls).toBe(1)
+})
