@@ -18,6 +18,7 @@ name: Publish Guard
 # Do not add gh release create, actions/create-release, or npm publish.
 # Do not add QEMU or docker-container Buildx.
 # Do not add deployments/pages/statuses/checks write permissions.
+# Do not add id-token permission (OIDC).
 # upload-artifact stays on widget CI and gated Release Binaries only.
 # download-artifact stays on gated Release Binaries only.
 # Do not add standalone actions/cache; setup-go/setup-node caches stay.
