@@ -280,6 +280,9 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if available <= 0 || created <= 0 || updated <= 0 {
 		return domain.Job{}, errors.New("job timestamp is invalid")
 	}
+	if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
+		return domain.Job{}, errors.New("job attempts are invalid")
+	}
 	job.Result = clipRunes(job.Result, maxLogRunes)
 	job.Error = clipRunes(job.Error, maxLogRunes)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()

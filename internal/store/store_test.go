@@ -1945,6 +1945,22 @@ func TestGetJobRejectsInvalidTimestamp(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidAttempts(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-attempts','refresh_account',1,'{}','queued',-1,3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-bad-attempts")
+	if err == nil || !strings.Contains(err.Error(), "job attempts are invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestGetJobClipsOversizedResultAndError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
