@@ -1620,6 +1620,22 @@ func TestListLogsClipsOversizedStoredMessages(t *testing.T) {
 	}
 }
 
+func TestListLogsRejectsInvalidStoredRows(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES('error','boom',0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListLogs(ctx, "action", 10)
+	if err == nil || !strings.Contains(err.Error(), "log timestamp is invalid") {
+		t.Fatalf("timestamp err=%v", err)
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
