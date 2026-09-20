@@ -1687,6 +1687,25 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	}
 }
 
+func TestAcquireLeaseRejectsInvalidTTL(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, ttl := range []time.Duration{0, -time.Second} {
+		got, err := st.AcquireLease(ctx, "monitor", "owner-a", ttl)
+		if got || err == nil || !strings.Contains(err.Error(), "lease ttl is invalid") {
+			t.Fatalf("ttl=%v got=%v err=%v", ttl, got, err)
+		}
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduler_leases`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid ttl must not store a lease, count=%d err=%v", count, err)
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedStoredOwner(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
