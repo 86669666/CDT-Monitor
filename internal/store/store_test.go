@@ -2162,6 +2162,29 @@ func TestClaimJobFailsInvalidStoredItem(t *testing.T) {
 	}
 }
 
+func TestClaimJobFailsMissingAccount(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-missing-account','refresh_account',1,'{}','queued',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimJob(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, jobErr string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id='job-missing-account'`).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(jobErr, "account id is invalid") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+}
+
 func TestClaimJobFailsInvalidTimestamp(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
