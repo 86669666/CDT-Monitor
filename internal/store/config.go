@@ -644,6 +644,18 @@ func validAccountID(id int64) bool {
 	return id >= 1
 }
 
+func (s *Store) requireActiveAccount(ctx context.Context, id int64) error {
+	if !validAccountID(id) {
+		return sql.ErrNoRows
+	}
+	var found int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sql.ErrNoRows
+	}
+	return err
+}
+
 func (s *Store) GetAccount(ctx context.Context, id int64) (domain.Account, error) {
 	if !validAccountID(id) {
 		return domain.Account{}, sql.ErrNoRows
@@ -706,8 +718,11 @@ func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, st
 	if !validUnixTime(updatedAt) {
 		return errors.New("runtime timestamp is invalid")
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET traffic_used=?,instance_status=?,updated_at=? WHERE id=? AND deleted_at=0`, traffic, status, updatedAt.Unix(), id)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE accounts SET traffic_used=?,instance_status=?,updated_at=? WHERE id=? AND deleted_at=0`, traffic, status, updatedAt.Unix(), id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func (s *Store) UpdateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {
@@ -721,6 +736,9 @@ func (s *Store) UpdateKeepAliveAt(ctx context.Context, id int64, at time.Time) e
 	if !validUnixTime(at) {
 		return errors.New("keepalive timestamp is invalid")
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET last_keep_alive_at=? WHERE id=?`, at.Unix(), id)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE accounts SET last_keep_alive_at=? WHERE id=? AND deleted_at=0`, at.Unix(), id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }

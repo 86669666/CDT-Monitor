@@ -111,14 +111,14 @@ func validInstanceStatus(status string) bool {
 }
 
 func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic float64, now time.Time) error {
-	if !validAccountID(accountID) {
-		return sql.ErrNoRows
-	}
 	if !validTrafficSample(traffic) {
 		return errors.New("traffic sample is invalid")
 	}
 	if !validUnixTime(now) {
 		return errors.New("traffic timestamp is invalid")
+	}
+	if err := s.requireActiveAccount(ctx, accountID); err != nil {
+		return err
 	}
 	hour := now.Truncate(time.Hour).Unix()
 	year, month, day := now.Date()

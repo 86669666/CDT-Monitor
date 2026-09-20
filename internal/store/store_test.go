@@ -3537,6 +3537,12 @@ func TestAddTrafficStatsRejectsNonFiniteValues(t *testing.T) {
 			t.Fatalf("traffic=%v err=%v", value, err)
 		}
 	}
+	if err = st.AddTrafficStats(ctx, 1, 0, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.AddTrafficStats(ctx, 1, 0, now); err != nil {
 		t.Fatal(err)
 	}
@@ -3564,6 +3570,12 @@ func TestUpdateRuntimeRejectsInvalidStatusAndTraffic(t *testing.T) {
 	}
 	if err = st.UpdateRuntime(ctx, 1, 1, "exploded", now); err == nil || !strings.Contains(err.Error(), "instance status is invalid") {
 		t.Fatalf("status err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
 	}
 	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); err != nil {
 		t.Fatal(err)
@@ -3600,6 +3612,28 @@ func TestUpdateRuntimeRejectsInvalidTimestamp(t *testing.T) {
 	}
 }
 
+func TestUpdateKeepAliveAtRequiresActiveAccount(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err = st.UpdateKeepAliveAt(ctx, 1, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic,deleted_at) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.UpdateKeepAliveAt(ctx, 1, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted account err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted runtime err=%v", err)
+	}
+}
+
 func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3610,6 +3644,9 @@ func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
 	empty, err := st.History(ctx, 1)
 	if err != nil || empty.Hourly == nil || empty.Daily == nil || len(empty.Hourly) != 0 || len(empty.Daily) != 0 {
 		t.Fatalf("empty history = %#v err=%v", empty, err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAIone','cn-hongkong','i-one','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 8, 15, 30, 0, 0, time.UTC)
 	if err = st.AddTrafficStats(ctx, 1, 10.5, now); err != nil {
@@ -3638,6 +3675,9 @@ func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
 	defer st.Close()
 	ctx := context.Background()
 	now := time.Date(2026, 9, 8, 16, 0, 0, 0, time.UTC)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAIone','cn-hongkong','i-one','china','Unknown',200),(2,'LTAItwo','cn-hongkong','i-two','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.AddTrafficStats(ctx, 1, 11, now); err != nil {
 		t.Fatal(err)
 	}
@@ -3655,6 +3695,9 @@ func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
 	missing, err := st.History(ctx, 3)
 	if err != nil || missing.Hourly == nil || len(missing.Hourly) != 0 || missing.Daily == nil || len(missing.Daily) != 0 {
 		t.Fatalf("missing account history = %#v err=%v", missing, err)
+	}
+	if err = st.AddTrafficStats(ctx, 3, 33, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account stats err=%v", err)
 	}
 }
 
