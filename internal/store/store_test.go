@@ -1570,6 +1570,34 @@ func TestListAPIKeysRejectsInvalidTimestamp(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(id,name,token_hash,scopes,created_at) VALUES(0,'zero','hash-zero-id','["widget:read"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	key, token, err := st.CreateAPIKey(context.Background(), "widget", []string{"widget:read"}, nil)
+	if err != nil || key.ID < 1 || token == "" {
+		t.Fatalf("key=%#v token=%q err=%v", key, token, err)
+	}
+}
+
 func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2977,6 +3005,22 @@ func TestListPasskeysRejectsInvalidTimestamp(t *testing.T) {
 	}
 	_, err = st.ListPasskeys(ctx)
 	if err == nil || !strings.Contains(err.Error(), "passkey timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestListPasskeysRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(id,name,credential_id,credential_json,created_at) VALUES(0,'zero',?,?,unixepoch())`, []byte("id"), `{"id":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListPasskeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "passkey id is invalid") {
 		t.Fatalf("err=%v", err)
 	}
 }

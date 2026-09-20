@@ -190,7 +190,10 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 		return domain.APIKey{}, "", err
 	}
 	token := "cdt_" + secret
-	scopeJSON, _ := json.Marshal(scopes)
+	scopeJSON, err := json.Marshal(scopes)
+	if err != nil {
+		return domain.APIKey{}, "", err
+	}
 	now := time.Now().UTC()
 	var expires any
 	if expiresAt != nil {
@@ -201,7 +204,10 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	if err != nil {
 		return domain.APIKey{}, "", err
 	}
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil || id < 1 {
+		return domain.APIKey{}, "", errors.New("api key id is invalid")
+	}
 	return domain.APIKey{ID: id, Name: name, Scopes: scopes, CreatedAt: now, ExpiresAt: expiresAt}, token, nil
 }
 
@@ -223,6 +229,9 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		parsed, parseErr := parseAPIKeyScopes(scopes)
 		if parseErr != nil {
 			return nil, parseErr
+		}
+		if key.ID < 1 {
+			return nil, errors.New("api key id is invalid")
 		}
 		if created <= 0 || (expires.Valid && expires.Int64 <= 0) {
 			return nil, errors.New("api key timestamp is invalid")
@@ -300,6 +309,9 @@ func (s *Store) ListPasskeys(ctx context.Context) ([]domain.Passkey, error) {
 		var lastUsed sql.NullInt64
 		if err = rows.Scan(&item.ID, &item.Name, &created, &lastUsed); err != nil {
 			return nil, err
+		}
+		if item.ID < 1 {
+			return nil, errors.New("passkey id is invalid")
 		}
 		if created <= 0 {
 			return nil, errors.New("passkey timestamp is invalid")
