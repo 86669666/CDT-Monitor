@@ -836,3 +836,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止在 workflow YAML 里把 `ENABLE_PRODUCTION_PUBLISH` / `ENABLE_DOCKERHUB_PUBLISH` 写成 true。jobs 仍只读 `vars.*` 比较。不要在 YAML 里打开发布
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:58Z` / 2026-09-20 22:58 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `5ff3fc3` 再加 Compose extra cpu_* 扫描：
+
+- Publish Guard 现禁止 Compose `cpu_count` / `cpu_percent` / `cpu_rt_runtime` / `cpu_rt_period`。CPU 上限仍只靠 `cpus: 1.0`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
