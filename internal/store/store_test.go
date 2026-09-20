@@ -2066,6 +2066,15 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	if _, err = st.AcquireLease(ctx, "monitor", "", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("empty owner err=%v", err)
 	}
+	if _, err = st.AcquireLease(ctx, "   ", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("blank name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, " monitor", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("padded name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", " owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("padded owner err=%v", err)
+	}
 	if _, err = st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes+1), "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("name err=%v", err)
 	}
@@ -2112,6 +2121,13 @@ func TestAcquireLeaseRejectsOversizedStoredOwner(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE scheduler_leases SET owner=' owner-a'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.AcquireLease(ctx, "monitor", "owner-b", time.Minute)
+	if err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("padded stored owner err=%v", err)
+	}
 }
 
 func TestAcquireLeaseRenewalExpiryAndOwnership(t *testing.T) {
@@ -2157,6 +2173,12 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	if _, err = st.RecordActionEvent(ctx, "", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("empty key err=%v", err)
 	}
+	if _, err = st.RecordActionEvent(ctx, "   ", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("blank key err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, " threshold:1:active", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("padded key err=%v", err)
+	}
 	if _, err = st.RecordActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1), 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
 	}
@@ -2194,6 +2216,9 @@ func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
 	ctx := context.Background()
 	if err = st.DeleteActionEvent(ctx, ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("empty key err=%v", err)
+	}
+	if err = st.DeleteActionEvent(ctx, "   "); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("blank key err=%v", err)
 	}
 	if err = st.DeleteActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1)); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
@@ -2751,6 +2776,12 @@ func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	}
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, strings.Repeat("k", maxJobUniqueKeyRunes+1), 3); err == nil || !strings.Contains(err.Error(), "unique key is too long") {
 		t.Fatalf("unique key err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, " refresh:1 ", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
+		t.Fatalf("padded unique key err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "   ", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
+		t.Fatalf("blank unique key err=%v", err)
 	}
 	insertTestAccount(t, st, 1)
 	maxPayload := `"` + strings.Repeat("x", maxJobPayloadRunes-2) + `"`
