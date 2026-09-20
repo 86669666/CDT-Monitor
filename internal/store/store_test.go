@@ -3565,6 +3565,12 @@ func TestUpdateRuntimeRejectsInvalidStatusAndTraffic(t *testing.T) {
 	if err = st.UpdateRuntime(ctx, 1, 1, "exploded", now); err == nil || !strings.Contains(err.Error(), "instance status is invalid") {
 		t.Fatalf("status err=%v", err)
 	}
+	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); err != nil {
 		t.Fatal(err)
 	}
@@ -3597,6 +3603,28 @@ func TestUpdateRuntimeRejectsInvalidTimestamp(t *testing.T) {
 	}
 	if updated != 0 || keepAlive != 0 {
 		t.Fatalf("invalid timestamps must not persist, updated=%d keepalive=%d", updated, keepAlive)
+	}
+}
+
+func TestUpdateKeepAliveAtRequiresActiveAccount(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err = st.UpdateKeepAliveAt(ctx, 1, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic,deleted_at) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.UpdateKeepAliveAt(ctx, 1, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted account err=%v", err)
+	}
+	if err = st.UpdateRuntime(ctx, 1, 1, domain.StatusRunning, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted runtime err=%v", err)
 	}
 }
 
