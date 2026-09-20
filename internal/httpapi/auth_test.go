@@ -805,6 +805,22 @@ func TestCreateAPIKeyRejectsUnknownScopesHTTP(t *testing.T) {
 	}
 }
 
+func TestCreateAPIKeyRejectsBlankScopesHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	cookies := []*http.Cookie{session, csrf}
+	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
+	blank := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":["   "]}`, cookies, headers)
+	if blank.Code != http.StatusBadRequest || !strings.Contains(blank.Body.String(), "invalid_scope") {
+		t.Fatalf("blank scope status = %d body = %s", blank.Code, blank.Body.String())
+	}
+	padded := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"  widget  ","scopes":[" widget:read "]}`, cookies, headers)
+	if padded.Code != http.StatusCreated || !strings.Contains(padded.Body.String(), `"name":"widget"`) || !strings.Contains(padded.Body.String(), `"widget:read"`) {
+		t.Fatalf("padded key status = %d body = %s", padded.Code, padded.Body.String())
+	}
+}
+
 func TestCreateAPIKeyDeduplicatesScopesHTTP(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
