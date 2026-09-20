@@ -597,6 +597,9 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if err = rows.Scan(&a.ID, &a.AccessKeyID, &secret, &a.RegionID, &a.InstanceID, &a.MaxTraffic, &schedule, &a.StartTime, &a.StopTime, &a.TrafficUsed, &a.InstanceStatus, &updated, &keepAlive, &a.Remark, &a.SiteType); err != nil {
 			return nil, err
 		}
+		if !validAccountID(a.ID) {
+			return nil, errors.New("account id is invalid")
+		}
 		if len([]rune(a.Remark)) > maxAccountRemarkRunes {
 			return nil, errors.New("account remark is too long")
 		}

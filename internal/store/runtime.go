@@ -58,6 +58,9 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 		if err = rows.Scan(&entry.ID, &entry.Type, &entry.Message, &created); err != nil {
 			return nil, err
 		}
+		if entry.ID < 1 {
+			return nil, errors.New("log id is invalid")
+		}
 		if !validLogType(entry.Type) {
 			return nil, errors.New("log type is invalid")
 		}
@@ -381,6 +384,9 @@ const (
 func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.Duration) (bool, error) {
 	if name == "" || owner == "" || len([]rune(name)) > maxLeaseNameRunes || len([]rune(owner)) > maxLeaseOwnerRunes {
 		return false, errors.New("lease identity is invalid")
+	}
+	if ttl <= 0 {
+		return false, errors.New("lease ttl is invalid")
 	}
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `INSERT INTO scheduler_leases(name,owner,expires_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at,updated_at=excluded.updated_at WHERE scheduler_leases.expires_at<? OR scheduler_leases.owner=?`,

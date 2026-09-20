@@ -311,6 +311,22 @@ func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	}
 }
 
+func TestListAccountsRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status) VALUES(0,'LTAItest','cn-hongkong','i-test','china','Unknown')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestListAccountsRejectsOversizedRemark(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1570,6 +1586,34 @@ func TestListAPIKeysRejectsInvalidTimestamp(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(id,name,token_hash,scopes,created_at) VALUES(0,'zero','hash-zero-id','["widget:read"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	key, token, err := st.CreateAPIKey(context.Background(), "widget", []string{"widget:read"}, nil)
+	if err != nil || key.ID < 1 || token == "" {
+		t.Fatalf("key=%#v token=%q err=%v", key, token, err)
+	}
+}
+
 func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1662,6 +1706,22 @@ func TestListLogsRejectsInvalidStoredRows(t *testing.T) {
 	}
 }
 
+func TestListLogsRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(id,type,message,created_at) VALUES(0,'error','boom',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListLogs(ctx, "action", 10)
+	if err == nil || !strings.Contains(err.Error(), "log id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1684,6 +1744,25 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	got, err := st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes), strings.Repeat("o", maxLeaseOwnerRunes), time.Minute)
 	if err != nil || !got {
 		t.Fatalf("max identity = %v err=%v", got, err)
+	}
+}
+
+func TestAcquireLeaseRejectsInvalidTTL(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, ttl := range []time.Duration{0, -time.Second} {
+		got, err := st.AcquireLease(ctx, "monitor", "owner-a", ttl)
+		if got || err == nil || !strings.Contains(err.Error(), "lease ttl is invalid") {
+			t.Fatalf("ttl=%v got=%v err=%v", ttl, got, err)
+		}
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduler_leases`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid ttl must not store a lease, count=%d err=%v", count, err)
 	}
 }
 
@@ -2958,6 +3037,22 @@ func TestListPasskeysRejectsInvalidTimestamp(t *testing.T) {
 	}
 	_, err = st.ListPasskeys(ctx)
 	if err == nil || !strings.Contains(err.Error(), "passkey timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestListPasskeysRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(id,name,credential_id,credential_json,created_at) VALUES(0,'zero',?,?,unixepoch())`, []byte("id"), `{"id":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListPasskeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "passkey id is invalid") {
 		t.Fatalf("err=%v", err)
 	}
 }
