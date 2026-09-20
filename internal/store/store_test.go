@@ -1281,6 +1281,91 @@ func TestGetConfigRejectsInvalidActionSettings(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsInvalidTimezone(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='Not/AZone' WHERE key='timezone'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid timezone") {
+		t.Fatalf("invalid timezone err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='timezone'`, strings.Repeat("A", maxTimezoneRunes+1)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid timezone") {
+		t.Fatalf("oversized timezone err=%v", err)
+	}
+}
+
+func TestGetConfigRejectsInvalidNotifyOptions(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		key   string
+		value string
+		reset string
+	}{
+		{key: "notify_wh_method", value: "DELETE", reset: "GET"},
+		{key: "notify_secure", value: "none", reset: "ssl"},
+		{key: "notify_tg_proxy_type", value: "http", reset: "none"},
+		{key: "notify_wh_request_type", value: "XML", reset: "JSON"},
+		{key: "notify_wh_provider", value: "slack", reset: "generic"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.value, tc.key); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "notification option is invalid") {
+			t.Fatalf("%s=%s err=%v", tc.key, tc.value, err)
+		}
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.reset, tc.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGetConfigRejectsInvalidNotifyProxyPort(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"0", "-1", "65536", "abc"} {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_proxy_port'`, value); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "notification port is invalid") {
+			t.Fatalf("proxy port %q err=%v", value, err)
+		}
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
