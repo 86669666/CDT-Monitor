@@ -117,6 +117,9 @@ func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic fl
 	if !validTrafficSample(traffic) {
 		return errors.New("traffic sample is invalid")
 	}
+	if !validUnixTime(now) {
+		return errors.New("traffic timestamp is invalid")
+	}
 	hour := now.Truncate(time.Hour).Unix()
 	year, month, day := now.Date()
 	daily := time.Date(year, month, day, 0, 0, 0, 0, now.Location()).Unix()
