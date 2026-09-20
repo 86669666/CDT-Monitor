@@ -326,9 +326,8 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 		if err != nil {
 			return err
 		}
-		count, _ := result.RowsAffected()
-		if count != 1 {
-			return sql.ErrNoRows
+		if err = rowsAffectedOne(result); err != nil {
+			return err
 		}
 		job.Status, job.Attempts = "running", job.Attempts+1
 		job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Now().UTC()
@@ -343,12 +342,26 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 	return job, nil
 }
 
+func rowsAffectedOne(result sql.Result) error {
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
 	if !validJobID(id) {
 		return sql.ErrNoRows
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, clipRunes(result, maxLogRunes), id)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, clipRunes(result, maxLogRunes), id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func validRetryBudget(attempts, maxAttempts int) error {
@@ -375,8 +388,11 @@ func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error
 		delay := time.Duration(1<<min(job.Attempts, 6)) * time.Second
 		available = available.Add(delay)
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,available_at=?,unique_key=CASE WHEN ?='failed' THEN NULL ELSE unique_key END,updated_at=unixepoch() WHERE id=?`, status, clipRunes(jobErr.Error(), maxLogRunes), available.Unix(), status, job.ID)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,available_at=?,unique_key=CASE WHEN ?='failed' THEN NULL ELSE unique_key END,updated_at=unixepoch() WHERE id=?`, status, clipRunes(jobErr.Error(), maxLogRunes), available.Unix(), status, job.ID)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 const (
@@ -591,9 +607,8 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 		if err != nil {
 			return err
 		}
-		count, _ := result.RowsAffected()
-		if count != 1 {
-			return sql.ErrNoRows
+		if err = rowsAffectedOne(result); err != nil {
+			return err
 		}
 		item.Attempts++
 		return nil
@@ -615,8 +630,11 @@ func (s *Store) CompleteOutbox(ctx context.Context, id string) error {
 	if !validOutboxID(id) {
 		return sql.ErrNoRows
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status='sent',last_error='',updated_at=unixepoch() WHERE id=?`, id)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status='sent',last_error='',updated_at=unixepoch() WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) error {
@@ -635,8 +653,11 @@ func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) 
 		status = "queued"
 		available = available.Add(time.Duration(1<<min(item.Attempts, 7)) * time.Second)
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status=?,last_error=?,available_at=?,updated_at=unixepoch() WHERE id=?`, status, clipRunes(sendErr.Error(), maxLogRunes), available.Unix(), item.ID)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status=?,last_error=?,available_at=?,updated_at=unixepoch() WHERE id=?`, status, clipRunes(sendErr.Error(), maxLogRunes), available.Unix(), item.ID)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 const maxBillingCacheBytes = 8192

@@ -2176,6 +2176,12 @@ func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job.ID).Scan(&status); err != nil || status != "queued" {
 		t.Fatalf("invalid fail must not mutate job, status=%q err=%v", status, err)
 	}
+	if err = st.FailJob(ctx, domain.Job{ID: "missing-job", Attempts: 1, MaxAttempts: 3}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing fail err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, "missing-job", "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing complete err=%v", err)
+	}
 }
 
 func TestClaimJobFailsInvalidAttempts(t *testing.T) {
@@ -3427,6 +3433,12 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	}
 	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt-1:email", Attempts: -1, MaxAttempts: 5}, errors.New("boom")); err == nil || !strings.Contains(err.Error(), "outbox attempts are invalid") {
 		t.Fatalf("negative attempts err=%v", err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "missing:email", Attempts: 1, MaxAttempts: 5}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing fail err=%v", err)
+	}
+	if err = st.CompleteOutbox(ctx, "missing:email"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing complete err=%v", err)
 	}
 }
 
