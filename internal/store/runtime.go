@@ -219,6 +219,19 @@ func validateJobAccount(jobType string, accountID int64) error {
 	return nil
 }
 
+func requireClaimAccount(ctx context.Context, tx *sql.Tx, jobType string, accountID int64) error {
+	switch jobType {
+	case "monitor_account", "refresh_account", "control_instance":
+		if err := requireActiveAccountOn(ctx, tx, accountID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return errors.New("account id is invalid")
+			}
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
 	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes || !validJobType(jobType) {
 		return domain.Job{}, errors.New("job type is invalid")
@@ -321,6 +334,12 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 			claimErr = errors.New("job timestamp is invalid")
 		} else if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
 			claimErr = errors.New("job attempts are invalid")
+		} else if err := requireClaimAccount(ctx, tx, job.Type, job.AccountID); err != nil {
+			if err.Error() == "account id is invalid" {
+				claimErr = err
+			} else {
+				return err
+			}
 		}
 		if claimErr != nil {
 			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), job.ID); failErr != nil {
