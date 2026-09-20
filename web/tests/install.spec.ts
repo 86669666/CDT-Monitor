@@ -10987,3 +10987,26 @@ test('instance start surfaces the live job forbidden envelope', async ({ page })
   await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
   expect(startCalls).toBe(1)
 })
+
+test('instance start surfaces the live job internal_error envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-internal', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
