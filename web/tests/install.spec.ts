@@ -10763,3 +10763,14 @@ test('init-status failure surfaces the live forbidden envelope', async ({ page }
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
   await expect(page.getByText('API Key 权限不足')).toBeVisible()
 })
+
+test('init-status failure surfaces the live not_found envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('接口不存在')).toBeVisible()
+})
