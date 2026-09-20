@@ -277,6 +277,10 @@ func (s *Server) deletePasskey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeletePasskey(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not_found", "Passkey 不存在")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 删除失败")
 		return
 	}
