@@ -801,3 +801,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 Compose `pid:` / `ipc:`（含 `none`）。`pids_limit: 256` 仍保留。保持默认 PID/IPC 命名空间
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:22Z` / 2026-09-20 22:22 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `03db2b4` 再加 workflow shell 白名单扫描：
+
+- Publish Guard 现只允许 `shell: bash`。不要改成 pwsh/python/cmd
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
