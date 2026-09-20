@@ -1690,6 +1690,29 @@ func TestListAPIKeysRejectsInvalidName(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsUnknownScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('admin','hash-admin','["admin"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("admin scope err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='["widget:read","admin"]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("mixed scope err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

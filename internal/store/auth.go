@@ -240,6 +240,9 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		if len(parsed) > maxAPIKeyScopes || !validAPIKeyScopes(parsed) {
+			return nil, errors.New("invalid API key scope")
+		}
 		if key.ID < 1 {
 			return nil, errors.New("api key id is invalid")
 		}
