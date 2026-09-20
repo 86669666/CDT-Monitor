@@ -42,6 +42,9 @@ func (s *Store) ClearLoginFailures(ctx context.Context, ip string) error {
 }
 
 func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		return "", errors.New("session ttl is invalid")
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
@@ -83,6 +86,9 @@ func clipRunes(value string, max int) string {
 }
 
 func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		return "", errors.New("session ttl is invalid")
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
