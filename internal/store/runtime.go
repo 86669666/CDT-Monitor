@@ -608,6 +608,9 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 		return errors.New("notification event is too long")
 	}
 	for key, value := range event.Fields {
+		if key == "" || key != strings.TrimSpace(key) {
+			return errors.New("notification field is invalid")
+		}
 		if len([]rune(key)) > maxNotificationFieldRunes || len([]rune(value)) > maxNotificationFieldRunes {
 			return errors.New("notification event is too long")
 		}
@@ -615,8 +618,12 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 	return nil
 }
 
+func validOutboxEventID(id string) bool {
+	return id != "" && id == strings.TrimSpace(id) && len([]rune(id)) <= maxOutboxEventIDRunes
+}
+
 func ValidateOutboxItem(channel string, event domain.NotificationEvent) error {
-	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
+	if !validOutboxEventID(event.ID) {
 		return errors.New("notification event id is invalid")
 	}
 	if !validOutboxChannel(channel) {
@@ -626,7 +633,7 @@ func ValidateOutboxItem(channel string, event domain.NotificationEvent) error {
 }
 
 func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, channels []string) error {
-	if event.ID == "" || len([]rune(event.ID)) > maxOutboxEventIDRunes {
+	if !validOutboxEventID(event.ID) {
 		return errors.New("notification event id is invalid")
 	}
 	if err := validateNotificationEvent(event); err != nil {
@@ -635,10 +642,12 @@ func (s *Store) AddOutbox(ctx context.Context, event domain.NotificationEvent, c
 	if len(channels) > maxOutboxChannels {
 		return errors.New("too many notification channels")
 	}
+	seen := make(map[string]bool, len(channels))
 	for _, channel := range channels {
-		if !validOutboxChannel(channel) {
+		if !validOutboxChannel(channel) || seen[channel] {
 			return errors.New("notification channel is invalid")
 		}
+		seen[channel] = true
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {
@@ -670,7 +679,9 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 		if err := tx.QueryRowContext(ctx, `SELECT id,channel,payload,attempts,max_attempts FROM notification_outbox WHERE status='queued' AND available_at<=unixepoch() ORDER BY created_at LIMIT 1`).Scan(&item.ID, &item.Channel, &item.Payload, &item.Attempts, &item.MaxAttempts); err != nil {
 			return err
 		}
-		if len(item.Payload) > maxOutboxPayloadRunes {
+		if !validOutboxID(item.ID) {
+			claimErr = errors.New("notification event id is invalid")
+		} else if len(item.Payload) > maxOutboxPayloadRunes {
 			claimErr = errors.New("notification payload is too long")
 		} else if err := validRetryBudget(item.Attempts, item.MaxAttempts); err != nil {
 			claimErr = errors.New("outbox attempts are invalid")
@@ -708,7 +719,7 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 }
 
 func validOutboxID(id string) bool {
-	return id != "" && len(id) <= maxOutboxIDBytes
+	return id != "" && id == strings.TrimSpace(id) && len(id) <= maxOutboxIDBytes
 }
 
 func (s *Store) CompleteOutbox(ctx context.Context, id string) error {

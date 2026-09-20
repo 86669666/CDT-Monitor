@@ -4156,8 +4156,17 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	if err = st.AddOutbox(ctx, event, []string{"sms"}); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
 		t.Fatalf("channel err=%v", err)
 	}
+	if err = st.AddOutbox(ctx, event, []string{"email", "email"}); err == nil || !strings.Contains(err.Error(), "channel is invalid") {
+		t.Fatalf("duplicate channel err=%v", err)
+	}
 	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("empty id err=%v", err)
+	}
+	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "   ", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("blank id err=%v", err)
+	}
+	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: " evt-1", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("padded id err=%v", err)
 	}
 	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
@@ -4177,6 +4186,14 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	event.Fields = map[string]string{strings.Repeat("k", maxNotificationFieldRunes+1): "v"}
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("field err=%v", err)
+	}
+	event.Fields = map[string]string{"": "v"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("empty field err=%v", err)
+	}
+	event.Fields = map[string]string{" k": "v"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("padded field err=%v", err)
 	}
 	event.Fields = map[string]string{}
 	for i := 0; i < maxNotificationFields+1; i++ {
@@ -4231,6 +4248,8 @@ func TestClaimOutboxFailsInvalidStoredItem(t *testing.T) {
 		{id: "evt-sms:sms", channel: "sms", payload: `{"id":"evt-sms","type":"threshold","title":"t","summary":"s"}`, err: "channel is invalid"},
 		{id: "evt-badjson:email", channel: "email", payload: "{", err: "payload is invalid"},
 		{id: "evt-type:email", channel: "email", payload: `{"id":"evt-type","type":"unknown","title":"t","summary":"s"}`, err: "event type is invalid"},
+		{id: "evt-pad:email", channel: "email", payload: `{"id":" evt-pad","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
+		{id: " evt-row:email", channel: "email", payload: `{"id":"evt-row","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
 	}
 	for _, tc := range cases {
 		if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',unixepoch(),unixepoch(),unixepoch())`, tc.id, strings.Split(tc.id, ":")[0], tc.channel, tc.payload); err != nil {
@@ -4264,9 +4283,17 @@ func TestValidateOutboxItem(t *testing.T) {
 	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: "", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("empty id err=%v", err)
 	}
+	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: " evt-1", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("padded id err=%v", err)
+	}
 	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
 	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("title err=%v", err)
+	}
+	event.Title = "t"
+	event.Fields = map[string]string{" k": "v"}
+	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("padded field err=%v", err)
 	}
 }
 
@@ -4280,6 +4307,12 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	long := strings.Repeat("o", maxOutboxIDBytes+1)
 	if err = st.CompleteOutbox(ctx, ""); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("empty complete err=%v", err)
+	}
+	if err = st.CompleteOutbox(ctx, " evt-1:email"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("padded complete err=%v", err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: " evt-1:email"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("padded fail err=%v", err)
 	}
 	if err = st.CompleteOutbox(ctx, long); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized complete err=%v", err)
