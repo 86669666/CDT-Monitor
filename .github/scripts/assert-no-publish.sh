@@ -29,7 +29,7 @@ require_file() {
 }
 
 scan_workflows() {
-  local f body extra extra_on
+  local f body extra extra_on extra_shell
   shopt -s nullglob
   local files=(.github/workflows/*.yml)
   if [ "${#files[@]}" -eq 0 ]; then
@@ -111,6 +111,10 @@ scan_workflows() {
     ' <<<"$body" | grep -Ev '^  (pull_request|push|workflow_dispatch|workflow_call):' || true)"
     if [ -n "$extra_on" ]; then
       bad "$f: extra on: triggers are forbidden: $extra_on"
+    fi
+    extra_shell="$(grep -E '^[[:space:]]*shell:' <<<"$body" | grep -Ev '^[[:space:]]*shell:[[:space:]]*bash$' || true)"
+    if [ -n "$extra_shell" ]; then
+      bad "$f: shell: must stay bash"
     fi
     if grep -Eq '^[[:space:]]+services:' <<<"$body"; then
       bad "$f: job services: sidecars are forbidden on this fork"
