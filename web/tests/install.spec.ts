@@ -11517,3 +11517,27 @@ test('settings heartbeat logs surface the live unauthorized envelope', async ({ 
   await expect(page.getByText('暂无日志')).toBeVisible()
   await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
 })
+
+test('settings heartbeat logs surface the live forbidden envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    const tab = new URL(route.request().url()).searchParams.get('tab')
+    if (tab === 'heartbeat') {
+      return route.fulfill({
+        status: 403,
+        json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '动作日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('动作日志')).toBeVisible()
+  await page.getByRole('button', { name: '心跳' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
