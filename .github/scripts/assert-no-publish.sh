@@ -1027,6 +1027,9 @@ scan_compose() {
   if ! grep -Eq 'cpus:[[:space:]]*1\.0' <<<"$body"; then
     bad "$f: cpus must stay 1.0"
   fi
+  if grep -Eq '^[[:space:]]+cpu_shares:' <<<"$body"; then
+    bad "$f: cpu_shares is forbidden; keep cpus 1.0"
+  fi
   if grep -Eq '^[[:space:]]+shm_size:' <<<"$body"; then
     bad "$f: shm_size is forbidden; keep the default /dev/shm"
   fi
@@ -1153,6 +1156,9 @@ scan_compose() {
   fi
   if grep -Eq '^[[:space:]]+labels:' <<<"$body"; then
     bad "$f: Compose labels are forbidden; keep OCI labels in the Dockerfile"
+  fi
+  if grep -Eq '^[[:space:]]+annotations:' <<<"$body"; then
+    bad "$f: Compose annotations are forbidden; keep OCI labels in the Dockerfile"
   fi
   if grep -Eq '^[[:space:]]+extra_hosts:' <<<"$body"; then
     bad "$f: extra_hosts is forbidden"

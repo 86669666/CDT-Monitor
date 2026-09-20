@@ -726,3 +726,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `filter:`（含 gated auto-release）。不要用 partial clone 藏文件。`path:` 仍不扫
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T12:38Z` / 2026-09-20 20:38 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `d282479` 再加 Compose annotations/cpu_shares 扫描：
+
+- Publish Guard 现禁止 Compose `annotations:` 和 `cpu_shares:`。不要加额外 OCI 注解或抬高 CPU shares
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
