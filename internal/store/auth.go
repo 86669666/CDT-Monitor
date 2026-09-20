@@ -299,6 +299,7 @@ func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, err
 			filtered = append(filtered, scope)
 		}
 	}
+	filtered = uniqueAPIKeyScopes(filtered)
 	if len(filtered) == 0 {
 		return nil, sql.ErrNoRows
 	}
