@@ -12098,3 +12098,32 @@ test('refresh-all missing-account store error uses all-failed toast', async ({ p
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
   expect(refreshCalls).toBe(1)
 })
+
+test('settings API key create surfaces the live past expiry api_key_failed envelope', async ({ page }) => {
+  const expiresLocal = '2020-01-01T00:00'
+  let createCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/api-keys', (route) => {
+    if (route.request().method() === 'POST') {
+      createCalls += 1
+      const body = JSON.parse(route.request().postData() || '{}') as { expires_at?: string }
+      expect(new Date(body.expires_at || '').toISOString()).toBe(new Date(expiresLocal).toISOString())
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'api_key_failed', message: 'API Key 创建失败' } },
+      })
+    }
+    return route.fulfill({ json: { keys: [] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: 'API Key' }).click()
+  await page.getByLabel('过期时间（可选）').fill(expiresLocal)
+  await page.getByRole('button', { name: '创建 Key' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 创建失败' }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText('api key expiry must be in the future')
+  await expect(page.getByText('仅显示一次')).toHaveCount(0)
+  expect(createCalls).toBe(1)
+})
