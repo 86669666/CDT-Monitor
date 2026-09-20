@@ -57,17 +57,18 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 }
 
 const (
-	maxUserAgentRunes        = 256
-	maxIPRunes               = 64
-	maxLogRunes              = 4096
-	maxAPIKeyNameRunes       = 64
-	maxPasskeyNameRunes      = 64
-	maxAPIKeys               = 16
-	maxAPIKeyScopes          = 8
-	maxPasskeys              = 8
-	maxPasskeyJSONBytes      = 8192
-	maxAPIKeyScopesJSONBytes = 512
-	maxAuthTokenBytes        = 128
+	maxUserAgentRunes         = 256
+	maxIPRunes                = 64
+	maxLogRunes               = 4096
+	maxAPIKeyNameRunes        = 64
+	maxPasskeyNameRunes       = 64
+	maxAPIKeys                = 16
+	maxAPIKeyScopes           = 8
+	maxPasskeys               = 8
+	maxPasskeyJSONBytes       = 8192
+	maxPasskeyCredentialBytes = 1024
+	maxAPIKeyScopesJSONBytes  = 512
+	maxAuthTokenBytes         = 128
 )
 
 func clipUserAgent(value string) string {
@@ -387,7 +388,7 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 }
 
 func validPasskeyCredential(credential webauthn.Credential) error {
-	if len(credential.ID) == 0 || len(credential.PublicKey) == 0 {
+	if len(credential.ID) == 0 || len(credential.ID) > maxPasskeyCredentialBytes || len(credential.PublicKey) == 0 {
 		return errors.New("passkey credential is invalid")
 	}
 	return nil

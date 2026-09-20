@@ -3799,6 +3799,10 @@ func TestSavePasskeyRejectsOversizedCredential(t *testing.T) {
 	if err = st.SavePasskey(ctx, "no-key", webauthn.Credential{ID: []byte("credential-id")}); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
 		t.Fatalf("missing public key err=%v", err)
 	}
+	hugeID := webauthn.Credential{ID: []byte(strings.Repeat("i", maxPasskeyCredentialBytes+1)), PublicKey: []byte("public-key")}
+	if err = st.SavePasskey(ctx, "huge-id", hugeID); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("oversized id err=%v", err)
+	}
 	huge := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte(strings.Repeat("k", maxPasskeyJSONBytes))}
 	if err = st.SavePasskey(ctx, "huge", huge); err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Fatalf("json err=%v", err)
@@ -3874,6 +3878,27 @@ func TestLoadPasskeyCredentialsRejectsCredentialIDMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, []byte("other-id"), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestLoadPasskeyCredentialsRejectsOversizedID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := []byte(strings.Repeat("i", maxPasskeyCredentialBytes+1))
+	raw, err := json.Marshal(webauthn.Credential{ID: id, PublicKey: []byte("public-key")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, id, string(raw)); err != nil {
 		t.Fatal(err)
 	}
 	_, err = st.LoadPasskeyCredentials(ctx)
