@@ -364,17 +364,24 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 		if err = json.Unmarshal([]byte(encoded), &credential); err != nil {
 			return nil, err
 		}
-		if len(credential.ID) == 0 {
-			return nil, errors.New("passkey credential is invalid")
+		if err = validPasskeyCredential(credential); err != nil {
+			return nil, err
 		}
 		credentials = append(credentials, credential)
 	}
 	return credentials, rows.Err()
 }
 
+func validPasskeyCredential(credential webauthn.Credential) error {
+	if len(credential.ID) == 0 || len(credential.PublicKey) == 0 {
+		return errors.New("passkey credential is invalid")
+	}
+	return nil
+}
+
 func encodePasskeyCredential(credential webauthn.Credential) (string, error) {
-	if len(credential.ID) == 0 {
-		return "", errors.New("passkey credential is invalid")
+	if err := validPasskeyCredential(credential); err != nil {
+		return "", err
 	}
 	encoded, err := json.Marshal(credential)
 	if err != nil {

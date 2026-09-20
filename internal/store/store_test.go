@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
 	"os"
@@ -3422,6 +3423,9 @@ func TestSavePasskeyRejectsOversizedCredential(t *testing.T) {
 	if err = st.SavePasskey(ctx, "empty", webauthn.Credential{}); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
 		t.Fatalf("empty err=%v", err)
 	}
+	if err = st.SavePasskey(ctx, "no-key", webauthn.Credential{ID: []byte("credential-id")}); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("missing public key err=%v", err)
+	}
 	huge := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte(strings.Repeat("k", maxPasskeyJSONBytes))}
 	if err = st.SavePasskey(ctx, "huge", huge); err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Fatalf("json err=%v", err)
@@ -3457,6 +3461,26 @@ func TestLoadPasskeyCredentialsRejectsEmptyID(t *testing.T) {
 	defer st.Close()
 	ctx := context.Background()
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,'{}',unixepoch())`, []byte("id")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestLoadPasskeyCredentialsRejectsEmptyPublicKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	raw, err := json.Marshal(webauthn.Credential{ID: []byte("credential-id")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, []byte("credential-id"), string(raw)); err != nil {
 		t.Fatal(err)
 	}
 	_, err = st.LoadPasskeyCredentials(ctx)
