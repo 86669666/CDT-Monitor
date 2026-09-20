@@ -408,6 +408,9 @@ scan_checkout_credentials() {
     if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+ssh-known-hosts:' <<<"$body"; then
       bad "$f: checkout ssh-known-hosts: is forbidden; do not clone over SSH"
     fi
+    if grep -q 'actions/checkout@' <<<"$body" && grep -Eq '^[[:space:]]+ssh-strict:' <<<"$body"; then
+      bad "$f: checkout ssh-strict: is forbidden; do not clone over SSH"
+    fi
     if [ "$base" = "auto-release.yml" ]; then
       if ! grep -Eq 'persist-credentials:[[:space:]]*true' <<<"$body"; then
         bad "$f: gated tag job must keep persist-credentials true for git push tag"

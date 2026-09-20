@@ -696,3 +696,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `credential_spec:` 和 `isolation:`。不要换容器隔离面或注入 Windows 凭据规格
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T11:42Z` / 2026-09-20 19:42 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `5dddbd1` 再加 checkout ssh-strict 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `ssh-strict:`（含 gated auto-release）。SSH 克隆面保持关掉
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
