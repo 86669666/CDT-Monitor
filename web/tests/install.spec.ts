@@ -11935,3 +11935,23 @@ test('history chart surfaces the live missing-account not_found envelope', async
   await expect(page.getByRole('alert')).toContainText('账号不存在')
   await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
 })
+
+test('failed refresh job with missing-account store error uses generic toast', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-missing-account', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('refresh-missing-account', 'failed', 1)
+    failed.error = leaked
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
