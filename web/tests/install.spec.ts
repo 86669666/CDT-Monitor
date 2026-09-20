@@ -10741,3 +10741,47 @@ test('login surfaces the live status internal_error envelope when dashboard load
   await expect(page.locator('.inline-error')).toContainText('服务暂时不可用')
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 })
+
+test('init-status failure surfaces the live unauthorized envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('请登录或提供有效 API Key')).toBeVisible()
+})
+
+test('init-status failure surfaces the live forbidden envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('API Key 权限不足')).toBeVisible()
+})
+
+test('init-status failure surfaces the live not_found envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('接口不存在')).toBeVisible()
+})
+
+test('init-status failure surfaces the live internal_error envelope', async ({ page }) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
+  await expect(page.getByText('服务暂时不可用')).toBeVisible()
+})
