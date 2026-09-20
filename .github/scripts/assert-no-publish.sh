@@ -1318,6 +1318,9 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+extends:' <<<"$body"; then
     bad "$f: extends: is forbidden; keep a single local cdt-monitor service"
   fi
+  if grep -Eq '^[[:space:]]+volume_driver:' <<<"$body"; then
+    bad "$f: volume_driver is forbidden; keep the named cdt-data volume"
+  fi
   if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
     bad "$f: external: true is forbidden; keep the named cdt-data volume local"
   fi

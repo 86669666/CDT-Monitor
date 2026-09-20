@@ -846,3 +846,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `id-token:` permission（含 `read`）。`id-token: write` 本来就禁止。不要开 OIDC 联邦登录
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T15:13Z` / 2026-09-20 23:13 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `9e5198b` 再加 Compose volume_driver 扫描：
+
+- Publish Guard 现禁止 Compose `volume_driver:`。数据卷仍只是本地 named `cdt-data`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

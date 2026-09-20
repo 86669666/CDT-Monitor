@@ -59,6 +59,7 @@ name: Publish Guard
 # Do not add Compose uts: or userns_mode: overrides.
 # Do not add Compose cgroup: or cgroupns overrides.
 # Do not add Compose volumes_from or extends.
+# Do not add Compose volume_driver.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
