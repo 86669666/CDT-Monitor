@@ -856,3 +856,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `actions:` permission（含 `read`）。`actions: write` 本来就禁止。不要让 token 改 workflow
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T15:27Z` / 2026-09-20 23:27 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `14cb4f6` 再加 Dockerfile mount/network 扫描：
+
+- Publish Guard 现禁止 Dockerfile `RUN --mount=type=ssh|secret` 和 `--network=host`。不要把 SSH/密钥挂进构建或用 host 网络
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

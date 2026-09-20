@@ -61,6 +61,7 @@ name: Publish Guard
 # Do not add Compose cgroup: or cgroupns overrides.
 # Do not add Compose volumes_from or extends.
 # Do not add Compose volume_driver.
+# Dockerfile must not use RUN --mount ssh/secret or --network=host.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
