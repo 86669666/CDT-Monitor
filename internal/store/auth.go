@@ -134,6 +134,14 @@ func parseAPIKeyScopes(raw string) ([]string, error) {
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, errors.New("invalid API key scope")
+	}
+	for _, scope := range result {
+		if strings.TrimSpace(scope) == "" {
+			return nil, errors.New("invalid API key scope")
+		}
+	}
 	return result, nil
 }
 
