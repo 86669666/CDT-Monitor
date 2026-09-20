@@ -12576,3 +12576,22 @@ test('dashboard status poll keeps the console on the live status_failed envelope
   await expect(page.locator('.toast--error')).toHaveCount(0)
   expect(pollCalls).toBeGreaterThan(0)
 })
+
+test('instance refresh surfaces the live enqueue_failed envelope', async ({ page }) => {
+  let refreshCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    refreshCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'enqueue_failed', message: '任务提交失败' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务提交失败' }).first()).toBeVisible()
+  expect(refreshCalls).toBe(1)
+})
