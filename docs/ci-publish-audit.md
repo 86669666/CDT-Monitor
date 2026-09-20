@@ -731,3 +731,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `annotations:` 和 `cpu_shares:`。不要加额外 OCI 注解或抬高 CPU shares
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T12:45Z` / 2026-09-20 20:45 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `73f86bf` 再加 checkout set-safe-directory 扫描：
+
+- Publish Guard 现禁止 `actions/checkout` 的 `set-safe-directory:`（含 gated auto-release）。保持 action 默认，不要覆盖 git safe.directory
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
