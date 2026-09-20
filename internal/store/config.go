@@ -713,7 +713,18 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 	if strings.TrimSpace(encrypted) == "" {
 		return "", errors.New("account is missing access key secret")
 	}
-	return s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
+	accessKeyID = strings.TrimSpace(accessKeyID)
+	if !validAccountToken(accessKeyID, maxAccessKeyIDRunes, "-") {
+		return "", errors.New("account access_key_id is invalid")
+	}
+	plain, err := s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(plain) == "" {
+		return "", errors.New("account is missing access key secret")
+	}
+	return plain, nil
 }
 
 func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {

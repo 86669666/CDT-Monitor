@@ -181,8 +181,12 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	if !validAPIKeyScopes(scopes) {
 		return domain.APIKey{}, "", errors.New("invalid API key scope")
 	}
-	if expiresAt != nil && !expiresAt.UTC().After(time.Now().UTC()) {
-		return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
+	if expiresAt != nil {
+		now := time.Now().UTC()
+		exp := expiresAt.UTC()
+		if !exp.After(now) || exp.Unix() <= now.Unix() {
+			return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
+		}
 	}
 	var count int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL`).Scan(&count); err != nil {

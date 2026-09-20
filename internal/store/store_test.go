@@ -475,11 +475,17 @@ func TestAccountSecretRejectsEmptyAndDeleted(t *testing.T) {
 	defer st.Close()
 	ctx := context.Background()
 	insertTestAccount(t, st, 1)
+	if _, err = st.GetAccount(ctx, 2); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing get err=%v", err)
+	}
 	if _, err = st.AccountSecret(ctx, 1); err == nil || !strings.Contains(err.Error(), "missing access key secret") {
 		t.Fatalf("empty secret err=%v", err)
 	}
-	if _, err = st.GetAccount(ctx, 2); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("missing get err=%v", err)
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET access_key_id='', access_key_secret='blob' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.AccountSecret(ctx, 1); err == nil || !strings.Contains(err.Error(), "access_key_id is invalid") {
+		t.Fatalf("empty access key err=%v", err)
 	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET deleted_at=unixepoch() WHERE id=1`); err != nil {
 		t.Fatal(err)
@@ -3112,6 +3118,16 @@ func TestCreateAPIKeyRejectsPastExpiry(t *testing.T) {
 	past := time.Now().Add(-time.Minute)
 	if _, _, err = st.CreateAPIKey(context.Background(), "old", []string{"widget:read"}, &past); err == nil {
 		t.Fatal("expected past expiry to be rejected")
+	}
+	now := time.Now().UTC()
+	sameSecond := now.Add(time.Millisecond)
+	if sameSecond.Unix() != now.Unix() {
+		sameSecond = time.Unix(now.Unix(), int64(time.Second)-1).UTC()
+	}
+	if sameSecond.After(now) {
+		if _, _, err = st.CreateAPIKey(context.Background(), "same-second", []string{"widget:read"}, &sameSecond); err == nil || !strings.Contains(err.Error(), "expiry must be in the future") {
+			t.Fatalf("same-second expiry err=%v", err)
+		}
 	}
 	future := time.Now().Add(time.Hour)
 	_, token, err := st.CreateAPIKey(context.Background(), "fresh", []string{"widget:read"}, &future)
