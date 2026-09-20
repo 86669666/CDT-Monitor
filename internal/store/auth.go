@@ -134,6 +134,14 @@ func parseAPIKeyScopes(raw string) ([]string, error) {
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, errors.New("invalid API key scope")
+	}
+	for _, scope := range result {
+		if strings.TrimSpace(scope) == "" {
+			return nil, errors.New("invalid API key scope")
+		}
+	}
 	return result, nil
 }
 
@@ -240,7 +248,7 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		if len(parsed) > maxAPIKeyScopes || !validAPIKeyScopes(parsed) {
+		if len(parsed) > maxAPIKeyScopes || !validAPIKeyScopes(parsed) || len(parsed) != len(uniqueAPIKeyScopes(parsed)) {
 			return nil, errors.New("invalid API key scope")
 		}
 		if key.ID < 1 {
@@ -364,17 +372,24 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 		if err = json.Unmarshal([]byte(encoded), &credential); err != nil {
 			return nil, err
 		}
-		if len(credential.ID) == 0 {
-			return nil, errors.New("passkey credential is invalid")
+		if err = validPasskeyCredential(credential); err != nil {
+			return nil, err
 		}
 		credentials = append(credentials, credential)
 	}
 	return credentials, rows.Err()
 }
 
+func validPasskeyCredential(credential webauthn.Credential) error {
+	if len(credential.ID) == 0 || len(credential.PublicKey) == 0 {
+		return errors.New("passkey credential is invalid")
+	}
+	return nil
+}
+
 func encodePasskeyCredential(credential webauthn.Credential) (string, error) {
-	if len(credential.ID) == 0 {
-		return "", errors.New("passkey credential is invalid")
+	if err := validPasskeyCredential(credential); err != nil {
+		return "", err
 	}
 	encoded, err := json.Marshal(credential)
 	if err != nil {

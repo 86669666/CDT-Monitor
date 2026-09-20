@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
 	"os"
@@ -1713,6 +1714,59 @@ func TestListAPIKeysRejectsUnknownScopes(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsDuplicateScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('dup','hash-dup','["widget:read","widget:read"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("duplicate scope err=%v", err)
+	}
+}
+
+func TestListAPIKeysRejectsEmptyScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('empty','hash-empty','[""]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("empty scope err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='["widget:read",""]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("mixed empty scope err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='[" "]'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("blank scope err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes='null'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("null scopes err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3305,6 +3359,29 @@ func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
 	}
 }
 
+func TestValidateAPIKeyRejectsEmptyScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	token := "cdt_empty_scopes_token"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('empty',?,'["widget:read",""]',unixepoch())`, security.TokenHash(token)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(ctx, token); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("mixed empty scope err=%v", err)
+	}
+	var lastUsed sql.NullInt64
+	if err = st.db.QueryRowContext(ctx, `SELECT last_used_at FROM api_keys`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("empty scope must not record last_used_at")
+	}
+}
+
 func TestValidateAPIKeyRejectsOversizedScopesJSON(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3422,6 +3499,9 @@ func TestSavePasskeyRejectsOversizedCredential(t *testing.T) {
 	if err = st.SavePasskey(ctx, "empty", webauthn.Credential{}); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
 		t.Fatalf("empty err=%v", err)
 	}
+	if err = st.SavePasskey(ctx, "no-key", webauthn.Credential{ID: []byte("credential-id")}); err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("missing public key err=%v", err)
+	}
 	huge := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte(strings.Repeat("k", maxPasskeyJSONBytes))}
 	if err = st.SavePasskey(ctx, "huge", huge); err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Fatalf("json err=%v", err)
@@ -3457,6 +3537,26 @@ func TestLoadPasskeyCredentialsRejectsEmptyID(t *testing.T) {
 	defer st.Close()
 	ctx := context.Background()
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,'{}',unixepoch())`, []byte("id")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestLoadPasskeyCredentialsRejectsEmptyPublicKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	raw, err := json.Marshal(webauthn.Credential{ID: []byte("credential-id")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, []byte("credential-id"), string(raw)); err != nil {
 		t.Fatal(err)
 	}
 	_, err = st.LoadPasskeyCredentials(ctx)
