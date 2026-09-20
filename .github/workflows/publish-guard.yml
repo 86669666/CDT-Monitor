@@ -34,6 +34,7 @@ name: Publish Guard
 # Do not add checkout clean: (including auto-release).
 # Do not add checkout filter: (including auto-release).
 # Do not add checkout set-safe-directory: (including auto-release).
+# Do not add checkout fetch-tags: (including auto-release).
 # Compose build stays context/dockerfile/args (VERSION/COMMIT/BUILT_AT/IMAGE_SOURCE only).
 # Compose cap_drop stays ALL only.
 # Do not add Compose gpus or device_cgroup_rules.
