@@ -10898,3 +10898,26 @@ test('instance stop surfaces the live invalid_id envelope', async ({ page }) => 
   await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
   expect(stopCalls).toBe(1)
 })
+
+test('instance start surfaces the live job_not_found envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-missing', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'job_not_found', message: '任务不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务不存在' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
