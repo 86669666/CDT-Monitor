@@ -1117,6 +1117,30 @@ func TestAccountSecretsIncludesDeletedAccounts(t *testing.T) {
 	}
 }
 
+func TestAccountSecretsSkipsInvalidIdentifiers(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts: []domain.Account{{AccessKeyID: "LTAIkeep", AccessKeySecret: "keep-secret-value", RegionID: "cn-hongkong", InstanceID: "i-keep", MaxTraffic: 200, SiteType: "china"}},
+	}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,access_key_secret,region_id,instance_id,site_type,instance_status,max_traffic) VALUES('','not-a-ciphertext','cn-hongkong','i-bad','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
+	secrets, err := st.AccountSecrets(ctx)
+	if err != nil || len(secrets) != 1 || secrets[0] != "keep-secret-value" {
+		t.Fatalf("invalid identifier must be skipped: %#v err=%v", secrets, err)
+	}
+}
+
 func TestMetadataSMTPHostIsRejected(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

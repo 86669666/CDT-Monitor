@@ -995,6 +995,14 @@ func TestRevokedAPIKeyCannotReadStatus(t *testing.T) {
 	if denied.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked key status = %d body = %s", denied.Code, denied.Body.String())
 	}
+	again := doRequest(t, handler, http.MethodDelete, "/api/v1/api-keys/"+itoa(payload.Key.ID), "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if again.Code != http.StatusNotFound || !strings.Contains(again.Body.String(), "not_found") {
+		t.Fatalf("repeat revoke status = %d body = %s", again.Code, again.Body.String())
+	}
+	missing := doRequest(t, handler, http.MethodDelete, "/api/v1/api-keys/99", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "not_found") {
+		t.Fatalf("missing revoke status = %d body = %s", missing.Code, missing.Body.String())
+	}
 }
 
 func TestSetupRateLimitAndRejectsReinit(t *testing.T) {
