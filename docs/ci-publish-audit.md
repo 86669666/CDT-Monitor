@@ -746,3 +746,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `actions/checkout` 的 `fetch-tags:`（含 gated auto-release）。保持 `fetch-depth: 1`，不要额外拉 tag。`path:` 仍不扫
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T13:09Z` / 2026-09-20 21:09 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `24e286a` 再加 Compose blkio/oom_score 扫描：
+
+- Publish Guard 现禁止 Compose `blkio_config:` 和 `oom_score_adj:`。不要改块设备权重或让容器更难被 OOM killer 杀掉
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
