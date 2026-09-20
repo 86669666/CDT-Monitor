@@ -692,8 +692,12 @@ func (s *Store) AccountSecrets(ctx context.Context) ([]string, error) {
 		if err = rows.Scan(&accessKeyID, &encrypted); err != nil {
 			return nil, err
 		}
+		accessKeyID = strings.TrimSpace(accessKeyID)
+		if strings.TrimSpace(encrypted) == "" || !validAccountToken(accessKeyID, maxAccessKeyIDRunes, "-") {
+			continue
+		}
 		plain, err := s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
-		if err != nil || len(plain) < 4 {
+		if err != nil || len(strings.TrimSpace(plain)) < 4 {
 			continue
 		}
 		secrets = append(secrets, plain)
