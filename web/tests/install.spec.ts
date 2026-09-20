@@ -11493,3 +11493,27 @@ test('refresh-all job poll internal_error surfaces the all-failed refresh messag
   await expect(page.locator('.toast-stack')).not.toContainText('服务暂时不可用')
   expect(refreshCalls).toBe(1)
 })
+
+test('settings heartbeat logs surface the live unauthorized envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    const tab = new URL(route.request().url()).searchParams.get('tab')
+    if (tab === 'heartbeat') {
+      return route.fulfill({
+        status: 401,
+        json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '动作日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('动作日志')).toBeVisible()
+  await page.getByRole('button', { name: '心跳' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
