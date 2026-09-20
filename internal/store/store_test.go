@@ -1410,6 +1410,46 @@ func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsInvalidNotifyIdentities(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_email'`, "alerts\nroot@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("email header err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_email'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_username'`, strings.Repeat("u", 255)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification identity is too long") {
+		t.Fatalf("username err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_username'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_chat_id'`, strings.Repeat("1", 65)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification identity is too long") {
+		t.Fatalf("chat id err=%v", err)
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

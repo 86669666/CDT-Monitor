@@ -207,6 +207,12 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err = notify.ValidateDialHost(config.Notifications.Email.Host); err != nil {
 		return domain.Config{}, err
 	}
+	if err = notify.ValidateSMTPIdentity(config.Notifications.Email.Username, config.Notifications.Email.To); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateTelegramChatID(config.Notifications.Telegram.ChatID); err != nil {
+		return domain.Config{}, err
+	}
 	return config, nil
 }
 
