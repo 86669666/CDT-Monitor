@@ -12526,3 +12526,29 @@ test('boot config internal_error surfaces the live fatal envelope', async ({ pag
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toBeVisible()
   await expect(page.getByText('服务暂时不可用')).toBeVisible()
 })
+
+test('boot status unauthorized opens login', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: dashboardConfig }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+})
+
+test('boot config unauthorized opens login', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: dashboardStatus }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+})
