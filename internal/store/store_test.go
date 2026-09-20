@@ -1366,6 +1366,138 @@ func TestGetConfigRejectsInvalidNotifyProxyPort(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_host'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL host is not allowed") {
+		t.Fatalf("smtp host err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_host'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_tg_proxy_ip'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL host is not allowed") {
+		t.Fatalf("proxy ip err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_proxy_ip'`); err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := st.EncryptAAD("file:///etc/passwd", "notify_wh_url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, encrypted); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL must use http or https") {
+		t.Fatalf("webhook url err=%v", err)
+	}
+}
+
+func TestGetConfigRejectsInvalidNotifyIdentities(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_email'`, "alerts\nroot@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("email header err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_email'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_username'`, strings.Repeat("u", 255)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification identity is too long") {
+		t.Fatalf("username err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_username'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_chat_id'`, strings.Repeat("1", 65)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification identity is too long") {
+		t.Fatalf("chat id err=%v", err)
+	}
+}
+
+func TestGetConfigRejectsInvalidNotifyPayloads(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_proxy_user'`, "user\nadmin"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("proxy user err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_proxy_user'`); err != nil {
+		t.Fatal(err)
+	}
+	headers, err := st.EncryptAAD("{\"X-Bad\":\"a\\nb\"}", "notify_wh_headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_headers',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, headers); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("headers err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_wh_headers'`); err != nil {
+		t.Fatal(err)
+	}
+	body, err := st.EncryptAAD(strings.Repeat("b", 8193), "notify_wh_body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_body',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, body); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification payload is too long") {
+		t.Fatalf("body err=%v", err)
+	}
+}
+
 func TestAPIKeyScopesAndRevocation(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1485,6 +1617,22 @@ func TestListLogsClipsOversizedStoredMessages(t *testing.T) {
 	}
 	if got := []rune(entries[0].Message); len(got) != maxLogRunes {
 		t.Fatalf("listed log len = %d", len(got))
+	}
+}
+
+func TestListLogsRejectsInvalidStoredRows(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES('error','boom',0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListLogs(ctx, "action", 10)
+	if err == nil || !strings.Contains(err.Error(), "log timestamp is invalid") {
+		t.Fatalf("timestamp err=%v", err)
 	}
 }
 
@@ -1728,6 +1876,49 @@ func TestGetJobRejectsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidStoredItem(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-unknown','wipe_disk',1,'{}','queued',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-unknown")
+	if err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("unknown type err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-no-account','refresh_account',0,'{}','queued',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-no-account")
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("account id err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id='job-unknown'`).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("get must not mutate stored job, status=%q err=%v", status, err)
+	}
+}
+
+func TestGetJobRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-ts','refresh_account',1,'{}','queued',3,0,unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-bad-ts")
+	if err == nil || !strings.Contains(err.Error(), "job timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestGetJobClipsOversizedResultAndError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1776,6 +1967,66 @@ func TestClaimJobFailsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestClaimJobFailsInvalidStoredItem(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	cases := []struct {
+		id        string
+		jobType   string
+		accountID int64
+		err       string
+	}{
+		{id: "job-unknown-type", jobType: "wipe_disk", accountID: 1, err: "job type is invalid"},
+		{id: "job-missing-account", jobType: "refresh_account", accountID: 0, err: "account id is invalid"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',3,unixepoch(),unixepoch(),unixepoch())`, tc.id, tc.jobType, tc.accountID, `{}`); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.ClaimJob(ctx)
+		if err == nil || !strings.Contains(err.Error(), tc.err) {
+			t.Fatalf("%s err=%v", tc.id, err)
+		}
+		var status, jobErr string
+		if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, tc.id).Scan(&status, &jobErr); err != nil {
+			t.Fatal(err)
+		}
+		if status != "failed" || !strings.Contains(jobErr, tc.err) {
+			t.Fatalf("%s status=%q error=%q", tc.id, status, jobErr)
+		}
+	}
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("poisoned jobs must not stay queued: err=%v", err)
+	}
+}
+
+func TestClaimJobFailsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-bad-ts','refresh_account',1,'{}','queued',3,unixepoch(),0,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ClaimJob(ctx)
+	if err == nil || !strings.Contains(err.Error(), "job timestamp is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	var status, jobErr string
+	if err = st.db.QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id='job-bad-ts'`).Scan(&status, &jobErr); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(jobErr, "job timestamp is invalid") {
+		t.Fatalf("status=%q error=%q", status, jobErr)
+	}
+}
+
 func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1817,8 +2068,8 @@ func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", maxJobAttempts+1); err == nil || !strings.Contains(err.Error(), "attempts are invalid") {
 		t.Fatalf("max attempts err=%v", err)
 	}
-	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err != nil {
-		t.Fatalf("max job type err=%v", err)
+	if _, err = st.EnqueueJob(ctx, strings.Repeat("t", maxJobTypeRunes), 1, `{}`, "", maxJobAttempts); err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("unknown type err=%v", err)
 	}
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 0, `{}`, "", 3); err == nil || !strings.Contains(err.Error(), "account id is invalid") {
 		t.Fatalf("account id err=%v", err)
@@ -2898,6 +3149,44 @@ func TestClaimOutboxFailsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestClaimOutboxFailsInvalidStoredItem(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	cases := []struct {
+		id      string
+		channel string
+		payload string
+		err     string
+	}{
+		{id: "evt-sms:sms", channel: "sms", payload: `{"id":"evt-sms","type":"threshold","title":"t","summary":"s"}`, err: "channel is invalid"},
+		{id: "evt-badjson:email", channel: "email", payload: "{", err: "payload is invalid"},
+		{id: "evt-type:email", channel: "email", payload: `{"id":"evt-type","type":"unknown","title":"t","summary":"s"}`, err: "event type is invalid"},
+	}
+	for _, tc := range cases {
+		if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',unixepoch(),unixepoch(),unixepoch())`, tc.id, strings.Split(tc.id, ":")[0], tc.channel, tc.payload); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.ClaimOutbox(ctx)
+		if err == nil || !strings.Contains(err.Error(), tc.err) {
+			t.Fatalf("%s err=%v", tc.id, err)
+		}
+		var status, lastError string
+		if err = st.db.QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE id=?`, tc.id).Scan(&status, &lastError); err != nil {
+			t.Fatal(err)
+		}
+		if status != "failed" || !strings.Contains(lastError, tc.err) {
+			t.Fatalf("%s status=%q last_error=%q", tc.id, status, lastError)
+		}
+	}
+	if _, err = st.ClaimOutbox(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("poisoned rows must not stay queued: err=%v", err)
+	}
+}
+
 func TestValidateOutboxItem(t *testing.T) {
 	event := domain.NotificationEvent{ID: "evt-1", Type: "threshold", Title: "t", Summary: "s"}
 	if err := ValidateOutboxItem("webhook", event); err != nil {
@@ -3106,6 +3395,32 @@ func TestLastMonitorRunRejectsInvalidValue(t *testing.T) {
 	}
 }
 
+func TestSetLastMonitorRunRejectsInvalidValue(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, at := range []time.Time{time.Time{}, time.Unix(0, 0).UTC(), time.Unix(-1, 0).UTC()} {
+		if err = st.SetLastMonitorRun(ctx, at); err == nil || !strings.Contains(err.Error(), "last monitor run is invalid") {
+			t.Fatalf("at=%v err=%v", at, err)
+		}
+	}
+	var stored string
+	if err = st.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='last_monitor_run'`).Scan(&stored); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("invalid writes must not store last_monitor_run: stored=%q err=%v", stored, err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	if err = st.SetLastMonitorRun(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LastMonitorRun(ctx)
+	if err != nil || !got.Equal(now) {
+		t.Fatalf("got=%v err=%v", got, err)
+	}
+}
+
 func TestOutboxRetriesThenExhausts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3113,7 +3428,7 @@ func TestOutboxRetriesThenExhausts(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	_, err = st.db.Exec(`INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES('out-1','evt-1','telegram','{}','queued',0,2,unixepoch(),'',unixepoch(),unixepoch())`)
+	_, err = st.db.Exec(`INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,last_error,created_at,updated_at) VALUES('out-1','evt-1','telegram','{"id":"evt-1","type":"threshold","title":"t","summary":"s"}','queued',0,2,unixepoch(),'',unixepoch(),unixepoch())`)
 	if err != nil {
 		t.Fatal(err)
 	}

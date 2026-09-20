@@ -58,6 +58,12 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 		if err = rows.Scan(&entry.ID, &entry.Type, &entry.Message, &created); err != nil {
 			return nil, err
 		}
+		if !validLogType(entry.Type) {
+			return nil, errors.New("log type is invalid")
+		}
+		if created <= 0 {
+			return nil, errors.New("log timestamp is invalid")
+		}
 		entry.Message = clipRunes(entry.Message, maxLogRunes)
 		entry.CreatedAt = time.Unix(created, 0).UTC()
 		entries = append(entries, entry)
@@ -173,6 +179,9 @@ func (s *Store) LastMonitorRun(ctx context.Context) (time.Time, error) {
 }
 
 func (s *Store) SetLastMonitorRun(ctx context.Context, at time.Time) error {
+	if at.IsZero() || at.Unix() <= 0 {
+		return errors.New("last monitor run is invalid")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('last_monitor_run',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.FormatInt(at.Unix(), 10))
 	return err
 }
@@ -185,15 +194,31 @@ const (
 	maxJobIDBytes        = 64
 )
 
-func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
-	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes {
-		return domain.Job{}, errors.New("job type is invalid")
+func validJobType(jobType string) bool {
+	switch jobType {
+	case "monitor_account", "refresh_account", "control_instance", "test_notification":
+		return true
+	default:
+		return false
 	}
+}
+
+func validateJobAccount(jobType string, accountID int64) error {
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
 		if accountID < 1 {
-			return domain.Job{}, errors.New("account id is invalid")
+			return errors.New("account id is invalid")
 		}
+	}
+	return nil
+}
+
+func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string, maxAttempts int) (domain.Job, error) {
+	if jobType == "" || len([]rune(jobType)) > maxJobTypeRunes || !validJobType(jobType) {
+		return domain.Job{}, errors.New("job type is invalid")
+	}
+	if err := validateJobAccount(jobType, accountID); err != nil {
+		return domain.Job{}, err
 	}
 	if maxAttempts < 1 || maxAttempts > maxJobAttempts {
 		return domain.Job{}, errors.New("job attempts are invalid")
@@ -246,6 +271,15 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if len([]rune(job.Payload)) > maxJobPayloadRunes {
 		return domain.Job{}, errors.New("job payload is too long")
 	}
+	if !validJobType(job.Type) {
+		return domain.Job{}, errors.New("job type is invalid")
+	}
+	if err := validateJobAccount(job.Type, job.AccountID); err != nil {
+		return domain.Job{}, err
+	}
+	if available <= 0 || created <= 0 || updated <= 0 {
+		return domain.Job{}, errors.New("job timestamp is invalid")
+	}
 	job.Result = clipRunes(job.Result, maxLogRunes)
 	job.Error = clipRunes(job.Error, maxLogRunes)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
@@ -254,7 +288,7 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 
 func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 	var job domain.Job
-	var oversized bool
+	var claimErr error
 	err := s.WithTx(ctx, func(tx *sql.Tx) error {
 		var available, created, updated int64
 		err := tx.QueryRowContext(ctx, `SELECT id,type,account_id,payload,status,result,error,attempts,max_attempts,available_at,created_at,updated_at FROM jobs WHERE status='queued' AND available_at<=unixepoch() ORDER BY created_at LIMIT 1`).
@@ -263,10 +297,18 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 			return err
 		}
 		if len([]rune(job.Payload)) > maxJobPayloadRunes {
-			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, "job payload is too long", job.ID); failErr != nil {
+			claimErr = errors.New("job payload is too long")
+		} else if !validJobType(job.Type) {
+			claimErr = errors.New("job type is invalid")
+		} else if err := validateJobAccount(job.Type, job.AccountID); err != nil {
+			claimErr = err
+		} else if available <= 0 || created <= 0 || updated <= 0 {
+			claimErr = errors.New("job timestamp is invalid")
+		}
+		if claimErr != nil {
+			if _, failErr := tx.ExecContext(ctx, `UPDATE jobs SET status='failed',error=?,unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), job.ID); failErr != nil {
 				return failErr
 			}
-			oversized = true
 			return nil
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE jobs SET status='running',locked_at=unixepoch(),attempts=attempts+1,updated_at=unixepoch() WHERE id=? AND status='queued'`, job.ID)
@@ -284,8 +326,8 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 	if err != nil {
 		return domain.Job{}, err
 	}
-	if oversized {
-		return domain.Job{}, errors.New("job payload is too long")
+	if claimErr != nil {
+		return domain.Job{}, claimErr
 	}
 	return job, nil
 }
@@ -498,16 +540,25 @@ type OutboxItem struct {
 
 func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 	var item OutboxItem
-	var oversized bool
+	var claimErr error
 	err := s.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT id,channel,payload,attempts,max_attempts FROM notification_outbox WHERE status='queued' AND available_at<=unixepoch() ORDER BY created_at LIMIT 1`).Scan(&item.ID, &item.Channel, &item.Payload, &item.Attempts, &item.MaxAttempts); err != nil {
 			return err
 		}
 		if len(item.Payload) > maxOutboxPayloadRunes {
-			if _, failErr := tx.ExecContext(ctx, `UPDATE notification_outbox SET status='failed',last_error=?,updated_at=unixepoch() WHERE id=? AND status='queued'`, "notification payload is too long", item.ID); failErr != nil {
+			claimErr = errors.New("notification payload is too long")
+		} else {
+			var event domain.NotificationEvent
+			if err := json.Unmarshal([]byte(item.Payload), &event); err != nil {
+				claimErr = errors.New("notification payload is invalid")
+			} else {
+				claimErr = ValidateOutboxItem(item.Channel, event)
+			}
+		}
+		if claimErr != nil {
+			if _, failErr := tx.ExecContext(ctx, `UPDATE notification_outbox SET status='failed',last_error=?,updated_at=unixepoch() WHERE id=? AND status='queued'`, claimErr.Error(), item.ID); failErr != nil {
 				return failErr
 			}
-			oversized = true
 			return nil
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE notification_outbox SET status='sending',attempts=attempts+1,updated_at=unixepoch() WHERE id=? AND status='queued'`, item.ID)
@@ -524,8 +575,8 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 	if err != nil {
 		return OutboxItem{}, err
 	}
-	if oversized {
-		return OutboxItem{}, errors.New("notification payload is too long")
+	if claimErr != nil {
+		return OutboxItem{}, claimErr
 	}
 	return item, nil
 }

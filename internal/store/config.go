@@ -195,6 +195,33 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err = notify.ValidateTCPPortString(config.Notifications.Telegram.ProxyPort); err != nil {
 		return domain.Config{}, err
 	}
+	if err = notify.ValidateCallbackURL(config.Notifications.Webhook.URL); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateProxyURL(config.Notifications.Telegram.ProxyURL); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateDialHost(config.Notifications.Telegram.ProxyIP); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateDialHost(config.Notifications.Email.Host); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateSMTPIdentity(config.Notifications.Email.Username, config.Notifications.Email.To); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateTelegramChatID(config.Notifications.Telegram.ChatID); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateWebhookHeaders(config.Notifications.Webhook.Headers); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateWebhookBody(config.Notifications.Webhook.Body); err != nil {
+		return domain.Config{}, err
+	}
+	if err = notify.ValidateNotifyCredentials(config.Notifications); err != nil {
+		return domain.Config{}, err
+	}
 	return config, nil
 }
 
