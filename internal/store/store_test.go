@@ -2768,6 +2768,12 @@ func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, strings.Repeat("k", maxJobUniqueKeyRunes+1), 3); err == nil || !strings.Contains(err.Error(), "unique key is too long") {
 		t.Fatalf("unique key err=%v", err)
 	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, " refresh:1 ", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
+		t.Fatalf("padded unique key err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "   ", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
+		t.Fatalf("blank unique key err=%v", err)
+	}
 	insertTestAccount(t, st, 1)
 	maxPayload := `"` + strings.Repeat("x", maxJobPayloadRunes-2) + `"`
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, maxPayload, strings.Repeat("k", maxJobUniqueKeyRunes), 3); err != nil {
