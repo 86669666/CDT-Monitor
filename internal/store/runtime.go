@@ -219,10 +219,10 @@ func validateJobAccount(jobType string, accountID int64) error {
 	return nil
 }
 
-func requireClaimAccount(ctx context.Context, tx *sql.Tx, jobType string, accountID int64) error {
+func requireClaimAccount(ctx context.Context, q accountLookup, jobType string, accountID int64) error {
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
-		if err := requireActiveAccountOn(ctx, tx, accountID); err != nil {
+		if err := requireActiveAccountOn(ctx, q, accountID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return errors.New("account id is invalid")
 			}
@@ -251,6 +251,9 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 	switch jobType {
 	case "monitor_account", "refresh_account", "control_instance":
 		if err := s.requireActiveAccount(ctx, accountID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return domain.Job{}, errors.New("account id is invalid")
+			}
 			return domain.Job{}, err
 		}
 	}
@@ -307,6 +310,9 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	}
 	if err := validRetryBudget(job.Attempts, job.MaxAttempts); err != nil {
 		return domain.Job{}, errors.New("job attempts are invalid")
+	}
+	if err := requireClaimAccount(ctx, s.db, job.Type, job.AccountID); err != nil {
+		return domain.Job{}, err
 	}
 	job.Result = clipRunes(job.Result, maxLogRunes)
 	job.Error = clipRunes(job.Error, maxLogRunes)
@@ -438,7 +444,10 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 	if err != nil {
 		return false, err
 	}
-	count, _ := result.RowsAffected()
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
 	if count == 1 {
 		return true, nil
 	}
