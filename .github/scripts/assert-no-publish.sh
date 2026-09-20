@@ -485,6 +485,9 @@ scan_job_limits() {
     if grep -Eq 'id-token:[[:space:]]*write' <<<"$body"; then
       bad "$f: id-token: write is forbidden on this fork"
     fi
+    if grep -Eq '^[[:space:]]+id-token:' <<<"$body"; then
+      bad "$f: id-token permission is forbidden on this fork"
+    fi
     if grep -Eq 'actions:[[:space:]]*write' <<<"$body"; then
       bad "$f: actions: write is forbidden on this fork"
     fi

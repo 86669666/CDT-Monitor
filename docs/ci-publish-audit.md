@@ -841,3 +841,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `cpu_count` / `cpu_percent` / `cpu_rt_runtime` / `cpu_rt_period`。CPU 上限仍只靠 `cpus: 1.0`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T15:10Z` / 2026-09-20 23:10 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b58d84c` 再加 id-token permission 扫描：
+
+- Publish Guard 现禁止任何 `id-token:` permission（含 `read`）。`id-token: write` 本来就禁止。不要开 OIDC 联邦登录
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
