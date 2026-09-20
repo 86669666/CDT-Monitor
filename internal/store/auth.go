@@ -388,7 +388,7 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 }
 
 func validPasskeyCredential(credential webauthn.Credential) error {
-	if len(credential.ID) == 0 || len(credential.ID) > maxPasskeyCredentialBytes || len(credential.PublicKey) == 0 {
+	if len(credential.ID) == 0 || len(credential.ID) > maxPasskeyCredentialBytes || len(credential.PublicKey) == 0 || len(credential.PublicKey) > maxPasskeyCredentialBytes {
 		return errors.New("passkey credential is invalid")
 	}
 	return nil
