@@ -141,6 +141,10 @@ func (s *Store) History(ctx context.Context, accountID int64) (domain.History, e
 				rows.Close()
 				return history, err
 			}
+			if !validTrafficSample(point.Traffic) || at <= 0 {
+				rows.Close()
+				return domain.History{}, errors.New("traffic sample is invalid")
+			}
 			point.At = time.Unix(at, 0).UTC()
 			reverse = append(reverse, point)
 		}

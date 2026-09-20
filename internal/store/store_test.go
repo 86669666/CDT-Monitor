@@ -2874,6 +2874,22 @@ func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
 	}
 }
 
+func TestHistoryRejectsInvalidTrafficSamples(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO traffic_hourly(account_id,traffic,recorded_at) VALUES(1,-1,unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.History(ctx, 1)
+	if err == nil || !strings.Contains(err.Error(), "traffic sample is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestOutboxRetriesThenExhausts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
