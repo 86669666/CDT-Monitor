@@ -11070,3 +11070,23 @@ test('instance stop surfaces the live job internal_error envelope', async ({ pag
   await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
   expect(stopCalls).toBe(1)
 })
+
+test('instance stop surfaces the live job not_found envelope', async ({ page }) => {
+  let stopCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    stopCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-not-found', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  expect(stopCalls).toBe(1)
+})
