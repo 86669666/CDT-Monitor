@@ -12049,3 +12049,29 @@ test('failed telegram notify job with missing-account store error uses generic t
   await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
   await expect(page.locator('.toast-stack')).not.toContainText(leaked)
 })
+
+test('failed webhook notify job with missing-account store error uses generic toast', async ({ page }) => {
+  const leaked = 'account id is invalid'
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-missing-account', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    const failed = jobFixture('notify-webhook-missing-account', 'failed')
+    failed.type = 'test_notification'
+    failed.error = leaked
+    return route.fulfill({ json: failed })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: JOB_FAILED_USER_MESSAGE }).first()).toBeVisible()
+  await expect(page.locator('.toast-stack')).not.toContainText(leaked)
+})
