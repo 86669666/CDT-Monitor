@@ -158,6 +158,29 @@ func TestGetConfigRejectsOversizedSetting(t *testing.T) {
 	}
 }
 
+func TestGetConfigRejectsInvalidSettingKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('','poison')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
+		t.Fatalf("empty key err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET key='   ' WHERE key=''`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
+		t.Fatalf("blank key err=%v", err)
+	}
+}
+
 func TestPutSettingTxRejectsOversizedValue(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
