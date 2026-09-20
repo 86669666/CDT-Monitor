@@ -608,6 +608,9 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 		return errors.New("notification event is too long")
 	}
 	for key, value := range event.Fields {
+		if key == "" || key != strings.TrimSpace(key) {
+			return errors.New("notification field is invalid")
+		}
 		if len([]rune(key)) > maxNotificationFieldRunes || len([]rune(value)) > maxNotificationFieldRunes {
 			return errors.New("notification event is too long")
 		}

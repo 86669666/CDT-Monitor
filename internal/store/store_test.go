@@ -4184,6 +4184,14 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("field err=%v", err)
 	}
+	event.Fields = map[string]string{"": "v"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("empty field err=%v", err)
+	}
+	event.Fields = map[string]string{" k": "v"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("padded field err=%v", err)
+	}
 	event.Fields = map[string]string{}
 	for i := 0; i < maxNotificationFields+1; i++ {
 		event.Fields[strconv.Itoa(i)] = "v"
@@ -4278,6 +4286,11 @@ func TestValidateOutboxItem(t *testing.T) {
 	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
 	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("title err=%v", err)
+	}
+	event.Title = "t"
+	event.Fields = map[string]string{" k": "v"}
+	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("padded field err=%v", err)
 	}
 }
 
