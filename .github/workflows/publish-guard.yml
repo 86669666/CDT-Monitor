@@ -9,6 +9,7 @@ name: Publish Guard
 # shell: stays bash when set.
 # Do not set continue-on-error or dump toJSON(secrets).
 # Do not add issue_comment, schedule, discussion, watch, or other extra on: triggers.
+# Do not add on.push tags:.
 # Do not add job services: sidecars, job container:, uses: docker://, or type=gha/registry build cache.
 # Do not add GitHub Environment jobs (production, staging, or otherwise).
 # Workflow secrets.* allowlist is the optional Android keystore names only.

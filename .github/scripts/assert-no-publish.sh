@@ -29,7 +29,7 @@ require_file() {
 }
 
 scan_workflows() {
-  local f body extra extra_on extra_shell
+  local f body extra extra_on extra_shell extra_on_tags
   shopt -s nullglob
   local files=(.github/workflows/*.yml)
   if [ "${#files[@]}" -eq 0 ]; then
@@ -111,6 +111,14 @@ scan_workflows() {
     ' <<<"$body" | grep -Ev '^  (pull_request|push|workflow_dispatch|workflow_call):' || true)"
     if [ -n "$extra_on" ]; then
       bad "$f: extra on: triggers are forbidden: $extra_on"
+    fi
+    extra_on_tags="$(awk '
+      $0 ~ /^on:[[:space:]]*$/ { in_o=1; next }
+      in_o && $0 ~ /^[^[:space:]]/ { in_o=0 }
+      in_o && $0 ~ /^    tags:/ { print }
+    ' <<<"$body")"
+    if [ -n "$extra_on_tags" ]; then
+      bad "$f: on.push tags: is forbidden; do not restore tag-push publish"
     fi
     extra_shell="$(grep -E '^[[:space:]]*shell:' <<<"$body" | grep -Ev '^[[:space:]]*shell:[[:space:]]*bash$' || true)"
     if [ -n "$extra_shell" ]; then

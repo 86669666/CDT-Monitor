@@ -811,3 +811,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `uts:` 和任何 `userns_mode:`（`host` 本来就禁止）。保持默认 UTS/user 命名空间
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:38Z` / 2026-09-20 22:38 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c2ae8dd` 再加 on.push tags 扫描：
+
+- Publish Guard 现禁止 `on.push` 的 `tags:`。不要把 tag-push 自动发布加回来。build-push `tags:` 不受影响
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
