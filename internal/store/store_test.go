@@ -1714,6 +1714,22 @@ func TestListAPIKeysRejectsUnknownScopes(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsDuplicateScopes(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('dup','hash-dup','["widget:read","widget:read"]',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("duplicate scope err=%v", err)
+	}
+}
+
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
