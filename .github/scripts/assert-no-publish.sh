@@ -1162,6 +1162,12 @@ scan_compose() {
   if grep -Eq 'ipc:[[:space:]]*(host|shareable|service:|container:)' <<<"$body"; then
     bad "$f: ipc namespace sharing is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+pid:' <<<"$body"; then
+    bad "$f: pid: overrides are forbidden; keep the default PID namespace"
+  fi
+  if grep -Eq '^[[:space:]]+ipc:' <<<"$body"; then
+    bad "$f: ipc: overrides are forbidden; keep the default IPC namespace"
+  fi
   if grep -Eq 'cgroup:[[:space:]]*host|cgroupns:[[:space:]]*host|cgroupns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: host cgroup namespace is forbidden"
   fi

@@ -51,6 +51,7 @@ name: Publish Guard
 # Do not add Compose blkio_config or oom_score_adj.
 # Do not add Compose mem_reservation or mem_swappiness.
 # Do not add Compose network_mode (keep default bridge + loopback publish).
+# Do not add Compose pid: or ipc: overrides.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
