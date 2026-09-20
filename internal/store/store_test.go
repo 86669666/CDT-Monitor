@@ -209,6 +209,27 @@ func TestPutSettingTxRejectsOversizedValue(t *testing.T) {
 	}
 }
 
+func TestPutSettingTxRejectsInvalidKey(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, key := range []string{"", "   ", " timezone"} {
+		err = st.WithTx(ctx, func(tx *sql.Tx) error {
+			return putSettingTx(ctx, tx, key, "ok")
+		})
+		if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
+			t.Fatalf("key=%q err=%v", key, err)
+		}
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key IN ('','   ',' timezone')`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid keys persisted count=%d err=%v", count, err)
+	}
+}
+
 func TestOpenRejectsUnsupportedArgon2idParams(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
