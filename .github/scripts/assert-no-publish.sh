@@ -1184,6 +1184,12 @@ scan_compose() {
   if grep -Eq 'userns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: userns_mode: host is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+userns_mode:' <<<"$body"; then
+    bad "$f: userns_mode: is forbidden; keep the default user namespace"
+  fi
+  if grep -Eq '^[[:space:]]+uts:' <<<"$body"; then
+    bad "$f: uts: overrides are forbidden; keep the default UTS namespace"
+  fi
   if grep -Eq '^[[:space:]]+runtime:' <<<"$body"; then
     bad "$f: custom runtime is forbidden on this local Compose"
   fi
