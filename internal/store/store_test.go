@@ -2890,6 +2890,26 @@ func TestHistoryRejectsInvalidTrafficSamples(t *testing.T) {
 	}
 }
 
+func TestLastMonitorRunRejectsInvalidValue(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	got, err := st.LastMonitorRun(ctx)
+	if err != nil || !got.IsZero() {
+		t.Fatalf("missing run = %v err=%v", got, err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('last_monitor_run','not-a-unix')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LastMonitorRun(ctx)
+	if err == nil || !strings.Contains(err.Error(), "last monitor run is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestOutboxRetriesThenExhausts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
