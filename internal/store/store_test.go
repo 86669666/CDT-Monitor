@@ -1860,6 +1860,33 @@ func TestGetJobRejectsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestGetJobRejectsInvalidStoredItem(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-unknown','wipe_disk',1,'{}','queued',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-unknown")
+	if err == nil || !strings.Contains(err.Error(), "job type is invalid") {
+		t.Fatalf("unknown type err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES('job-no-account','refresh_account',0,'{}','queued',3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetJob(ctx, "job-no-account")
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("account id err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id='job-unknown'`).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("get must not mutate stored job, status=%q err=%v", status, err)
+	}
+}
+
 func TestGetJobClipsOversizedResultAndError(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
