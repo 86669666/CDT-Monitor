@@ -12631,3 +12631,39 @@ test('about update check surfaces the live unauthorized envelope', async ({ page
   await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
   expect(checkCalls).toBe(1)
 })
+
+test('about update check surfaces the live forbidden envelope', async ({ page }) => {
+  let checkCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/system/info**', (route) => {
+    const check = new URL(route.request().url()).searchParams.get('check') === '1'
+    if (check) {
+      checkCalls += 1
+      return route.fulfill({
+        status: 403,
+        json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+      })
+    }
+    return route.fulfill({ json: {
+      version: 'v2.0.1',
+      commit: 'abc1234',
+      built_at: 'github-run-12345',
+      repository: 'https://github.com/wang4386/CDT-Monitor',
+      release_url: 'https://github.com/wang4386/CDT-Monitor/releases',
+    } })
+  })
+  await page.route('https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest', (route) => route.fulfill({
+    status: 403,
+    headers: { 'access-control-allow-origin': '*' },
+    json: { message: 'API rate limit exceeded' },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '关于' }).click()
+  await expect(page.getByText('当前版本')).toBeVisible()
+  await page.getByRole('button', { name: '检查更新' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  expect(checkCalls).toBe(1)
+})
