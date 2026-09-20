@@ -11781,3 +11781,27 @@ test('log heartbeat clear surfaces the logs_failed envelope', async ({ page }) =
   await expect(page.getByText('待清空心跳')).toBeVisible()
   expect(clearCalls).toBe(1)
 })
+
+test('settings heartbeat logs surface the logs_failed envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/logs**', (route) => {
+    const tab = new URL(route.request().url()).searchParams.get('tab')
+    if (tab === 'heartbeat') {
+      return route.fulfill({
+        status: 500,
+        json: { error: { code: 'logs_failed', message: '日志操作失败' } },
+      })
+    }
+    return route.fulfill({ json: { logs: [{ id: 1, type: 'audit', message: '动作日志', created_at: new Date().toISOString() }] } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '日志' }).click()
+  await expect(page.getByText('动作日志')).toBeVisible()
+  await page.getByRole('button', { name: '心跳' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '日志操作失败' }).first()).toBeVisible()
+  await expect(page.getByText('暂无日志')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
+})
