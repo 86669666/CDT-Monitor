@@ -796,3 +796,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许 `on:` 为 `pull_request` / `push` / `workflow_dispatch` / `workflow_call`。不要加 `release` / `create` 等触发
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T14:15Z` / 2026-09-20 22:15 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `3b4387d` 再加 Compose pid/ipc 全禁扫描：
+
+- Publish Guard 现禁止任何 Compose `pid:` / `ipc:`（含 `none`）。`pids_limit: 256` 仍保留。保持默认 PID/IPC 命名空间
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
