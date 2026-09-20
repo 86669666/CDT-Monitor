@@ -781,3 +781,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `network_mode: container:` / `service:`（`host` 本来就禁止）。保持默认 bridge 加 loopback 发布
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T13:55Z` / 2026-09-20 21:55 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `6d008b5` 再加 docker:// action 扫描：
+
+- Publish Guard 现禁止 `uses: docker://`。不要用 registry 镜像当 GitHub Action 步骤
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
