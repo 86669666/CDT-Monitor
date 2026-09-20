@@ -364,6 +364,9 @@ func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credenti
 		if err = json.Unmarshal([]byte(encoded), &credential); err != nil {
 			return nil, err
 		}
+		if len(credential.ID) == 0 {
+			return nil, errors.New("passkey credential is invalid")
+		}
 		credentials = append(credentials, credential)
 	}
 	return credentials, rows.Err()
