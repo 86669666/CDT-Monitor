@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
@@ -467,8 +468,12 @@ const (
 	maxLeaseOwnerRunes = 128
 )
 
+func validLeaseIdentity(value string, max int) bool {
+	return value != "" && value == strings.TrimSpace(value) && len([]rune(value)) <= max
+}
+
 func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.Duration) (bool, error) {
-	if name == "" || owner == "" || len([]rune(name)) > maxLeaseNameRunes || len([]rune(owner)) > maxLeaseOwnerRunes {
+	if !validLeaseIdentity(name, maxLeaseNameRunes) || !validLeaseIdentity(owner, maxLeaseOwnerRunes) {
 		return false, errors.New("lease identity is invalid")
 	}
 	if ttl <= 0 {
@@ -497,7 +502,7 @@ func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.D
 	if err != nil {
 		return false, err
 	}
-	if len([]rune(current)) > maxLeaseOwnerRunes {
+	if !validLeaseIdentity(current, maxLeaseOwnerRunes) {
 		return false, errors.New("lease identity is invalid")
 	}
 	return current == owner && expires >= now.Unix(), nil

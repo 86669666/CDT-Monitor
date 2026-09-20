@@ -2066,6 +2066,15 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	if _, err = st.AcquireLease(ctx, "monitor", "", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("empty owner err=%v", err)
 	}
+	if _, err = st.AcquireLease(ctx, "   ", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("blank name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, " monitor", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("padded name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", " owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("padded owner err=%v", err)
+	}
 	if _, err = st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes+1), "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("name err=%v", err)
 	}
@@ -2111,6 +2120,13 @@ func TestAcquireLeaseRejectsOversizedStoredOwner(t *testing.T) {
 	_, err = st.AcquireLease(ctx, "monitor", "owner-b", time.Minute)
 	if err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE scheduler_leases SET owner=' owner-a'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.AcquireLease(ctx, "monitor", "owner-b", time.Minute)
+	if err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("padded stored owner err=%v", err)
 	}
 }
 
