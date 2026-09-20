@@ -457,21 +457,24 @@ func validActionEventStatus(status string) bool {
 }
 
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {
-	if !validAccountID(accountID) {
-		return false, sql.ErrNoRows
-	}
 	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
 		return false, errors.New("action event key is invalid")
 	}
 	if !validActionEventType(eventType) || !validActionEventStatus(status) {
 		return false, errors.New("action event type is invalid")
 	}
+	if err := s.requireActiveAccount(ctx, accountID); err != nil {
+		return false, err
+	}
 	detail = clipRunes(detail, maxActionEventDetailRunes)
 	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(event_key,account_id,type,status,detail,created_at,updated_at) VALUES(?,?,?,?,?,unixepoch(),unixepoch())`, key, accountID, eventType, status, detail)
 	if err != nil {
 		return false, err
 	}
-	count, _ := result.RowsAffected()
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
 	return count == 1, nil
 }
 
