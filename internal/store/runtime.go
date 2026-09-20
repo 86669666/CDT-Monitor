@@ -539,6 +539,9 @@ func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) 
 	if !validOutboxID(item.ID) {
 		return sql.ErrNoRows
 	}
+	if sendErr == nil {
+		return errors.New("outbox error is required")
+	}
 	status := "failed"
 	available := time.Now().UTC()
 	if item.Attempts < item.MaxAttempts {

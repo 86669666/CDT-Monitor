@@ -1098,6 +1098,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+runtime:' <<<"$body"; then
     bad "$f: custom runtime is forbidden on this local Compose"
   fi
+  if grep -Eq '^[[:space:]]+credential_spec:' <<<"$body"; then
+    bad "$f: credential_spec is forbidden"
+  fi
+  if grep -Eq '^[[:space:]]+isolation:' <<<"$body"; then
+    bad "$f: isolation: overrides are forbidden"
+  fi
   if grep -Eq '^[[:space:]]+group_add:' <<<"$body"; then
     bad "$f: group_add is forbidden"
   fi
