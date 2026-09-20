@@ -899,6 +899,10 @@ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.RevokeAPIKey(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not_found", "API Key 不存在")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "api_key_failed", "API Key 操作失败")
 		return
 	}
