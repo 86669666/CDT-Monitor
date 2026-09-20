@@ -311,6 +311,22 @@ func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	}
 }
 
+func TestListAccountsRejectsNonPositiveID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status) VALUES(0,'LTAItest','cn-hongkong','i-test','china','Unknown')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account id is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestListAccountsRejectsOversizedRemark(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
