@@ -3537,6 +3537,12 @@ func TestAddTrafficStatsRejectsNonFiniteValues(t *testing.T) {
 			t.Fatalf("traffic=%v err=%v", value, err)
 		}
 	}
+	if err = st.AddTrafficStats(ctx, 1, 0, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAItest','cn-hongkong','i-test','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.AddTrafficStats(ctx, 1, 0, now); err != nil {
 		t.Fatal(err)
 	}
@@ -3639,6 +3645,9 @@ func TestTrafficStatsUpsertAndHistoryOrder(t *testing.T) {
 	if err != nil || empty.Hourly == nil || empty.Daily == nil || len(empty.Hourly) != 0 || len(empty.Daily) != 0 {
 		t.Fatalf("empty history = %#v err=%v", empty, err)
 	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAIone','cn-hongkong','i-one','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 9, 8, 15, 30, 0, 0, time.UTC)
 	if err = st.AddTrafficStats(ctx, 1, 10.5, now); err != nil {
 		t.Fatal(err)
@@ -3666,6 +3675,9 @@ func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
 	defer st.Close()
 	ctx := context.Background()
 	now := time.Date(2026, 9, 8, 16, 0, 0, 0, time.UTC)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(id,access_key_id,region_id,instance_id,site_type,instance_status,max_traffic) VALUES(1,'LTAIone','cn-hongkong','i-one','china','Unknown',200),(2,'LTAItwo','cn-hongkong','i-two','china','Unknown',200)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.AddTrafficStats(ctx, 1, 11, now); err != nil {
 		t.Fatal(err)
 	}
@@ -3683,6 +3695,9 @@ func TestTrafficHistoryIsIsolatedPerAccount(t *testing.T) {
 	missing, err := st.History(ctx, 3)
 	if err != nil || missing.Hourly == nil || len(missing.Hourly) != 0 || missing.Daily == nil || len(missing.Daily) != 0 {
 		t.Fatalf("missing account history = %#v err=%v", missing, err)
+	}
+	if err = st.AddTrafficStats(ctx, 3, 33, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account stats err=%v", err)
 	}
 }
 

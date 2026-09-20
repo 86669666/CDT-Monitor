@@ -644,6 +644,18 @@ func validAccountID(id int64) bool {
 	return id >= 1
 }
 
+func (s *Store) requireActiveAccount(ctx context.Context, id int64) error {
+	if !validAccountID(id) {
+		return sql.ErrNoRows
+	}
+	var found int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sql.ErrNoRows
+	}
+	return err
+}
+
 func (s *Store) GetAccount(ctx context.Context, id int64) (domain.Account, error) {
 	if !validAccountID(id) {
 		return domain.Account{}, sql.ErrNoRows
