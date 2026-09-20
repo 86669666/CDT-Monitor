@@ -139,7 +139,7 @@ func parseAPIKeyScopes(raw string) ([]string, error) {
 		return nil, errors.New("invalid API key scope")
 	}
 	for _, scope := range result {
-		if strings.TrimSpace(scope) == "" {
+		if strings.TrimSpace(scope) == "" || scope != strings.TrimSpace(scope) {
 			return nil, errors.New("invalid API key scope")
 		}
 	}
