@@ -11921,3 +11921,17 @@ test('refresh-all job poll job_failed surfaces the all-failed refresh message', 
   await expect(page.locator('.toast-stack')).not.toContainText('任务查询失败')
   expect(refreshCalls).toBe(1)
 })
+
+test('history chart surfaces the live missing-account not_found envelope', async ({ page }) => {
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/accounts/1/history', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '账号不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '查看历史流量' }).click()
+  await expect(page.getByRole('alert')).toContainText('账号不存在')
+  await expect(page.locator('.chart-area .recharts-wrapper')).toHaveCount(0)
+})
