@@ -1183,6 +1183,12 @@ scan_compose() {
   if grep -Eq 'cgroup:[[:space:]]*host|cgroupns:[[:space:]]*host|cgroupns_mode:[[:space:]]*host' <<<"$body"; then
     bad "$f: host cgroup namespace is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+cgroup:' <<<"$body"; then
+    bad "$f: cgroup: overrides are forbidden; keep the default cgroup namespace"
+  fi
+  if grep -Eq '^[[:space:]]+cgroupns(_mode)?:' <<<"$body"; then
+    bad "$f: cgroupns overrides are forbidden; keep the default cgroup namespace"
+  fi
   if grep -Eq '^[[:space:]]+cgroup_parent:' <<<"$body"; then
     bad "$f: cgroup_parent is forbidden"
   fi
