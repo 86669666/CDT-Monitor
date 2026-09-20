@@ -630,6 +630,9 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if updated < 0 || keepAlive < 0 {
 			return nil, errors.New("account timestamp is invalid")
 		}
+		if schedule != 0 && schedule != 1 {
+			return nil, errors.New("account schedule is invalid")
+		}
 		a.SecretConfigured = secret != ""
 		a.ScheduleEnabled = schedule == 1
 		if updated > 0 {
