@@ -2736,6 +2736,9 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	if err = st.FailOutbox(ctx, OutboxItem{ID: long}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized fail err=%v", err)
 	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt-1:email"}, nil); err == nil || !strings.Contains(err.Error(), "outbox error is required") {
+		t.Fatalf("nil error err=%v", err)
+	}
 }
 
 func TestOutboxInsertIsIdempotentAndClaimedOnce(t *testing.T) {
