@@ -11309,3 +11309,103 @@ test('settings telegram test surfaces the live job internal_error envelope', asy
   await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
   expect(testCalls).toBe(1)
 })
+
+test('settings webhook test surfaces the live job unauthorized envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-unauth', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 401,
+    json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '请登录或提供有效 API Key' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
+test('settings webhook test surfaces the live job forbidden envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-forbidden', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'API Key 权限不足' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
+test('settings webhook test surfaces the live job not_found envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-not-found', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'not_found', message: '接口不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '接口不存在' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
+
+test('settings webhook test surfaces the live job internal_error envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/webhook', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-webhook-internal', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 500,
+    json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '服务暂时不可用' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
