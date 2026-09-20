@@ -2053,6 +2053,29 @@ func TestListLogsRejectsNonPositiveID(t *testing.T) {
 	}
 }
 
+func TestListLogsRejectsInvalidTab(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.AddLog(ctx, "error", "boom"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListLogs(ctx, "debug", 10)
+	if err == nil || !strings.Contains(err.Error(), "log tab is invalid") {
+		t.Fatalf("list err=%v", err)
+	}
+	if err = st.ClearLogs(ctx, "debug"); err == nil || !strings.Contains(err.Error(), "log tab is invalid") {
+		t.Fatalf("clear err=%v", err)
+	}
+	entries, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("valid tab logs=%#v err=%v", entries, err)
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

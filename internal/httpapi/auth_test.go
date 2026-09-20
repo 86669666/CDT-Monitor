@@ -1381,6 +1381,23 @@ func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 	}
 }
 
+func TestLogsRejectUnknownTabHTTP(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	session, csrf := loginCookies(t, handler)
+	got := doRequest(t, handler, http.MethodGet, "/api/v1/logs?tab=debug", "", []*http.Cookie{session, csrf}, nil)
+	if got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), "invalid_request") {
+		t.Fatalf("unknown tab status = %d body = %s", got.Code, got.Body.String())
+	}
+	if strings.Contains(got.Body.String(), "log tab is invalid") {
+		t.Fatalf("store error leaked: %s", got.Body.String())
+	}
+	cleared := doRequest(t, handler, http.MethodDelete, "/api/v1/logs?tab=debug", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if cleared.Code != http.StatusBadRequest || !strings.Contains(cleared.Body.String(), "invalid_request") {
+		t.Fatalf("unknown clear tab status = %d body = %s", cleared.Code, cleared.Body.String())
+	}
+}
+
 func TestSetupHidesDatabaseErrors(t *testing.T) {
 	dir := t.TempDir()
 	st, err := store.Open(dir)

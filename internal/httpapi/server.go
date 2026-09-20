@@ -824,6 +824,10 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.store.ListLogs(r.Context(), r.URL.Query().Get("tab"), 100)
 	if err != nil {
+		if err.Error() == "log tab is invalid" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "日志类型无效")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
@@ -835,6 +839,10 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.ClearLogs(r.Context(), r.URL.Query().Get("tab")); err != nil {
+		if err.Error() == "log tab is invalid" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "日志类型无效")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
