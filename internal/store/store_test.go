@@ -2053,6 +2053,29 @@ func TestListLogsRejectsNonPositiveID(t *testing.T) {
 	}
 }
 
+func TestListLogsRejectsInvalidTab(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.AddLog(ctx, "error", "boom"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListLogs(ctx, "debug", 10)
+	if err == nil || !strings.Contains(err.Error(), "log tab is invalid") {
+		t.Fatalf("list err=%v", err)
+	}
+	if err = st.ClearLogs(ctx, "debug"); err == nil || !strings.Contains(err.Error(), "log tab is invalid") {
+		t.Fatalf("clear err=%v", err)
+	}
+	entries, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("valid tab logs=%#v err=%v", entries, err)
+	}
+}
+
 func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3154,6 +3177,24 @@ func TestBillingCacheRejectsOversizedStoredPayload(t *testing.T) {
 	_, err = st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
 	if err == nil || !strings.Contains(err.Error(), "payload is too long") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestBillingCacheRejectsInvalidPayload(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	insertTestAccount(t, st, 1)
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(1,'balance','','{',unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	ok, err := st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
+	if ok || err == nil || !strings.Contains(err.Error(), "payload is invalid") {
+		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 }
 

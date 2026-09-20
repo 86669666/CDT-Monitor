@@ -24,6 +24,15 @@ func validLogType(logType string) bool {
 	}
 }
 
+func validLogTab(tab string) bool {
+	switch tab {
+	case "", "action", "heartbeat":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
 	if !validLogType(logType) {
 		return errors.New("log type is invalid")
@@ -33,6 +42,9 @@ func (s *Store) AddLog(ctx context.Context, logType, message string) error {
 }
 
 func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.LogEntry, error) {
+	if !validLogTab(tab) {
+		return nil, errors.New("log tab is invalid")
+	}
 	if limit < 1 || limit > 200 {
 		limit = 50
 	}
@@ -76,6 +88,9 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 }
 
 func (s *Store) ClearLogs(ctx context.Context, tab string) error {
+	if !validLogTab(tab) {
+		return errors.New("log tab is invalid")
+	}
 	if tab == "heartbeat" {
 		_, err := s.db.ExecContext(ctx, `DELETE FROM logs WHERE type='heartbeat'`)
 		return err
@@ -802,6 +817,9 @@ func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cy
 	}
 	if len(data) > maxBillingCacheBytes {
 		return false, errors.New("billing cache payload is too long")
+	}
+	if !json.Valid([]byte(data)) {
+		return false, errors.New("billing cache payload is invalid")
 	}
 	return true, json.Unmarshal([]byte(data), target)
 }
