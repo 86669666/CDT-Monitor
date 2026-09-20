@@ -790,6 +790,12 @@ scan_dockerfile() {
   if grep -Eq '^SHELL ' <<<"$body"; then
     bad "$f: SHELL overrides are forbidden"
   fi
+  if grep -Eq -- '--mount=type=(ssh|secret)' <<<"$body"; then
+    bad "$f: RUN --mount ssh/secret is forbidden"
+  fi
+  if grep -Eq -- '--network=host' <<<"$body"; then
+    bad "$f: --network=host is forbidden in the Dockerfile"
+  fi
   if grep -Eq 'FROM[[:space:]].*:latest' <<<"$body"; then
     bad "$f: :latest base tags are forbidden"
   fi
