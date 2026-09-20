@@ -1170,6 +1170,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+entrypoint:' <<<"$body"; then
     bad "$f: entrypoint: overrides are forbidden; keep /cdt-monitor"
   fi
+  if grep -Eq '^[[:space:]]+working_dir:' <<<"$body"; then
+    bad "$f: working_dir: overrides are forbidden; keep the image WORKDIR"
+  fi
+  if grep -Eq '^[[:space:]]+platform:' <<<"$body"; then
+    bad "$f: platform: overrides are forbidden; keep the image default"
+  fi
   if grep -Eq '^[[:space:]]*networks:' <<<"$body"; then
     bad "$f: extra Compose networks are forbidden; keep the default bridge and loopback publish"
   fi
