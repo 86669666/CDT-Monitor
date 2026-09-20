@@ -123,11 +123,19 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err = notify.ValidateTCPPort(notifyPort); err != nil {
 		return domain.Config{}, err
 	}
+	shutdownMode := valueOr(settings, "shutdown_mode", "KeepCharging")
+	if shutdownMode != "KeepCharging" && shutdownMode != "StopCharging" {
+		return domain.Config{}, errors.New("invalid shutdown mode")
+	}
+	thresholdAction := valueOr(settings, "threshold_action", "stop_and_notify")
+	if thresholdAction != "stop_and_notify" && thresholdAction != "notify_only" {
+		return domain.Config{}, errors.New("invalid threshold action")
+	}
 	config := domain.Config{
 		TrafficThreshold:   trafficThreshold,
 		EnableScheduleMail: boolSetting(settings, "enable_schedule_email", false),
-		ShutdownMode:       valueOr(settings, "shutdown_mode", "KeepCharging"),
-		ThresholdAction:    valueOr(settings, "threshold_action", "stop_and_notify"),
+		ShutdownMode:       shutdownMode,
+		ThresholdAction:    thresholdAction,
 		KeepAlive:          boolSetting(settings, "keep_alive", false),
 		APIInterval:        apiInterval,
 		EnableBilling:      boolSetting(settings, "enable_billing", false),
