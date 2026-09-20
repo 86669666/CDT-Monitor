@@ -2692,6 +2692,7 @@ func TestBillingCacheRejectsOversizedStoredPayload(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
+	insertTestAccount(t, st, 1)
 	blob := strings.Repeat("m", maxBillingCacheBytes+1)
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(1,'balance','',?,unixepoch())`, blob); err != nil {
 		t.Fatal(err)
@@ -2710,6 +2711,7 @@ func TestBillingCacheRejectsInvalidTimestamp(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
+	insertTestAccount(t, st, 1)
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO billing_cache(account_id,cache_type,billing_cycle,data,updated_at) VALUES(1,'balance','','{"amount":1}',0)`); err != nil {
 		t.Fatal(err)
 	}
@@ -2741,6 +2743,10 @@ func TestBillingCacheIsIsolatedPerAccount(t *testing.T) {
 	ok, err = st.BillingCache(ctx, 1, "balance", "", time.Hour, &got)
 	if err != nil || !ok || got["amount"] != 10.5 {
 		t.Fatalf("account 1 cache=%v ok=%v err=%v", got, ok, err)
+	}
+	ok, err = st.BillingCache(ctx, 3, "balance", "", time.Hour, &got)
+	if ok || !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing account cache ok=%v err=%v", ok, err)
 	}
 }
 

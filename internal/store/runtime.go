@@ -720,11 +720,11 @@ func validBillingCycle(cycle string) bool {
 }
 
 func (s *Store) BillingCache(ctx context.Context, accountID int64, cacheType, cycle string, maxAge time.Duration, target any) (bool, error) {
-	if !validAccountID(accountID) {
-		return false, sql.ErrNoRows
-	}
 	if !validBillingCacheType(cacheType) || !validBillingCycle(cycle) {
 		return false, errors.New("billing cache key is invalid")
+	}
+	if err := s.requireActiveAccount(ctx, accountID); err != nil {
+		return false, err
 	}
 	var data string
 	var updated int64
