@@ -1580,6 +1580,28 @@ func TestClaimJobFailsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.FailJob(ctx, domain.Job{}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("empty id err=%v", err)
+	}
+	if err = st.FailJob(ctx, domain.Job{ID: strings.Repeat("j", maxJobIDBytes+1)}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("oversized id err=%v", err)
+	}
+	job, err := st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailJob(ctx, job, nil); err == nil || !strings.Contains(err.Error(), "job error is required") {
+		t.Fatalf("nil error err=%v", err)
+	}
+}
+
 func TestEnqueueJobRejectsInvalidTypeAndAttempts(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

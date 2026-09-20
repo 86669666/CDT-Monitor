@@ -292,6 +292,12 @@ func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
 }
 
 func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error {
+	if !validJobID(job.ID) {
+		return sql.ErrNoRows
+	}
+	if jobErr == nil {
+		return errors.New("job error is required")
+	}
 	status := "failed"
 	available := time.Now().UTC()
 	if job.Attempts < job.MaxAttempts {
