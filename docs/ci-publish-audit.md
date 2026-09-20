@@ -861,3 +861,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Dockerfile `RUN --mount=type=ssh|secret` 和 `--network=host`。不要把 SSH/密钥挂进构建或用 host 网络
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T23:57Z` / 2026-09-21 07:57 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `12f5053` 再加 attestations permission 扫描：
+
+- Publish Guard 现禁止任何 `attestations:` permission（含 `read`）。`attestations: write` 本来就禁止。不要开 artifact provenance / Sigstore 证明
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
