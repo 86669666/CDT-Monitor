@@ -1544,6 +1544,32 @@ func TestListAPIKeysReturnsEmptyArrayWhenNoneExist(t *testing.T) {
 	}
 }
 
+func TestListAPIKeysRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('zero','hash-zero','["widget:read"]',0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key timestamp is invalid") {
+		t.Fatalf("created_at err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM api_keys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at,expires_at) VALUES('expired-zero','hash-exp','["widget:read"]',unixepoch(),0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key timestamp is invalid") {
+		t.Fatalf("expires_at err=%v", err)
+	}
+}
+
 func TestListLogsReturnsEmptyArrayAfterClear(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -2870,6 +2896,22 @@ func TestValidateAPIKeyRejectsOversizedScopesJSON(t *testing.T) {
 	}
 	if lastUsed.Valid {
 		t.Fatal("oversized scopes must not record last_used_at")
+	}
+}
+
+func TestListPasskeysRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('zero',?,?,0)`, []byte("id"), `{"id":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListPasskeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "passkey timestamp is invalid") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
