@@ -776,3 +776,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 job 级 `container:`（4 空格缩进）。`auto-release.yml` 的 job 名 `container:` 不受影响。继续用 `ubuntu-latest`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-20T13:48Z` / 2026-09-20 21:48 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `fc47f95` 再加 Compose network_mode container/service 扫描：
+
+- Publish Guard 现禁止 Compose `network_mode: container:` / `service:`（`host` 本来就禁止）。保持默认 bridge 加 loopback 发布
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
