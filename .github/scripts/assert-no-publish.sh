@@ -1086,6 +1086,9 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+cpuset(_cpus|_mems)?:' <<<"$body"; then
     bad "$f: cpuset is forbidden; keep cpus 1.0"
   fi
+  if grep -Eq '^[[:space:]]+cpu_(count|percent|rt_runtime|rt_period):' <<<"$body"; then
+    bad "$f: extra cpu_* knobs are forbidden; keep cpus 1.0"
+  fi
   if grep -Eq '^[[:space:]]+shm_size:' <<<"$body"; then
     bad "$f: shm_size is forbidden; keep the default /dev/shm"
   fi
