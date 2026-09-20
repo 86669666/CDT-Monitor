@@ -189,6 +189,9 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 			},
 		},
 	}
+	if err = notify.ValidateNotifyOptions(config.Notifications); err != nil {
+		return domain.Config{}, err
+	}
 	return config, nil
 }
 
