@@ -447,6 +447,45 @@ func TestListAccountsRejectsInvalidMaxTraffic(t *testing.T) {
 	}
 }
 
+func TestListAccountsRejectsInvalidTimestamp(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,region_id,instance_id,site_type,instance_status,updated_at) VALUES('LTAItest','cn-hongkong','i-test','china','Unknown',-1)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account timestamp is invalid") {
+		t.Fatalf("updated_at err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET updated_at=0,last_keep_alive_at=-1`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account timestamp is invalid") {
+		t.Fatalf("keep_alive err=%v", err)
+	}
+}
+
+func TestListAccountsRejectsInvalidSchedule(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,region_id,instance_id,site_type,instance_status,schedule_enabled) VALUES('LTAItest','cn-hongkong','i-test','china','Unknown',2)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account schedule is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestAccountLookupsRejectNonPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -3557,6 +3596,26 @@ func TestLoadPasskeyCredentialsRejectsEmptyPublicKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, []byte("credential-id"), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.LoadPasskeyCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "credential is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestLoadPasskeyCredentialsRejectsCredentialIDMismatch(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	raw, err := json.Marshal(webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES('poison',?,?,unixepoch())`, []byte("other-id"), string(raw)); err != nil {
 		t.Fatal(err)
 	}
 	_, err = st.LoadPasskeyCredentials(ctx)

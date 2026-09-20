@@ -627,6 +627,12 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		if math.IsNaN(a.MaxTraffic) || math.IsInf(a.MaxTraffic, 0) || a.MaxTraffic < 0 || a.MaxTraffic > maxAccountTrafficGB {
 			return nil, errors.New("max traffic is invalid")
 		}
+		if updated < 0 || keepAlive < 0 {
+			return nil, errors.New("account timestamp is invalid")
+		}
+		if schedule != 0 && schedule != 1 {
+			return nil, errors.New("account schedule is invalid")
+		}
 		a.SecretConfigured = secret != ""
 		a.ScheduleEnabled = schedule == 1
 		if updated > 0 {
