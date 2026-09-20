@@ -329,6 +329,9 @@ func (s *Store) ListPasskeys(ctx context.Context) ([]domain.Passkey, error) {
 		if created <= 0 {
 			return nil, errors.New("passkey timestamp is invalid")
 		}
+		if strings.TrimSpace(item.Name) == "" || len([]rune(item.Name)) > maxPasskeyNameRunes {
+			return nil, errors.New("passkey name is invalid")
+		}
 		item.CreatedAt = time.Unix(created, 0).UTC()
 		item.LastUsedAt = nullTime(lastUsed)
 		items = append(items, item)
