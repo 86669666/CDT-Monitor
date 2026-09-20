@@ -2173,6 +2173,12 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	if _, err = st.RecordActionEvent(ctx, "", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("empty key err=%v", err)
 	}
+	if _, err = st.RecordActionEvent(ctx, "   ", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("blank key err=%v", err)
+	}
+	if _, err = st.RecordActionEvent(ctx, " threshold:1:active", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("padded key err=%v", err)
+	}
 	if _, err = st.RecordActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1), 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
 	}
@@ -2210,6 +2216,9 @@ func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
 	ctx := context.Background()
 	if err = st.DeleteActionEvent(ctx, ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("empty key err=%v", err)
+	}
+	if err = st.DeleteActionEvent(ctx, "   "); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("blank key err=%v", err)
 	}
 	if err = st.DeleteActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1)); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)

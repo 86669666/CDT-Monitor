@@ -534,8 +534,12 @@ func validActionEventStatus(status string) bool {
 	}
 }
 
+func validActionEventKey(key string) bool {
+	return key != "" && key == strings.TrimSpace(key) && len([]rune(key)) <= maxActionEventKeyRunes
+}
+
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {
-	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
+	if !validActionEventKey(key) {
 		return false, errors.New("action event key is invalid")
 	}
 	if !validActionEventType(eventType) || !validActionEventStatus(status) {
@@ -557,7 +561,7 @@ func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int
 }
 
 func (s *Store) DeleteActionEvent(ctx context.Context, key string) error {
-	if key == "" || len([]rune(key)) > maxActionEventKeyRunes {
+	if !validActionEventKey(key) {
 		return errors.New("action event key is invalid")
 	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM action_events WHERE event_key=?`, key)
