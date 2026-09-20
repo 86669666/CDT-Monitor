@@ -11805,3 +11805,27 @@ test('settings heartbeat logs surface the logs_failed envelope', async ({ page }
   await expect(page.getByText('暂无日志')).toBeVisible()
   await expect(page.getByRole('heading', { name: '运行日志' })).toBeVisible()
 })
+
+test('settings email test surfaces the job_not_found envelope', async ({ page }) => {
+  let testCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/notifications/test/email', (route) => {
+    testCalls += 1
+    expect(route.request().method()).toBe('POST')
+    const job = jobFixture('notify-email-missing', 'queued')
+    job.type = 'test_notification'
+    return route.fulfill({ status: 202, json: job })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: 'job_not_found', message: '任务不存在' } },
+  }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: '发送测试' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '任务不存在' }).first()).toBeVisible()
+  expect(testCalls).toBe(1)
+})
