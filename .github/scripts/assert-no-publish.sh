@@ -1303,6 +1303,12 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+(external_)?links:' <<<"$body"; then
     bad "$f: links/external_links are forbidden; keep the default bridge and loopback publish"
   fi
+  if grep -Eq '^[[:space:]]+volumes_from:' <<<"$body"; then
+    bad "$f: volumes_from is forbidden; keep only cdt-data:/data"
+  fi
+  if grep -Eq '^[[:space:]]+extends:' <<<"$body"; then
+    bad "$f: extends: is forbidden; keep a single local cdt-monitor service"
+  fi
   if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
     bad "$f: external: true is forbidden; keep the named cdt-data volume local"
   fi
