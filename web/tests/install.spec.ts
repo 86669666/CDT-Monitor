@@ -10857,3 +10857,25 @@ test('wizard surfaces the live internal_error envelope and stays on install', as
   await expect(page.getByText('服务暂时不可用')).toBeVisible()
   await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
 })
+
+test('instance start surfaces the live invalid_id envelope', async ({ page }) => {
+  let startCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    startCalls += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 400,
+      json: { error: { code: 'invalid_id', message: '无效 ID' } },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: '无效 ID' }).first()).toBeVisible()
+  expect(startCalls).toBe(1)
+})
