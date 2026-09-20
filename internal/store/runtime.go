@@ -141,6 +141,10 @@ func (s *Store) History(ctx context.Context, accountID int64) (domain.History, e
 				rows.Close()
 				return history, err
 			}
+			if !validTrafficSample(point.Traffic) || at <= 0 {
+				rows.Close()
+				return domain.History{}, errors.New("traffic sample is invalid")
+			}
 			point.At = time.Unix(at, 0).UTC()
 			reverse = append(reverse, point)
 		}
@@ -161,7 +165,10 @@ func (s *Store) LastMonitorRun(ctx context.Context) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	unix, _ := strconv.ParseInt(value, 10, 64)
+	unix, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || unix <= 0 {
+		return time.Time{}, errors.New("last monitor run is invalid")
+	}
 	return time.Unix(unix, 0).UTC(), nil
 }
 
