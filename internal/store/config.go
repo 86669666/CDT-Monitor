@@ -131,6 +131,13 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if thresholdAction != "stop_and_notify" && thresholdAction != "notify_only" {
 		return domain.Config{}, errors.New("invalid threshold action")
 	}
+	timezone := valueOr(settings, "timezone", "Asia/Shanghai")
+	if len([]rune(timezone)) > maxTimezoneRunes {
+		return domain.Config{}, errors.New("invalid timezone")
+	}
+	if _, err = time.LoadLocation(timezone); err != nil {
+		return domain.Config{}, errors.New("invalid timezone")
+	}
 	config := domain.Config{
 		TrafficThreshold:   trafficThreshold,
 		EnableScheduleMail: boolSetting(settings, "enable_schedule_email", false),
@@ -139,7 +146,7 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 		KeepAlive:          boolSetting(settings, "keep_alive", false),
 		APIInterval:        apiInterval,
 		EnableBilling:      boolSetting(settings, "enable_billing", false),
-		Timezone:           valueOr(settings, "timezone", "Asia/Shanghai"),
+		Timezone:           timezone,
 		Accounts:           accounts,
 		Notifications: domain.NotificationConfig{
 			Email: domain.EmailConfig{
