@@ -500,6 +500,9 @@ scan_job_limits() {
     if grep -Eq 'attestations:[[:space:]]*write' <<<"$body"; then
       bad "$f: attestations: write is forbidden on this fork"
     fi
+    if grep -Eq '^[[:space:]]+attestations:' <<<"$body"; then
+      bad "$f: attestations permission is forbidden on this fork"
+    fi
     if grep -Eq 'security-events:[[:space:]]*write' <<<"$body"; then
       bad "$f: security-events: write is forbidden on this fork"
     fi
