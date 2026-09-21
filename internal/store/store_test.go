@@ -2942,6 +2942,38 @@ func TestLoginFailureIPIsClipped(t *testing.T) {
 	}
 }
 
+func TestLoginFailureRejectsBlankIP(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.RecordLoginFailure(ctx, "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, ip := range []string{"", "   "} {
+		if err = st.RecordLoginFailure(ctx, ip); err == nil || !strings.Contains(err.Error(), "ip is invalid") {
+			t.Fatalf("record ip=%q err=%v", ip, err)
+		}
+		count, err := st.RecentLoginFailures(ctx, ip, time.Now().Add(-time.Minute))
+		if err != nil || count != 0 {
+			t.Fatalf("recent ip=%q count=%d err=%v", ip, count, err)
+		}
+		if err = st.ClearLoginFailures(ctx, ip); err != nil {
+			t.Fatalf("clear ip=%q err=%v", ip, err)
+		}
+	}
+	count, err := st.RecentLoginFailures(ctx, "127.0.0.1", time.Now().Add(-time.Minute))
+	if err != nil || count != 1 {
+		t.Fatalf("real ip failures = %d err=%v", count, err)
+	}
+	var stored int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts`).Scan(&stored); err != nil || stored != 1 {
+		t.Fatalf("stored attempts=%d err=%v", stored, err)
+	}
+}
+
 func TestSessionExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

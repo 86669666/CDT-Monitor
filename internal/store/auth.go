@@ -27,18 +27,30 @@ func (s *Store) VerifyAdminPassword(ctx context.Context, password string) (bool,
 }
 
 func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.Time) (int, error) {
+	ip = clipIP(ip)
+	if ip == "" {
+		return 0, nil
+	}
 	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, clipIP(ip), since.Unix()).Scan(&count)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, ip, since.Unix()).Scan(&count)
 	return count, err
 }
 
 func (s *Store) RecordLoginFailure(ctx context.Context, ip string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, clipIP(ip))
+	ip = clipIP(ip)
+	if ip == "" {
+		return errors.New("ip is invalid")
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
 	return err
 }
 
 func (s *Store) ClearLoginFailures(ctx context.Context, ip string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, clipIP(ip))
+	ip = clipIP(ip)
+	if ip == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
 	return err
 }
 
