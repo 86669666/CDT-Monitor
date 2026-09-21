@@ -777,12 +777,8 @@ func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Ac
 		}
 	} else {
 		periodDesc = "前24小时运行"
-		startTraffic, ok := e.store.Traffic24HoursAgo(ctx, acc.ID, now)
-		if ok {
-			consumed = acc.TrafficUsed - startTraffic
-		} else {
-			consumed = 0
-		}
+		startTraffic := e.findStartTrafficForDay(ctx, acc.ID, now)
+		consumed = acc.TrafficUsed - startTraffic
 	}
 	if acc.TrafficUsed < 0 {
 		consumed = 0

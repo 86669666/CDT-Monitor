@@ -273,3 +273,65 @@ func TestDailyReportSmallAmountPrecisionAndSingleInstance(t *testing.T) {
 		t.Fatalf("expected title to contain remark, got: %s", event.Title)
 	}
 }
+
+func TestDailyReportFallbackWhenNo24HourData(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+
+	cfg := domain.Config{
+		AdminPassword:     "Strong-Password-42!",
+		TrafficThreshold:  95,
+		ShutdownMode:      "KeepCharging",
+		ThresholdAction:   "stop_and_notify",
+		APIInterval:       600,
+		Timezone:          "Asia/Shanghai",
+		EnableDailyReport: true,
+		Notifications: domain.NotificationConfig{
+			Webhook: domain.WebhookConfig{
+				Enabled: true,
+				URL:     "https://webhook.example.com/test",
+			},
+		},
+		Accounts: []domain.Account{
+			{
+				AccessKeyID:     "LTAI_FALLBACK",
+				AccessKeySecret: "sec",
+				RegionID:        "cn-hongkong",
+				InstanceID:      "i-fallback",
+				MaxTraffic:      200,
+				Remark:          "回退测试节点",
+				ScheduleEnabled: false,
+				DailyReportTime: "00:00",
+			},
+		},
+	}
+	if err = st.Setup(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := New(st, nil, notify.New(), nil, 1)
+	accs, _ := st.ListAccounts(ctx)
+	acc := accs[0]
+
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+
+	_ = st.AddTrafficStats(ctx, acc.ID, 2.0, now.Add(-2*time.Hour))
+	_ = st.AddTrafficStats(ctx, acc.ID, 2.5, now)
+	_ = st.UpdateRuntime(ctx, acc.ID, 2.5, domain.StatusRunning, now)
+
+	result, err := eng.generateAndSendDailyReport(ctx, true, acc.ID)
+	if err != nil {
+		t.Fatalf("generateAndSendDailyReport failed: %v", err)
+	}
+	if strings.Contains(result, "0.00 GB") {
+		t.Fatalf("consumed should not be 0 when fallback data is available, got: %s", result)
+	}
+	if !strings.Contains(result, "0.50 GB") && !strings.Contains(result, "0.500 GB") {
+		t.Fatalf("expected consumed ~0.5 GB from fallback, got: %s", result)
+	}
+}
