@@ -2159,6 +2159,12 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	if _, err = st.AcquireLease(ctx, "monitor", " owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("padded owner err=%v", err)
 	}
+	if _, err = st.AcquireLease(ctx, "mon\nitor", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("broken name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", "own\ner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("broken owner err=%v", err)
+	}
 	if _, err = st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes+1), "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("name err=%v", err)
 	}
@@ -2263,6 +2269,9 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	if _, err = st.RecordActionEvent(ctx, " threshold:1:active", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("padded key err=%v", err)
 	}
+	if _, err = st.RecordActionEvent(ctx, "thresh\nold:1:active", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("broken key err=%v", err)
+	}
 	if _, err = st.RecordActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1), 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
 	}
@@ -2324,6 +2333,9 @@ func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
 	}
 	if err = st.DeleteActionEvent(ctx, "   "); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("blank key err=%v", err)
+	}
+	if err = st.DeleteActionEvent(ctx, "thresh\nold:1"); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("broken key err=%v", err)
 	}
 	if err = st.DeleteActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1)); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
@@ -2926,6 +2938,13 @@ func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	}
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "   ", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
 		t.Fatalf("blank unique key err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "mon\nitor:1", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
+		t.Fatalf("broken unique key err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid unique key must not enqueue, count=%d err=%v", count, err)
 	}
 	insertTestAccount(t, st, 1)
 	maxPayload := `"` + strings.Repeat("x", maxJobPayloadRunes-2) + `"`
@@ -4464,6 +4483,9 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: " evt-1", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("padded id err=%v", err)
 	}
+	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "evt\n1", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("broken id err=%v", err)
+	}
 	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("payload err=%v", err)
@@ -4560,6 +4582,7 @@ func TestClaimOutboxFailsInvalidStoredItem(t *testing.T) {
 		{id: "evt-type:email", channel: "email", payload: `{"id":"evt-type","type":"unknown","title":"t","summary":"s"}`, err: "event type is invalid"},
 		{id: "evt-pad:email", channel: "email", payload: `{"id":" evt-pad","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
 		{id: " evt-row:email", channel: "email", payload: `{"id":"evt-row","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
+		{id: "evt\nbreak:email", channel: "email", payload: `{"id":"evt-break","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
 		{id: "evt-title:email", channel: "email", payload: `{"id":"evt-title","type":"threshold","title":"t\nn","summary":"s"}`, err: "event is invalid"},
 	}
 	for _, tc := range cases {
@@ -4597,6 +4620,9 @@ func TestValidateOutboxItem(t *testing.T) {
 	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: " evt-1", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("padded id err=%v", err)
 	}
+	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: "evt\n1", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("broken id err=%v", err)
+	}
 	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
 	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("title err=%v", err)
@@ -4633,6 +4659,12 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	}
 	if err = st.FailOutbox(ctx, OutboxItem{ID: " evt-1:email"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("padded fail err=%v", err)
+	}
+	if err = st.CompleteOutbox(ctx, "evt\n1:email"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken complete err=%v", err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt\n1:email"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken fail err=%v", err)
 	}
 	if err = st.CompleteOutbox(ctx, long); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized complete err=%v", err)
