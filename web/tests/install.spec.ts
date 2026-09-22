@@ -13136,3 +13136,40 @@ test('instance start keeps the console on live not_found', async ({ page }) => {
   await expect(page.locator('.toast-stack')).not.toContainText('接口不存在')
   expect(statusCalls).toBeGreaterThan(0)
 })
+
+test('instance start keeps the console on live internal_error', async ({ page }) => {
+  let failStatus = false
+  let statusCalls = 0
+  const stopped = {
+    ...dashboardStatus,
+    accounts: [{ ...dashboardAccount, instance_status: 'Stopped' }],
+  }
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, stopped)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failStatus) return route.fulfill({ json: stopped })
+    statusCalls += 1
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+  await page.route('**/api/v1/accounts/1/actions/start', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('start-internal', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    failStatus = true
+    return route.fulfill({ json: jobFixture('start-internal', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '开机' }).click()
+  await expect(page.getByText('已发送开机指令')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  await expect(page.locator('.toast-stack')).not.toContainText('服务暂时不可用')
+  expect(statusCalls).toBeGreaterThan(0)
+})
