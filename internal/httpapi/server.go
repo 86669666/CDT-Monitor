@@ -1278,6 +1278,7 @@ func safeStoreValidationMessage(msg string) bool {
 		"account region_id is invalid",
 		"account instance_id is invalid",
 		"account remark is too long",
+		"account remark is invalid",
 		"account access_key_secret is too long",
 		"notification header fields must not contain line breaks",
 		"account schedule time is invalid",
