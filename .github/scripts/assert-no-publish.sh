@@ -1375,6 +1375,9 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+volume_driver:' <<<"$body"; then
     bad "$f: volume_driver is forbidden; keep the named cdt-data volume"
   fi
+  if grep -Eq '^[[:space:]]+develop:' <<<"$body"; then
+    bad "$f: Compose develop: is forbidden; do not watch/sync bind the source tree"
+  fi
   if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
     bad "$f: external: true is forbidden; keep the named cdt-data volume local"
   fi
