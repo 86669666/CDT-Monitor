@@ -547,6 +547,9 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 			return errors.New("account schedule time is invalid")
 		}
 		account.Remark = strings.TrimSpace(account.Remark)
+		if hasTextBreak(account.Remark) {
+			return errors.New("account remark is invalid")
+		}
 		if len([]rune(account.Remark)) > maxAccountRemarkRunes {
 			return errors.New("account remark is too long")
 		}
@@ -636,6 +639,9 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		}
 		if !validAccountID(a.ID) {
 			return nil, errors.New("account id is invalid")
+		}
+		if a.Remark != strings.TrimSpace(a.Remark) || hasTextBreak(a.Remark) {
+			return nil, errors.New("account remark is invalid")
 		}
 		if len([]rune(a.Remark)) > maxAccountRemarkRunes {
 			return nil, errors.New("account remark is too long")

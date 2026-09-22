@@ -368,6 +368,14 @@ func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	if err != nil || len(accounts) != 1 || accounts[0].Remark != strings.Repeat("备", maxAccountRemarkRunes) {
 		t.Fatalf("accounts=%#v err=%v", accounts, err)
 	}
+	config.Accounts[0].Remark = "bad\nnote"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "account remark is invalid") {
+		t.Fatalf("broken remark err=%v", err)
+	}
+	accounts, err = st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 || accounts[0].Remark != strings.Repeat("备", maxAccountRemarkRunes) {
+		t.Fatalf("broken remark must not persist, accounts=%#v err=%v", accounts, err)
+	}
 }
 
 func TestListAccountsRejectsNonPositiveID(t *testing.T) {
@@ -399,6 +407,16 @@ func TestListAccountsRejectsOversizedRemark(t *testing.T) {
 	_, err = st.ListAccounts(ctx)
 	if err == nil || !strings.Contains(err.Error(), "remark is too long") {
 		t.Fatalf("err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM accounts`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO accounts(access_key_id,region_id,instance_id,remark,site_type,instance_status) VALUES('LTAItest','cn-hongkong','i-test',?,'china','Unknown')`, "bad\nnote"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "account remark is invalid") {
+		t.Fatalf("broken remark err=%v", err)
 	}
 }
 
