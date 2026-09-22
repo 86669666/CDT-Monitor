@@ -1129,6 +1129,9 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+blkio_config:' <<<"$body"; then
     bad "$f: blkio_config is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+(blkio_weight|device_read_bps|device_write_bps|device_read_iops|device_write_iops):' <<<"$body"; then
+    bad "$f: device IO limits are forbidden; keep the default block IO"
+  fi
   if ! grep -Eq 'CDT_LISTEN:[[:space:]]*:8080' <<<"$body"; then
     bad "$f: CDT_LISTEN must stay :8080"
   fi
