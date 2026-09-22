@@ -294,6 +294,15 @@ func containsHeaderBreak(value string) bool {
 	return false
 }
 
+func containsHeaderControl(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if value[i] < 0x20 || value[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 const (
 	maxNotifyEmailRunes        = 254
 	maxTelegramChatRunes       = 64
@@ -380,7 +389,7 @@ func ValidateWebhookHeaders(raw string) error {
 		return errInvalidNotifyPayload
 	}
 	for key, value := range headers {
-		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
+		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) || containsHeaderControl(value) {
 			return errInvalidNotifyHeader
 		}
 		if key != strings.TrimSpace(key) || !validHTTPHeaderName(key) {
