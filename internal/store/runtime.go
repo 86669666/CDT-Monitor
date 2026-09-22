@@ -33,11 +33,16 @@ func validLogTab(tab string) bool {
 	}
 }
 
+func flattenLogMessage(message string) string {
+	message = strings.NewReplacer("\r", " ", "\n", " ", "\x00", " ").Replace(message)
+	return clipRunes(message, maxLogRunes)
+}
+
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
 	if !validLogType(logType) {
 		return errors.New("log type is invalid")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, clipRunes(message, maxLogRunes))
+	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, flattenLogMessage(message))
 	return err
 }
 
@@ -80,7 +85,7 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 		if created <= 0 {
 			return nil, errors.New("log timestamp is invalid")
 		}
-		entry.Message = clipRunes(entry.Message, maxLogRunes)
+		entry.Message = flattenLogMessage(entry.Message)
 		entry.CreatedAt = time.Unix(created, 0).UTC()
 		entries = append(entries, entry)
 	}

@@ -2030,6 +2030,32 @@ func TestAddLogMessageIsClipped(t *testing.T) {
 	}
 }
 
+func TestAddLogFlattensTextBreaks(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.AddLog(ctx, "error", "line\r\none\x00two"); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 1 || entries[0].Message != "line  one two" {
+		t.Fatalf("written=%#v err=%v", entries, err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES('audit',?,unixepoch())`, "keep\nme"); err != nil {
+		t.Fatal(err)
+	}
+	entries, err = st.ListLogs(ctx, "action", 10)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("listed=%#v err=%v", entries, err)
+	}
+	if entries[0].Message != "keep me" {
+		t.Fatalf("stored poison listed as %q", entries[0].Message)
+	}
+}
+
 func TestListLogsClipsOversizedStoredMessages(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
