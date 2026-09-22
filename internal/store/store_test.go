@@ -1625,7 +1625,7 @@ func TestGetConfigRejectsInvalidNotifyProxyPort(t *testing.T) {
 	if err = st.Setup(ctx, config); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"0", "-1", "65536", "abc"} {
+	for _, value := range []string{"0", "-1", "65536", "abc", " 1080", "1080\n"} {
 		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_proxy_port'`, value); err != nil {
 			t.Fatal(err)
 		}
@@ -1646,6 +1646,13 @@ func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
 	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
 	if err = st.Setup(ctx, config); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_host'`, "smtp.example.test\n"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification host is invalid") {
+		t.Fatalf("broken host err=%v", err)
 	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_host'`); err != nil {
 		t.Fatal(err)

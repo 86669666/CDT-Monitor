@@ -161,6 +161,7 @@ var (
 	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
 	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
 	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
+	errInvalidNotifyHost       = errors.New("notification host is invalid")
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
 	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
@@ -206,7 +207,9 @@ func validateNotifyURL(raw string, schemes []string) error {
 const maxDialHostRunes = 253
 
 func ValidateDialHost(host string) error {
-	host = strings.TrimSpace(host)
+	if containsHeaderBreak(host) || host != strings.TrimSpace(host) {
+		return errInvalidNotifyHost
+	}
 	if host == "" {
 		return nil
 	}
@@ -230,7 +233,9 @@ func ValidateTCPPort(port int) error {
 }
 
 func ValidateTCPPortString(value string) error {
-	value = strings.TrimSpace(value)
+	if containsHeaderBreak(value) || value != strings.TrimSpace(value) {
+		return errInvalidNotifyPort
+	}
 	if value == "" {
 		return nil
 	}

@@ -257,6 +257,27 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateDialHost(strings.Repeat("a", maxDialHostRunes+1)); !errors.Is(err, errInvalidNotifyIdentity) {
 		t.Fatalf("oversized dial host err=%v", err)
 	}
+	if err := ValidateDialHost(" smtp.example.test"); !errors.Is(err, errInvalidNotifyHost) {
+		t.Fatalf("padded dial host err=%v", err)
+	}
+	if err := ValidateDialHost("smtp.example.test\n"); !errors.Is(err, errInvalidNotifyHost) {
+		t.Fatalf("broken dial host err=%v", err)
+	}
+	if err := ValidateDialHost("smtp.example.test"); err != nil {
+		t.Fatalf("dial host err=%v", err)
+	}
+	if err := ValidateTCPPortString(""); err != nil {
+		t.Fatalf("empty proxy port err=%v", err)
+	}
+	if err := ValidateTCPPortString("1080"); err != nil {
+		t.Fatalf("proxy port err=%v", err)
+	}
+	if err := ValidateTCPPortString(" 1080"); !errors.Is(err, errInvalidNotifyPort) {
+		t.Fatalf("padded proxy port err=%v", err)
+	}
+	if err := ValidateTCPPortString("1080\n"); !errors.Is(err, errInvalidNotifyPort) {
+		t.Fatalf("broken proxy port err=%v", err)
+	}
 	if err := ValidateCallbackURL("https://example.test/" + strings.Repeat("x", maxNotifyURLRunes)); !errors.Is(err, errInvalidNotifyPayload) {
 		t.Fatalf("oversized webhook URL err=%v", err)
 	}
