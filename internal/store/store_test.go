@@ -2134,6 +2134,13 @@ func TestListAPIKeysRejectsPaddedScopes(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
 		t.Fatalf("mixed padded scope err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE api_keys SET scopes=?`, "[\"widget:read\",\"cron:\\nrun\"]"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("broken scope err=%v", err)
+	}
 }
 
 func TestCreateAPIKeyReturnsPositiveID(t *testing.T) {
@@ -4162,6 +4169,19 @@ func TestCorruptAPIKeyScopesDoNotRecordLastUsed(t *testing.T) {
 	}
 	if lastUsed.Valid {
 		t.Fatal("corrupt key must not record last_used_at")
+	}
+	broken := "cdt_broken_scope_token"
+	if _, err = st.db.Exec(`INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES('newline',?,?,unixepoch())`, security.TokenHash(broken), "[\"widget:read\",\"cron:\\nrun\"]"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ValidateAPIKey(context.Background(), broken); err == nil || !strings.Contains(err.Error(), "invalid API key scope") {
+		t.Fatalf("broken scope err=%v", err)
+	}
+	if err = st.db.QueryRow(`SELECT last_used_at FROM api_keys WHERE name='newline'`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatal("broken scope must not record last_used_at")
 	}
 }
 
