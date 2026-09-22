@@ -871,3 +871,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许恰好一行 `EXPOSE 8080`。`EXPOSE 80/443` 本来就禁止。不要再暴露其它端口；TLS 仍在外部反向代理
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T05:01Z` / 2026-09-22 13:01 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `30cbe51` 再加 security-events permission 扫描：
+
+- Publish Guard 现禁止任何 `security-events:` permission（含 `read`）。`security-events: write` 本来就禁止。不要让 token 上传 SARIF 或改代码扫描告警
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
