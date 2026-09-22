@@ -1384,6 +1384,9 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+develop:' <<<"$body"; then
     bad "$f: Compose develop: is forbidden; do not watch/sync bind the source tree"
   fi
+  if grep -Eq '^[[:space:]]+(post_start|pre_stop):' <<<"$body"; then
+    bad "$f: Compose lifecycle hooks are forbidden; keep the image entrypoint"
+  fi
   if grep -Eq 'external:[[:space:]]*true' <<<"$body"; then
     bad "$f: external: true is forbidden; keep the named cdt-data volume local"
   fi
