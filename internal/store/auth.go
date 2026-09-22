@@ -30,30 +30,30 @@ func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.T
 	if since.IsZero() || since.Unix() <= 0 {
 		return 0, errors.New("login window is invalid")
 	}
-	ip = clipIP(ip)
-	if !validStoredIP(ip) {
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
 		return 0, nil
 	}
 	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, ip, since.Unix()).Scan(&count)
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, ip, since.Unix()).Scan(&count)
 	return count, err
 }
 
 func (s *Store) RecordLoginFailure(ctx context.Context, ip string) error {
-	ip = clipIP(ip)
-	if !validStoredIP(ip) {
-		return errors.New("ip is invalid")
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
 	return err
 }
 
 func (s *Store) ClearLoginFailures(ctx context.Context, ip string) error {
-	ip = clipIP(ip)
-	if !validStoredIP(ip) {
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
+	_, err = s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
 	return err
 }
 
@@ -61,11 +61,11 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	if ttl <= 0 {
 		return "", errors.New("session ttl is invalid")
 	}
-	ip = clipIP(ip)
-	if !validStoredIP(ip) {
-		return "", errors.New("ip is invalid")
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return "", err
 	}
-	userAgent, err := sessionUserAgent(userAgent)
+	userAgent, err = sessionUserAgent(userAgent)
 	if err != nil {
 		return "", err
 	}
@@ -103,11 +103,10 @@ func hasTextBreak(value string) bool {
 }
 
 func sessionUserAgent(value string) (string, error) {
-	clipped := clipUserAgent(value)
-	if hasTextBreak(clipped) {
+	if hasTextBreak(value) {
 		return "", errors.New("user agent is invalid")
 	}
-	return clipped, nil
+	return clipUserAgent(value), nil
 }
 
 func clipIP(value string) string {
@@ -116,6 +115,17 @@ func clipIP(value string) string {
 
 func validStoredIP(ip string) bool {
 	return ip != "" && !hasTextBreak(ip)
+}
+
+func normalizeStoredIP(value string) (string, error) {
+	if hasTextBreak(value) {
+		return "", errors.New("ip is invalid")
+	}
+	ip := clipIP(value)
+	if !validStoredIP(ip) {
+		return "", errors.New("ip is invalid")
+	}
+	return ip, nil
 }
 
 func clipRunes(value string, max int) string {
@@ -130,11 +140,11 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 	if ttl <= 0 {
 		return "", errors.New("session ttl is invalid")
 	}
-	ip = clipIP(ip)
-	if !validStoredIP(ip) {
-		return "", errors.New("ip is invalid")
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return "", err
 	}
-	userAgent, err := sessionUserAgent(userAgent)
+	userAgent, err = sessionUserAgent(userAgent)
 	if err != nil {
 		return "", err
 	}
