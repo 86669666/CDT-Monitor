@@ -186,6 +186,13 @@ func TestGetConfigRejectsInvalidSettingKey(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
 		t.Fatalf("padded key err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET key=? WHERE key=' timezone'`, "time\nzone"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
+		t.Fatalf("broken key err=%v", err)
+	}
 }
 
 func TestPutSettingTxRejectsOversizedValue(t *testing.T) {
@@ -216,7 +223,7 @@ func TestPutSettingTxRejectsInvalidKey(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	for _, key := range []string{"", "   ", " timezone"} {
+	for _, key := range []string{"", "   ", " timezone", "time\nzone"} {
 		err = st.WithTx(ctx, func(tx *sql.Tx) error {
 			return putSettingTx(ctx, tx, key, "ok")
 		})
@@ -225,7 +232,7 @@ func TestPutSettingTxRejectsInvalidKey(t *testing.T) {
 		}
 	}
 	var count int
-	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key IN ('','   ',' timezone')`).Scan(&count); err != nil || count != 0 {
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key IN (?,?,?,?)`, "", "   ", " timezone", "time\nzone").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("invalid keys persisted count=%d err=%v", count, err)
 	}
 }

@@ -80,7 +80,7 @@ func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
 		if err = rows.Scan(&key, &value); err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) {
+		if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) || hasTextBreak(key) {
 			return nil, errors.New("setting key is invalid")
 		}
 		if len([]rune(key)) > maxSettingKeyRunes || len(value) > maxSettingValueBytes {
@@ -454,7 +454,7 @@ func hashPassword(password string) (string, error) {
 }
 
 func putSettingTx(ctx context.Context, tx *sql.Tx, key, value string) error {
-	if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) {
+	if strings.TrimSpace(key) == "" || key != strings.TrimSpace(key) || hasTextBreak(key) {
 		return errors.New("setting key is invalid")
 	}
 	if len([]rune(key)) > maxSettingKeyRunes || len(value) > maxSettingValueBytes {
