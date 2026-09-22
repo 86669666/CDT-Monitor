@@ -33,11 +33,16 @@ func validLogTab(tab string) bool {
 	}
 }
 
+func flattenLogMessage(message string) string {
+	message = strings.NewReplacer("\r", " ", "\n", " ", "\x00", " ").Replace(message)
+	return clipRunes(message, maxLogRunes)
+}
+
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
 	if !validLogType(logType) {
 		return errors.New("log type is invalid")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, clipRunes(message, maxLogRunes))
+	_, err := s.db.ExecContext(ctx, `INSERT INTO logs(type,message,created_at) VALUES(?,?,unixepoch())`, logType, flattenLogMessage(message))
 	return err
 }
 
@@ -80,7 +85,7 @@ func (s *Store) ListLogs(ctx context.Context, tab string, limit int) ([]domain.L
 		if created <= 0 {
 			return nil, errors.New("log timestamp is invalid")
 		}
-		entry.Message = clipRunes(entry.Message, maxLogRunes)
+		entry.Message = flattenLogMessage(entry.Message)
 		entry.CreatedAt = time.Unix(created, 0).UTC()
 		entries = append(entries, entry)
 	}
@@ -367,8 +372,8 @@ func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
 	if err := requireClaimAccount(ctx, s.db, job.Type, job.AccountID); err != nil {
 		return domain.Job{}, err
 	}
-	job.Result = clipRunes(job.Result, maxLogRunes)
-	job.Error = clipRunes(job.Error, maxLogRunes)
+	job.Result = flattenLogMessage(job.Result)
+	job.Error = flattenLogMessage(job.Error)
 	job.AvailableAt, job.CreatedAt, job.UpdatedAt = time.Unix(available, 0).UTC(), time.Unix(created, 0).UTC(), time.Unix(updated, 0).UTC()
 	return job, nil
 }
@@ -443,7 +448,7 @@ func (s *Store) CompleteJob(ctx context.Context, id, result string) error {
 	if !validJobID(id) {
 		return sql.ErrNoRows
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, clipRunes(result, maxLogRunes), id)
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status='completed',result=?,error='',unique_key=CASE WHEN type='monitor_account' THEN unique_key ELSE NULL END,updated_at=unixepoch() WHERE id=?`, flattenLogMessage(result), id)
 	if err != nil {
 		return err
 	}
@@ -474,7 +479,7 @@ func (s *Store) FailJob(ctx context.Context, job domain.Job, jobErr error) error
 		delay := time.Duration(1<<min(job.Attempts, 6)) * time.Second
 		available = available.Add(delay)
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,available_at=?,unique_key=CASE WHEN ?='failed' THEN NULL ELSE unique_key END,updated_at=unixepoch() WHERE id=?`, status, clipRunes(jobErr.Error(), maxLogRunes), available.Unix(), status, job.ID)
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,available_at=?,unique_key=CASE WHEN ?='failed' THEN NULL ELSE unique_key END,updated_at=unixepoch() WHERE id=?`, status, flattenLogMessage(jobErr.Error()), available.Unix(), status, job.ID)
 	if err != nil {
 		return err
 	}
@@ -764,7 +769,7 @@ func (s *Store) FailOutbox(ctx context.Context, item OutboxItem, sendErr error) 
 		status = "queued"
 		available = available.Add(time.Duration(1<<min(item.Attempts, 7)) * time.Second)
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status=?,last_error=?,available_at=?,updated_at=unixepoch() WHERE id=?`, status, clipRunes(sendErr.Error(), maxLogRunes), available.Unix(), item.ID)
+	res, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET status=?,last_error=?,available_at=?,updated_at=unixepoch() WHERE id=?`, status, flattenLogMessage(sendErr.Error()), available.Unix(), item.ID)
 	if err != nil {
 		return err
 	}
