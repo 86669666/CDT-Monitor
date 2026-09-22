@@ -2860,6 +2860,37 @@ func TestCreateSessionRejectsInvalidTTL(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsBlankIP(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	kept, err := st.CreateSession(ctx, "127.0.0.1", "kept", time.Hour)
+	if err != nil || kept == "" {
+		t.Fatal(err)
+	}
+	for _, ip := range []string{"", "   "} {
+		token, err := st.CreateSession(ctx, ip, "blank", time.Hour)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "ip is invalid") {
+			t.Fatalf("create ip=%q token=%q err=%v", ip, token, err)
+		}
+		token, err = st.CreateExclusiveSession(ctx, ip, "blank", time.Hour)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "ip is invalid") {
+			t.Fatalf("exclusive ip=%q token=%q err=%v", ip, token, err)
+		}
+	}
+	valid, err := st.ValidateSession(ctx, kept)
+	if err != nil || !valid {
+		t.Fatalf("blank ip must not replace the existing session, valid=%v err=%v", valid, err)
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("sessions=%d err=%v", count, err)
+	}
+}
+
 func TestCreateExclusiveSessionReplacesPrevious(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

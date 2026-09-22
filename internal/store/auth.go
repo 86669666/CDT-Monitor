@@ -61,13 +61,17 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	if ttl <= 0 {
 		return "", errors.New("session ttl is invalid")
 	}
+	ip = clipIP(ip)
+	if ip == "" {
+		return "", errors.New("ip is invalid")
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
 	}
 	now := time.Now().UTC()
 	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-		security.TokenHash(token), clipIP(ip), clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
+		security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
 	return token, err
 }
 
@@ -106,6 +110,10 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 	if ttl <= 0 {
 		return "", errors.New("session ttl is invalid")
 	}
+	ip = clipIP(ip)
+	if ip == "" {
+		return "", errors.New("ip is invalid")
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
@@ -116,7 +124,7 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-			security.TokenHash(token), clipIP(ip), clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
+			security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
 		return err
 	})
 	return token, err
