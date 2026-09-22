@@ -220,6 +220,18 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateCallbackURL("socks5://127.0.0.1:1080"); !errors.Is(err, errUnsupportedNotifyScheme) {
 		t.Fatalf("webhook socks URL err=%v", err)
 	}
+	if err := ValidateCallbackURL(" https://example.test/hook"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("padded webhook URL err=%v", err)
+	}
+	if err := ValidateCallbackURL("https://example.test/hook\n"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("broken webhook URL err=%v", err)
+	}
+	if err := ValidateProxyURL(" socks5://127.0.0.1:1080"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("padded proxy URL err=%v", err)
+	}
+	if err := ValidateProxyURL("socks5://127.0.0.1:1080\n"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("broken proxy URL err=%v", err)
+	}
 	if err := ValidateProxyURL("socks5://user:proxy-pass-value@127.0.0.1:1080"); err != nil {
 		t.Fatalf("socks proxy URL rejected: %v", err)
 	}

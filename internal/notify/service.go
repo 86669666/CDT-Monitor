@@ -166,6 +166,7 @@ var (
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
 	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
 	errInvalidNotifyPayload    = errors.New("notification payload is too long")
+	errInvalidNotifyURL        = errors.New("notification URL is invalid")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -177,9 +178,11 @@ func ValidateProxyURL(raw string) error {
 }
 
 func validateNotifyURL(raw string, schemes []string) error {
-	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == domain.ClearSecretSentinel {
 		return nil
+	}
+	if containsHeaderBreak(raw) || raw != strings.TrimSpace(raw) {
+		return errInvalidNotifyURL
 	}
 	if len([]rune(raw)) > maxNotifyURLRunes {
 		return errInvalidNotifyPayload
@@ -418,7 +421,7 @@ func validateNotifyDestination(ctx context.Context, raw string) error {
 	if err := ValidateCallbackURL(raw); err != nil {
 		return err
 	}
-	parsed, err := url.Parse(strings.TrimSpace(raw))
+	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Hostname() == "" {
 		return err
 	}

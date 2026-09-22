@@ -1513,6 +1513,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 		t.Fatalf("payload status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification URL is invalid"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification URL is invalid") {
+		t.Fatalf("url status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("password is too long"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "password is too long") {
 		t.Fatalf("password status = %d body = %s", rec.Code, rec.Body.String())

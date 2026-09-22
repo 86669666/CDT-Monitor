@@ -784,6 +784,42 @@ func TestSaveConfigRejectsInvalidNotifyPorts(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsBrokenNotifyURL(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].AccessKeySecret = ""
+	config.Notifications.Webhook.URL = "https://example.test/hook\n"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification URL is invalid") {
+		t.Fatalf("broken webhook url err=%v", err)
+	}
+	config.Notifications.Webhook.URL = " https://example.test/hook"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification URL is invalid") {
+		t.Fatalf("padded webhook url err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key='notify_wh_url'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("rejected webhook url persisted count=%d err=%v", count, err)
+	}
+	config.Notifications.Webhook.URL = "https://example.test/hook"
+	config.Notifications.Telegram.ProxyURL = "socks5://127.0.0.1:1080\n"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "notification URL is invalid") {
+		t.Fatalf("broken proxy url err=%v", err)
+	}
+	config.Notifications.Telegram.ProxyURL = ""
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSaveConfigRejectsInvalidNotifyOptions(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -1674,7 +1710,32 @@ func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_proxy_ip'`); err != nil {
 		t.Fatal(err)
 	}
-	encrypted, err := st.EncryptAAD("file:///etc/passwd", "notify_wh_url")
+	encrypted, err := st.EncryptAAD("https://example.test/hook\n", "notify_wh_url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, encrypted); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL is invalid") {
+		t.Fatalf("broken webhook url err=%v", err)
+	}
+	encrypted, err = st.EncryptAAD(" socks5://127.0.0.1:1080", "notify_tg_proxy_url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_tg_proxy_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, encrypted); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification URL is invalid") {
+		t.Fatalf("padded proxy url err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM settings WHERE key='notify_tg_proxy_url'`); err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err = st.EncryptAAD("file:///etc/passwd", "notify_wh_url")
 	if err != nil {
 		t.Fatal(err)
 	}

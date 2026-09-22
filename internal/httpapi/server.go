@@ -1292,7 +1292,8 @@ func safeStoreValidationMessage(msg string) bool {
 		"passkey credential is too large",
 		"passkey credential is invalid",
 		"notification identity is too long",
-		"notification payload is too long":
+		"notification payload is too long",
+		"notification URL is invalid":
 		return true
 	default:
 		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")
