@@ -161,11 +161,14 @@ var (
 	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
 	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
 	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
+	errInvalidNotifyHeaderName = errors.New("notification header name is invalid")
 	errInvalidNotifyHost       = errors.New("notification host is invalid")
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
 	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
+	errInvalidNotifyMailbox    = errors.New("notification identity is invalid")
 	errInvalidNotifyPayload    = errors.New("notification payload is too long")
+	errInvalidNotifyURL        = errors.New("notification URL is invalid")
 )
 
 func ValidateCallbackURL(raw string) error {
@@ -177,9 +180,11 @@ func ValidateProxyURL(raw string) error {
 }
 
 func validateNotifyURL(raw string, schemes []string) error {
-	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == domain.ClearSecretSentinel {
 		return nil
+	}
+	if containsHeaderBreak(raw) || raw != strings.TrimSpace(raw) {
+		return errInvalidNotifyURL
 	}
 	if len([]rune(raw)) > maxNotifyURLRunes {
 		return errInvalidNotifyPayload
@@ -306,6 +311,9 @@ func ValidateSMTPIdentity(username, to string) error {
 	if containsHeaderBreak(username) || containsHeaderBreak(to) {
 		return errInvalidNotifyHeader
 	}
+	if username != strings.TrimSpace(username) || to != strings.TrimSpace(to) {
+		return errInvalidNotifyMailbox
+	}
 	if len([]rune(username)) > maxNotifyEmailRunes || len([]rune(to)) > maxNotifyEmailRunes {
 		return errInvalidNotifyIdentity
 	}
@@ -315,6 +323,9 @@ func ValidateSMTPIdentity(username, to string) error {
 func ValidateTelegramChatID(id string) error {
 	if containsHeaderBreak(id) {
 		return errInvalidNotifyHeader
+	}
+	if id != strings.TrimSpace(id) {
+		return errInvalidNotifyMailbox
 	}
 	if len([]rune(id)) > maxTelegramChatRunes {
 		return errInvalidNotifyIdentity
@@ -372,6 +383,9 @@ func ValidateWebhookHeaders(raw string) error {
 		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
 			return errInvalidNotifyHeader
 		}
+		if key != strings.TrimSpace(key) {
+			return errInvalidNotifyHeaderName
+		}
 		if len([]rune(key)) > maxWebhookHeaderNameRunes || len([]rune(value)) > maxWebhookHeaderValueRunes {
 			return errInvalidNotifyPayload
 		}
@@ -418,7 +432,7 @@ func validateNotifyDestination(ctx context.Context, raw string) error {
 	if err := ValidateCallbackURL(raw); err != nil {
 		return err
 	}
-	parsed, err := url.Parse(strings.TrimSpace(raw))
+	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Hostname() == "" {
 		return err
 	}

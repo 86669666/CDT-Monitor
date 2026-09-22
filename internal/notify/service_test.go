@@ -220,6 +220,18 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateCallbackURL("socks5://127.0.0.1:1080"); !errors.Is(err, errUnsupportedNotifyScheme) {
 		t.Fatalf("webhook socks URL err=%v", err)
 	}
+	if err := ValidateCallbackURL(" https://example.test/hook"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("padded webhook URL err=%v", err)
+	}
+	if err := ValidateCallbackURL("https://example.test/hook\n"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("broken webhook URL err=%v", err)
+	}
+	if err := ValidateProxyURL(" socks5://127.0.0.1:1080"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("padded proxy URL err=%v", err)
+	}
+	if err := ValidateProxyURL("socks5://127.0.0.1:1080\n"); !errors.Is(err, errInvalidNotifyURL) {
+		t.Fatalf("broken proxy URL err=%v", err)
+	}
 	if err := ValidateProxyURL("socks5://user:proxy-pass-value@127.0.0.1:1080"); err != nil {
 		t.Fatalf("socks proxy URL rejected: %v", err)
 	}
@@ -517,6 +529,12 @@ func TestValidateWebhookHeadersRejectsHopByHopNames(t *testing.T) {
 	if err := ValidateWebhookHeaders(`{"":"x"}`); !errors.Is(err, errInvalidNotifyHeader) {
 		t.Fatalf("empty header err=%v", err)
 	}
+	if err := ValidateWebhookHeaders(`{" X-Token":"v"}`); !errors.Is(err, errInvalidNotifyHeaderName) {
+		t.Fatalf("padded header name err=%v", err)
+	}
+	if err := ValidateWebhookHeaders(`{"X-Token ":"v"}`); !errors.Is(err, errInvalidNotifyHeaderName) {
+		t.Fatalf("trailing header name err=%v", err)
+	}
 	if err := ValidateWebhookHeaders(`{"` + strings.Repeat("N", maxWebhookHeaderNameRunes+1) + `":"v"}`); !errors.Is(err, errInvalidNotifyPayload) {
 		t.Fatalf("oversized header name err=%v", err)
 	}
@@ -549,6 +567,21 @@ func TestValidateSMTPIdentityRejectsOversizedMailbox(t *testing.T) {
 	}
 	if err := ValidateTelegramChatID("-100123"); err != nil {
 		t.Fatalf("normal chat id err=%v", err)
+	}
+	if err := ValidateSMTPIdentity(" monitor@example.test", "ops@example.test"); !errors.Is(err, errInvalidNotifyMailbox) {
+		t.Fatalf("padded username err=%v", err)
+	}
+	if err := ValidateSMTPIdentity("monitor@example.test", "ops@example.test "); !errors.Is(err, errInvalidNotifyMailbox) {
+		t.Fatalf("padded recipient err=%v", err)
+	}
+	if err := ValidateSMTPIdentity("", ""); err != nil {
+		t.Fatalf("empty mailbox err=%v", err)
+	}
+	if err := ValidateTelegramChatID(" -100123"); !errors.Is(err, errInvalidNotifyMailbox) {
+		t.Fatalf("padded chat id err=%v", err)
+	}
+	if err := ValidateTelegramChatID(""); err != nil {
+		t.Fatalf("empty chat id err=%v", err)
 	}
 }
 
