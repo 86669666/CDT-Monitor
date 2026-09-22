@@ -76,6 +76,7 @@ name: Publish Guard
 # Dockerfile EXPOSE stays exactly one line: EXPOSE 8080.
 # Dockerfile USER stays exactly one line: USER 65532:65532.
 # Dockerfile VOLUME stays exactly one line: VOLUME ["/data"].
+# Do not add a Dockerfile MAINTAINER instruction.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
