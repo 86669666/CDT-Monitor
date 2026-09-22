@@ -497,6 +497,9 @@ scan_job_limits() {
     if grep -Eq 'pull-requests:[[:space:]]*write' <<<"$body"; then
       bad "$f: pull-requests: write is forbidden on this fork"
     fi
+    if grep -Eq '^[[:space:]]+pull-requests:' <<<"$body"; then
+      bad "$f: pull-requests permission is forbidden on this fork"
+    fi
     if grep -Eq 'attestations:[[:space:]]*write' <<<"$body"; then
       bad "$f: attestations: write is forbidden on this fork"
     fi
