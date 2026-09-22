@@ -341,7 +341,7 @@ func nullableString(value string) any {
 }
 
 func validJobID(id string) bool {
-	return id != "" && len(id) <= maxJobIDBytes
+	return id != "" && id == strings.TrimSpace(id) && !hasTextBreak(id) && len(id) <= maxJobIDBytes
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
@@ -392,7 +392,9 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 		if err != nil {
 			return err
 		}
-		if err := validJobPayload(job.Payload); err != nil {
+		if !validJobID(job.ID) {
+			claimErr = errors.New("job id is invalid")
+		} else if err := validJobPayload(job.Payload); err != nil {
 			claimErr = err
 		} else if !validJobType(job.Type) {
 			claimErr = errors.New("job type is invalid")

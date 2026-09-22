@@ -2468,8 +2468,24 @@ func TestGetJobRejectsOversizedID(t *testing.T) {
 	if _, err = st.GetJob(ctx, strings.Repeat("j", maxJobIDBytes+1)); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized id err=%v", err)
 	}
+	if _, err = st.GetJob(ctx, " "+job.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("padded id err=%v", err)
+	}
+	if _, err = st.GetJob(ctx, "job\n1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken id err=%v", err)
+	}
 	if err = st.CompleteJob(ctx, strings.Repeat("j", maxJobIDBytes+1), "ok"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("complete oversized err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, " "+job.ID, "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("complete padded err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, "job\n1", "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("complete broken err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job.ID).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("invalid id must not complete job, status=%q err=%v", status, err)
 	}
 }
 
@@ -2738,6 +2754,8 @@ func TestClaimJobFailsInvalidStoredItem(t *testing.T) {
 	}{
 		{id: "job-unknown-type", jobType: "wipe_disk", accountID: 1, err: "job type is invalid"},
 		{id: "job-missing-account", jobType: "refresh_account", accountID: 0, err: "account id is invalid"},
+		{id: " job-pad", jobType: "refresh_account", accountID: 1, err: "job id is invalid"},
+		{id: "job\nbroken", jobType: "refresh_account", accountID: 1, err: "job id is invalid"},
 	}
 	for _, tc := range cases {
 		if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',3,unixepoch(),unixepoch(),unixepoch())`, tc.id, tc.jobType, tc.accountID, `{}`); err != nil {
@@ -2819,6 +2837,12 @@ func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	}
 	if err = st.FailJob(ctx, domain.Job{ID: strings.Repeat("j", maxJobIDBytes+1)}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized id err=%v", err)
+	}
+	if err = st.FailJob(ctx, domain.Job{ID: " job-pad"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("padded id err=%v", err)
+	}
+	if err = st.FailJob(ctx, domain.Job{ID: "job\n1"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken id err=%v", err)
 	}
 	job, err := st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3)
 	if err != nil {
