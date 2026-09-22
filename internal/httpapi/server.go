@@ -1283,6 +1283,7 @@ func safeStoreValidationMessage(msg string) bool {
 		"notification header fields must not contain line breaks",
 		"account schedule time is invalid",
 		"notification port is invalid",
+		"notification host is invalid",
 		"notification option is invalid",
 		"account max traffic is invalid",
 		"too many accounts",

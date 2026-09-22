@@ -304,7 +304,7 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 	if len([]rune(uniqueKey)) > maxJobUniqueKeyRunes {
 		return domain.Job{}, errors.New("job unique key is too long")
 	}
-	if uniqueKey != "" && uniqueKey != strings.TrimSpace(uniqueKey) {
+	if uniqueKey != "" && (uniqueKey != strings.TrimSpace(uniqueKey) || hasTextBreak(uniqueKey)) {
 		return domain.Job{}, errors.New("job unique key is invalid")
 	}
 	switch jobType {
@@ -341,7 +341,7 @@ func nullableString(value string) any {
 }
 
 func validJobID(id string) bool {
-	return id != "" && len(id) <= maxJobIDBytes
+	return id != "" && id == strings.TrimSpace(id) && !hasTextBreak(id) && len(id) <= maxJobIDBytes
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (domain.Job, error) {
@@ -392,7 +392,9 @@ func (s *Store) ClaimJob(ctx context.Context) (domain.Job, error) {
 		if err != nil {
 			return err
 		}
-		if err := validJobPayload(job.Payload); err != nil {
+		if !validJobID(job.ID) {
+			claimErr = errors.New("job id is invalid")
+		} else if err := validJobPayload(job.Payload); err != nil {
 			claimErr = err
 		} else if !validJobType(job.Type) {
 			claimErr = errors.New("job type is invalid")
@@ -496,7 +498,7 @@ const (
 )
 
 func validLeaseIdentity(value string, max int) bool {
-	return value != "" && value == strings.TrimSpace(value) && len([]rune(value)) <= max
+	return value != "" && value == strings.TrimSpace(value) && !hasTextBreak(value) && len([]rune(value)) <= max
 }
 
 func (s *Store) AcquireLease(ctx context.Context, name, owner string, ttl time.Duration) (bool, error) {
@@ -559,7 +561,7 @@ func validActionEventStatus(status string) bool {
 }
 
 func validActionEventKey(key string) bool {
-	return key != "" && key == strings.TrimSpace(key) && len([]rune(key)) <= maxActionEventKeyRunes
+	return key != "" && key == strings.TrimSpace(key) && !hasTextBreak(key) && len([]rune(key)) <= maxActionEventKeyRunes
 }
 
 func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int64, eventType, status, detail string) (bool, error) {
@@ -646,7 +648,7 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 }
 
 func validOutboxEventID(id string) bool {
-	return id != "" && id == strings.TrimSpace(id) && len([]rune(id)) <= maxOutboxEventIDRunes
+	return id != "" && id == strings.TrimSpace(id) && !hasTextBreak(id) && len([]rune(id)) <= maxOutboxEventIDRunes
 }
 
 func ValidateOutboxItem(channel string, event domain.NotificationEvent) error {
@@ -746,7 +748,7 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 }
 
 func validOutboxID(id string) bool {
-	return id != "" && id == strings.TrimSpace(id) && len(id) <= maxOutboxIDBytes
+	return id != "" && id == strings.TrimSpace(id) && !hasTextBreak(id) && len(id) <= maxOutboxIDBytes
 }
 
 func (s *Store) CompleteOutbox(ctx context.Context, id string) error {

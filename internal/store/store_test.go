@@ -186,6 +186,13 @@ func TestGetConfigRejectsInvalidSettingKey(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
 		t.Fatalf("padded key err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET key=? WHERE key=' timezone'`, "time\nzone"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "setting key is invalid") {
+		t.Fatalf("broken key err=%v", err)
+	}
 }
 
 func TestPutSettingTxRejectsOversizedValue(t *testing.T) {
@@ -216,7 +223,7 @@ func TestPutSettingTxRejectsInvalidKey(t *testing.T) {
 	}
 	defer st.Close()
 	ctx := context.Background()
-	for _, key := range []string{"", "   ", " timezone"} {
+	for _, key := range []string{"", "   ", " timezone", "time\nzone"} {
 		err = st.WithTx(ctx, func(tx *sql.Tx) error {
 			return putSettingTx(ctx, tx, key, "ok")
 		})
@@ -225,7 +232,7 @@ func TestPutSettingTxRejectsInvalidKey(t *testing.T) {
 		}
 	}
 	var count int
-	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key IN ('','   ',' timezone')`).Scan(&count); err != nil || count != 0 {
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key IN (?,?,?,?)`, "", "   ", " timezone", "time\nzone").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("invalid keys persisted count=%d err=%v", count, err)
 	}
 }
@@ -1395,6 +1402,21 @@ func TestGetConfigRejectsInvalidNumericSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	for _, value := range []string{" 600", "600\n"} {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='api_interval'`, value); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "setting api_interval is invalid") {
+			t.Fatalf("api_interval %q err=%v", value, err)
+		}
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='600' WHERE key='api_interval'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.GetConfig(ctx); err != nil {
+		t.Fatalf("canonical interval err=%v", err)
+	}
 }
 
 func TestGetConfigRejectsInvalidBooleanSetting(t *testing.T) {
@@ -1430,6 +1452,22 @@ func TestGetConfigRejectsInvalidBooleanSetting(t *testing.T) {
 		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.reset, tc.key); err != nil {
 			t.Fatal(err)
 		}
+	}
+	for _, value := range []string{" true", "true\n"} {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='keep_alive'`, value); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "setting keep_alive is invalid") {
+			t.Fatalf("keep_alive %q err=%v", value, err)
+		}
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='TRUE' WHERE key='keep_alive'`); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil || !loaded.KeepAlive {
+		t.Fatalf("canonical bool loaded=%v err=%v", loaded.KeepAlive, err)
 	}
 }
 
@@ -1559,6 +1597,8 @@ func TestGetConfigRejectsInvalidNotifyOptions(t *testing.T) {
 		{key: "notify_tg_proxy_type", value: "http", reset: "none"},
 		{key: "notify_wh_request_type", value: "XML", reset: "JSON"},
 		{key: "notify_wh_provider", value: "slack", reset: "generic"},
+		{key: "notify_secure", value: "ssl\n", reset: "ssl"},
+		{key: "notify_wh_method", value: " GET", reset: "GET"},
 	}
 	for _, tc := range cases {
 		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.value, tc.key); err != nil {
@@ -1585,7 +1625,7 @@ func TestGetConfigRejectsInvalidNotifyProxyPort(t *testing.T) {
 	if err = st.Setup(ctx, config); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"0", "-1", "65536", "abc"} {
+	for _, value := range []string{"0", "-1", "65536", "abc", " 1080", "1080\n"} {
 		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_proxy_port'`, value); err != nil {
 			t.Fatal(err)
 		}
@@ -1606,6 +1646,13 @@ func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
 	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai"}
 	if err = st.Setup(ctx, config); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_host'`, "smtp.example.test\n"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification host is invalid") {
+		t.Fatalf("broken host err=%v", err)
 	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_host'`); err != nil {
 		t.Fatal(err)
@@ -2159,6 +2206,12 @@ func TestAcquireLeaseRejectsOversizedIdentity(t *testing.T) {
 	if _, err = st.AcquireLease(ctx, "monitor", " owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("padded owner err=%v", err)
 	}
+	if _, err = st.AcquireLease(ctx, "mon\nitor", "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("broken name err=%v", err)
+	}
+	if _, err = st.AcquireLease(ctx, "monitor", "own\ner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
+		t.Fatalf("broken owner err=%v", err)
+	}
 	if _, err = st.AcquireLease(ctx, strings.Repeat("n", maxLeaseNameRunes+1), "owner-a", time.Minute); err == nil || !strings.Contains(err.Error(), "lease identity is invalid") {
 		t.Fatalf("name err=%v", err)
 	}
@@ -2263,6 +2316,9 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	if _, err = st.RecordActionEvent(ctx, " threshold:1:active", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("padded key err=%v", err)
 	}
+	if _, err = st.RecordActionEvent(ctx, "thresh\nold:1:active", 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("broken key err=%v", err)
+	}
 	if _, err = st.RecordActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1), 1, "threshold", "detected", ""); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
 	}
@@ -2324,6 +2380,9 @@ func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
 	}
 	if err = st.DeleteActionEvent(ctx, "   "); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("blank key err=%v", err)
+	}
+	if err = st.DeleteActionEvent(ctx, "thresh\nold:1"); err == nil || !strings.Contains(err.Error(), "key is invalid") {
+		t.Fatalf("broken key err=%v", err)
 	}
 	if err = st.DeleteActionEvent(ctx, strings.Repeat("k", maxActionEventKeyRunes+1)); err == nil || !strings.Contains(err.Error(), "key is invalid") {
 		t.Fatalf("long key err=%v", err)
@@ -2449,8 +2508,24 @@ func TestGetJobRejectsOversizedID(t *testing.T) {
 	if _, err = st.GetJob(ctx, strings.Repeat("j", maxJobIDBytes+1)); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized id err=%v", err)
 	}
+	if _, err = st.GetJob(ctx, " "+job.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("padded id err=%v", err)
+	}
+	if _, err = st.GetJob(ctx, "job\n1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken id err=%v", err)
+	}
 	if err = st.CompleteJob(ctx, strings.Repeat("j", maxJobIDBytes+1), "ok"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("complete oversized err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, " "+job.ID, "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("complete padded err=%v", err)
+	}
+	if err = st.CompleteJob(ctx, "job\n1", "ok"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("complete broken err=%v", err)
+	}
+	var status string
+	if err = st.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job.ID).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("invalid id must not complete job, status=%q err=%v", status, err)
 	}
 }
 
@@ -2719,6 +2794,8 @@ func TestClaimJobFailsInvalidStoredItem(t *testing.T) {
 	}{
 		{id: "job-unknown-type", jobType: "wipe_disk", accountID: 1, err: "job type is invalid"},
 		{id: "job-missing-account", jobType: "refresh_account", accountID: 0, err: "account id is invalid"},
+		{id: " job-pad", jobType: "refresh_account", accountID: 1, err: "job id is invalid"},
+		{id: "job\nbroken", jobType: "refresh_account", accountID: 1, err: "job id is invalid"},
 	}
 	for _, tc := range cases {
 		if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',3,unixepoch(),unixepoch(),unixepoch())`, tc.id, tc.jobType, tc.accountID, `{}`); err != nil {
@@ -2800,6 +2877,12 @@ func TestFailJobRejectsInvalidIDAndNilError(t *testing.T) {
 	}
 	if err = st.FailJob(ctx, domain.Job{ID: strings.Repeat("j", maxJobIDBytes+1)}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized id err=%v", err)
+	}
+	if err = st.FailJob(ctx, domain.Job{ID: " job-pad"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("padded id err=%v", err)
+	}
+	if err = st.FailJob(ctx, domain.Job{ID: "job\n1"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken id err=%v", err)
 	}
 	job, err := st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "", 3)
 	if err != nil {
@@ -2926,6 +3009,13 @@ func TestEnqueueJobRejectsOversizedPayloadAndUniqueKey(t *testing.T) {
 	}
 	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "   ", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
 		t.Fatalf("blank unique key err=%v", err)
+	}
+	if _, err = st.EnqueueJob(ctx, "refresh_account", 1, `{}`, "mon\nitor:1", 3); err == nil || !strings.Contains(err.Error(), "unique key is invalid") {
+		t.Fatalf("broken unique key err=%v", err)
+	}
+	var count int
+	if err = st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid unique key must not enqueue, count=%d err=%v", count, err)
 	}
 	insertTestAccount(t, st, 1)
 	maxPayload := `"` + strings.Repeat("x", maxJobPayloadRunes-2) + `"`
@@ -4464,6 +4554,9 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: " evt-1", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("padded id err=%v", err)
 	}
+	if err = st.AddOutbox(ctx, domain.NotificationEvent{ID: "evt\n1", Type: "threshold"}, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("broken id err=%v", err)
+	}
 	event.Summary = strings.Repeat("s", maxOutboxPayloadRunes)
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("payload err=%v", err)
@@ -4560,6 +4653,7 @@ func TestClaimOutboxFailsInvalidStoredItem(t *testing.T) {
 		{id: "evt-type:email", channel: "email", payload: `{"id":"evt-type","type":"unknown","title":"t","summary":"s"}`, err: "event type is invalid"},
 		{id: "evt-pad:email", channel: "email", payload: `{"id":" evt-pad","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
 		{id: " evt-row:email", channel: "email", payload: `{"id":"evt-row","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
+		{id: "evt\nbreak:email", channel: "email", payload: `{"id":"evt-break","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
 		{id: "evt-title:email", channel: "email", payload: `{"id":"evt-title","type":"threshold","title":"t\nn","summary":"s"}`, err: "event is invalid"},
 	}
 	for _, tc := range cases {
@@ -4597,6 +4691,9 @@ func TestValidateOutboxItem(t *testing.T) {
 	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: " evt-1", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
 		t.Fatalf("padded id err=%v", err)
 	}
+	if err := ValidateOutboxItem("email", domain.NotificationEvent{ID: "evt\n1", Type: "threshold"}); err == nil || !strings.Contains(err.Error(), "event id is invalid") {
+		t.Fatalf("broken id err=%v", err)
+	}
 	event.Title = strings.Repeat("t", maxNotificationTitleRunes+1)
 	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("title err=%v", err)
@@ -4633,6 +4730,12 @@ func TestOutboxCompleteAndFailRejectOversizedIDs(t *testing.T) {
 	}
 	if err = st.FailOutbox(ctx, OutboxItem{ID: " evt-1:email"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("padded fail err=%v", err)
+	}
+	if err = st.CompleteOutbox(ctx, "evt\n1:email"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken complete err=%v", err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt\n1:email"}, errors.New("boom")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("broken fail err=%v", err)
 	}
 	if err = st.CompleteOutbox(ctx, long); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("oversized complete err=%v", err)
