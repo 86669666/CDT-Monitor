@@ -1825,6 +1825,16 @@ func TestListAPIKeysRejectsInvalidName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "api key name is invalid") {
 		t.Fatalf("long name err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM api_keys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO api_keys(name,token_hash,scopes,created_at) VALUES(?,'hash-break','["widget:read"]',unixepoch())`, "bad\nname"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAPIKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "api key name is invalid") {
+		t.Fatalf("broken name err=%v", err)
+	}
 }
 
 func TestListAPIKeysRejectsUnknownScopes(t *testing.T) {
@@ -3519,6 +3529,15 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	if _, _, err = st.CreateAPIKey(ctx, "widget", []string{}, nil); err == nil {
 		t.Fatal("expected empty scope list to be rejected")
 	}
+	for _, name := range []string{"bad\nname", "bad\rname", "bad\x00name"} {
+		if _, _, err = st.CreateAPIKey(ctx, name, []string{"widget:read"}, nil); err == nil || !strings.Contains(err.Error(), "api key name is invalid") {
+			t.Fatalf("name=%q err=%v", name, err)
+		}
+	}
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil || len(keys) != 0 {
+		t.Fatalf("broken names must not persist, keys=%#v err=%v", keys, err)
+	}
 }
 
 func TestCreateAPIKeyRejectsOversizedName(t *testing.T) {
@@ -3946,6 +3965,16 @@ func TestListPasskeysRejectsInvalidName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "passkey name is invalid") {
 		t.Fatalf("long name err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `DELETE FROM passkeys`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES(?,?,?,unixepoch())`, "bad\nname", []byte("id-break"), `{"id":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListPasskeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "passkey name is invalid") {
+		t.Fatalf("broken name err=%v", err)
+	}
 }
 
 func TestSavePasskeyRejectsWhenAtCap(t *testing.T) {
@@ -4126,6 +4155,9 @@ func TestSavePasskeyRejectsOversizedName(t *testing.T) {
 	credential := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")}
 	if err = st.SavePasskey(ctx, strings.Repeat("n", maxPasskeyNameRunes+1), credential); err == nil {
 		t.Fatal("expected oversized passkey name to be rejected")
+	}
+	if err = st.SavePasskey(ctx, "bad\nname", credential); err == nil || !strings.Contains(err.Error(), "passkey name is invalid") {
+		t.Fatalf("broken name err=%v", err)
 	}
 	if err = st.SavePasskey(ctx, strings.Repeat("n", maxPasskeyNameRunes), credential); err != nil {
 		t.Fatal(err)

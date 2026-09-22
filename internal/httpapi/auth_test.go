@@ -711,6 +711,10 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 			t.Fatalf("empty key leaked store error: %s", got.Body.String())
 		}
 	}
+	broken := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"bad\nkey","scopes":["widget:read"]}`, cookies, headers)
+	if broken.Code != http.StatusBadRequest || !strings.Contains(broken.Body.String(), "api_key_failed") || strings.Contains(broken.Body.String(), "name is invalid") {
+		t.Fatalf("broken name status = %d body = %s", broken.Code, broken.Body.String())
+	}
 	listed := doRequest(t, handler, http.MethodGet, "/api/v1/api-keys", "", cookies, nil)
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"keys":[]`) {
 		t.Fatalf("empty key list status = %d body = %s", listed.Code, listed.Body.String())
