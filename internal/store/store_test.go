@@ -2942,6 +2942,33 @@ func TestSessionUserAgentIsClipped(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsBrokenUserAgent(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	kept, err := st.CreateSession(ctx, "127.0.0.1", "kept", time.Hour)
+	if err != nil || kept == "" {
+		t.Fatal(err)
+	}
+	for _, ua := range []string{"ok\ninjected", "ok\rinjected", "ok\x00injected"} {
+		token, err := st.CreateSession(ctx, "127.0.0.1", ua, time.Hour)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "user agent is invalid") {
+			t.Fatalf("create ua=%q token=%q err=%v", ua, token, err)
+		}
+		token, err = st.CreateExclusiveSession(ctx, "127.0.0.1", ua, time.Hour)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "user agent is invalid") {
+			t.Fatalf("exclusive ua=%q token=%q err=%v", ua, token, err)
+		}
+	}
+	valid, err := st.ValidateSession(ctx, kept)
+	if err != nil || !valid {
+		t.Fatalf("broken user agent must not replace the existing session, valid=%v err=%v", valid, err)
+	}
+}
+
 func TestLoginFailureIPIsClipped(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
