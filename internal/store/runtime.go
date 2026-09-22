@@ -33,9 +33,13 @@ func validLogTab(tab string) bool {
 	}
 }
 
-func flattenLogMessage(message string) string {
+func flattenStoredText(message string, max int) string {
 	message = strings.NewReplacer("\r", " ", "\n", " ", "\x00", " ").Replace(message)
-	return clipRunes(message, maxLogRunes)
+	return clipRunes(message, max)
+}
+
+func flattenLogMessage(message string) string {
+	return flattenStoredText(message, maxLogRunes)
 }
 
 func (s *Store) AddLog(ctx context.Context, logType, message string) error {
@@ -568,7 +572,7 @@ func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int
 	if err := s.requireActiveAccount(ctx, accountID); err != nil {
 		return false, err
 	}
-	detail = clipRunes(detail, maxActionEventDetailRunes)
+	detail = flattenStoredText(detail, maxActionEventDetailRunes)
 	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(event_key,account_id,type,status,detail,created_at,updated_at) VALUES(?,?,?,?,?,unixepoch(),unixepoch())`, key, accountID, eventType, status, detail)
 	if err != nil {
 		return false, err

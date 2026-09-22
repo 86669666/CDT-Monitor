@@ -2284,6 +2284,27 @@ func TestRecordActionEventRejectsInvalidFields(t *testing.T) {
 	}
 }
 
+func TestRecordActionEventFlattensDetail(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	insertTestAccount(t, st, 1)
+	fresh, err := st.RecordActionEvent(ctx, "threshold:1:active", 1, "threshold", "detected", "line\none\x00two")
+	if err != nil || !fresh {
+		t.Fatalf("fresh=%v err=%v", fresh, err)
+	}
+	var detail string
+	if err = st.db.QueryRowContext(ctx, `SELECT detail FROM action_events WHERE event_key='threshold:1:active'`).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail != "line one two" {
+		t.Fatalf("detail=%q", detail)
+	}
+}
+
 func TestDeleteActionEventRejectsInvalidKey(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
