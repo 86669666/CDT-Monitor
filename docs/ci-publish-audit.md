@@ -896,3 +896,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `issues:` permission（含 `read`）。不要让 token 读或改 GitHub Issues
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T05:28Z` / 2026-09-22 13:28 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `9e4eeb4` 再加 Dockerfile VOLUME 扫描：
+
+- Publish Guard 现只允许恰好一行 `VOLUME ["/data"]`。不要再声明其它卷
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
