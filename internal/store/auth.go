@@ -155,7 +155,7 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 }
 
 func validAuthToken(token string) bool {
-	return token != "" && len(token) <= maxAuthTokenBytes
+	return token != "" && token == strings.TrimSpace(token) && !hasTextBreak(token) && len(token) <= maxAuthTokenBytes
 }
 
 func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error) {

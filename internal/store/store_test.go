@@ -3931,6 +3931,35 @@ func TestAuthTokensRejectOversizedValues(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("normal session valid=%v err=%v", valid, err)
 	}
+	for _, broken := range []string{"", " " + token, token + "\n"} {
+		valid, err = st.ValidateSession(ctx, broken)
+		if err != nil || valid {
+			t.Fatalf("token %q valid=%v err=%v", broken, valid, err)
+		}
+		if err = st.DeleteSession(ctx, broken); err != nil {
+			t.Fatalf("delete %q err=%v", broken, err)
+		}
+	}
+	valid, err = st.ValidateSession(ctx, token)
+	if err != nil || !valid {
+		t.Fatalf("real session removed valid=%v err=%v", valid, err)
+	}
+	_, apiToken, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, broken := range []string{" " + apiToken, apiToken + "\n"} {
+		if _, err = st.ValidateAPIKey(ctx, broken); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("api token %q err=%v", broken, err)
+		}
+	}
+	var lastUsed sql.NullInt64
+	if err = st.db.QueryRowContext(ctx, `SELECT last_used_at FROM api_keys WHERE name='widget'`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatalf("broken api token recorded last_used=%v", lastUsed.Int64)
+	}
 }
 
 func TestValidateAPIKeyIgnoresUnknownScopes(t *testing.T) {
