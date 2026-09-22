@@ -1293,6 +1293,7 @@ func safeStoreValidationMessage(msg string) bool {
 		"passkey credential is too large",
 		"passkey credential is invalid",
 		"notification identity is too long",
+		"notification identity is invalid",
 		"notification payload is too long",
 		"notification URL is invalid":
 		return true

@@ -1769,6 +1769,16 @@ func TestGetConfigRejectsInvalidNotifyIdentities(t *testing.T) {
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_email'`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_email'`, " ops@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification identity is invalid") {
+		t.Fatalf("padded email err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_email'`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_username'`, strings.Repeat("u", 255)); err != nil {
 		t.Fatal(err)
 	}
@@ -1777,6 +1787,16 @@ func TestGetConfigRejectsInvalidNotifyIdentities(t *testing.T) {
 		t.Fatalf("username err=%v", err)
 	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_username'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_chat_id'`, " -100123"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification identity is invalid") {
+		t.Fatalf("padded chat id err=%v", err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_chat_id'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_tg_chat_id'`, strings.Repeat("1", 65)); err != nil {

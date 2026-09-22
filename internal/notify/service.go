@@ -166,6 +166,7 @@ var (
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
 	errInvalidNotifyIdentity   = errors.New("notification identity is too long")
+	errInvalidNotifyMailbox    = errors.New("notification identity is invalid")
 	errInvalidNotifyPayload    = errors.New("notification payload is too long")
 	errInvalidNotifyURL        = errors.New("notification URL is invalid")
 )
@@ -310,6 +311,9 @@ func ValidateSMTPIdentity(username, to string) error {
 	if containsHeaderBreak(username) || containsHeaderBreak(to) {
 		return errInvalidNotifyHeader
 	}
+	if username != strings.TrimSpace(username) || to != strings.TrimSpace(to) {
+		return errInvalidNotifyMailbox
+	}
 	if len([]rune(username)) > maxNotifyEmailRunes || len([]rune(to)) > maxNotifyEmailRunes {
 		return errInvalidNotifyIdentity
 	}
@@ -319,6 +323,9 @@ func ValidateSMTPIdentity(username, to string) error {
 func ValidateTelegramChatID(id string) error {
 	if containsHeaderBreak(id) {
 		return errInvalidNotifyHeader
+	}
+	if id != strings.TrimSpace(id) {
+		return errInvalidNotifyMailbox
 	}
 	if len([]rune(id)) > maxTelegramChatRunes {
 		return errInvalidNotifyIdentity

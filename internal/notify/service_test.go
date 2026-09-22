@@ -568,6 +568,21 @@ func TestValidateSMTPIdentityRejectsOversizedMailbox(t *testing.T) {
 	if err := ValidateTelegramChatID("-100123"); err != nil {
 		t.Fatalf("normal chat id err=%v", err)
 	}
+	if err := ValidateSMTPIdentity(" monitor@example.test", "ops@example.test"); !errors.Is(err, errInvalidNotifyMailbox) {
+		t.Fatalf("padded username err=%v", err)
+	}
+	if err := ValidateSMTPIdentity("monitor@example.test", "ops@example.test "); !errors.Is(err, errInvalidNotifyMailbox) {
+		t.Fatalf("padded recipient err=%v", err)
+	}
+	if err := ValidateSMTPIdentity("", ""); err != nil {
+		t.Fatalf("empty mailbox err=%v", err)
+	}
+	if err := ValidateTelegramChatID(" -100123"); !errors.Is(err, errInvalidNotifyMailbox) {
+		t.Fatalf("padded chat id err=%v", err)
+	}
+	if err := ValidateTelegramChatID(""); err != nil {
+		t.Fatalf("empty chat id err=%v", err)
+	}
 }
 
 func TestValidateNotifySecretRejectsOversizedCredentials(t *testing.T) {
