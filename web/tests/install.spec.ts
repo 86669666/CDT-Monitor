@@ -12897,3 +12897,36 @@ test('instance start keeps the console on live status_failed', async ({ page }) 
   await expect(page.locator('.toast-stack')).not.toContainText('状态加载失败')
   expect(statusCalls).toBeGreaterThan(0)
 })
+
+test('instance stop keeps the console on live status_failed', async ({ page }) => {
+  let failStatus = false
+  let statusCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failStatus) return route.fulfill({ json: dashboardStatus })
+    statusCalls += 1
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'status_failed', message: '状态加载失败' } },
+    })
+  })
+  await page.route('**/api/v1/accounts/1/actions/stop', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('stop-status', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    failStatus = true
+    return route.fulfill({ json: jobFixture('stop-status', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '关机' }).click()
+  await expect(page.getByText('已发送关机指令')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  await expect(page.locator('.toast-stack')).not.toContainText('状态加载失败')
+  expect(statusCalls).toBeGreaterThan(0)
+})
