@@ -625,6 +625,9 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 	if !validNotificationEventType(event.Type) {
 		return errors.New("notification event type is invalid")
 	}
+	if hasTextBreak(event.Title) || hasTextBreak(event.Summary) {
+		return errors.New("notification event is invalid")
+	}
 	if len([]rune(event.Title)) > maxNotificationTitleRunes || len([]rune(event.Summary)) > maxNotificationSummaryRunes {
 		return errors.New("notification event is too long")
 	}
@@ -632,7 +635,7 @@ func validateNotificationEvent(event domain.NotificationEvent) error {
 		return errors.New("notification event is too long")
 	}
 	for key, value := range event.Fields {
-		if key == "" || key != strings.TrimSpace(key) {
+		if key == "" || key != strings.TrimSpace(key) || hasTextBreak(key) || hasTextBreak(value) {
 			return errors.New("notification field is invalid")
 		}
 		if len([]rune(key)) > maxNotificationFieldRunes || len([]rune(value)) > maxNotificationFieldRunes {

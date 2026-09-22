@@ -4472,6 +4472,16 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 		t.Fatalf("title err=%v", err)
 	}
 	event.Title = "t"
+	event.Title = "bad\ntitle"
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event is invalid") {
+		t.Fatalf("broken title err=%v", err)
+	}
+	event.Title = "t"
+	event.Summary = "bad\nsum"
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "event is invalid") {
+		t.Fatalf("broken summary err=%v", err)
+	}
+	event.Summary = "s"
 	event.Fields = map[string]string{strings.Repeat("k", maxNotificationFieldRunes+1): "v"}
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("field err=%v", err)
@@ -4483,6 +4493,10 @@ func TestAddOutboxRejectsInvalidChannelAndOversizedPayload(t *testing.T) {
 	event.Fields = map[string]string{" k": "v"}
 	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "field is invalid") {
 		t.Fatalf("padded field err=%v", err)
+	}
+	event.Fields = map[string]string{"k": "bad\nv"}
+	if err = st.AddOutbox(ctx, event, []string{"email"}); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("broken field value err=%v", err)
 	}
 	event.Fields = map[string]string{}
 	for i := 0; i < maxNotificationFields+1; i++ {
@@ -4539,6 +4553,7 @@ func TestClaimOutboxFailsInvalidStoredItem(t *testing.T) {
 		{id: "evt-type:email", channel: "email", payload: `{"id":"evt-type","type":"unknown","title":"t","summary":"s"}`, err: "event type is invalid"},
 		{id: "evt-pad:email", channel: "email", payload: `{"id":" evt-pad","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
 		{id: " evt-row:email", channel: "email", payload: `{"id":"evt-row","type":"threshold","title":"t","summary":"s"}`, err: "event id is invalid"},
+		{id: "evt-title:email", channel: "email", payload: `{"id":"evt-title","type":"threshold","title":"t\nn","summary":"s"}`, err: "event is invalid"},
 	}
 	for _, tc := range cases {
 		if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,available_at,created_at,updated_at) VALUES(?,?,?,?,'queued',unixepoch(),unixepoch(),unixepoch())`, tc.id, strings.Split(tc.id, ":")[0], tc.channel, tc.payload); err != nil {
@@ -4580,9 +4595,18 @@ func TestValidateOutboxItem(t *testing.T) {
 		t.Fatalf("title err=%v", err)
 	}
 	event.Title = "t"
+	event.Summary = "bad\nsum"
+	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "event is invalid") {
+		t.Fatalf("broken summary err=%v", err)
+	}
+	event.Summary = "s"
 	event.Fields = map[string]string{" k": "v"}
 	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "field is invalid") {
 		t.Fatalf("padded field err=%v", err)
+	}
+	event.Fields = map[string]string{"k": "bad\nv"}
+	if err := ValidateOutboxItem("email", event); err == nil || !strings.Contains(err.Error(), "field is invalid") {
+		t.Fatalf("broken field value err=%v", err)
 	}
 }
 
