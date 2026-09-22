@@ -794,6 +794,51 @@ func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Ac
 	return consumed, periodDesc
 }
 
+// Refresh the persisted traffic value before building a report. Daily reports
+// are queued before the regular monitor cycle, so relying on the stored value
+// can otherwise report the previous (often zero) sample.
+func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Account, now time.Time, maxAge time.Duration) domain.Account {
+	if e.provider == nil {
+		return account
+	}
+	if maxAge <= 0 {
+		maxAge = 10 * time.Minute
+	}
+	if account.TrafficUsed > 0 && !account.UpdatedAt.IsZero() {
+		age := time.Since(account.UpdatedAt)
+		if age >= 0 && age < maxAge {
+			return account
+		}
+	}
+	lock := e.accountLock(account.ID)
+	lock.Lock()
+	defer lock.Unlock()
+	// A monitor job may have refreshed the account while this report waited
+	// for its per-account lock.
+	latest, err := e.store.GetAccount(ctx, account.ID)
+	if err == nil && latest.TrafficUsed > 0 && !latest.UpdatedAt.IsZero() && time.Since(latest.UpdatedAt) < maxAge {
+		return latest
+	}
+
+	secret, err := e.store.AccountSecret(ctx, account.ID)
+	if err != nil {
+		return account
+	}
+	traffic, err := e.provider.GetTraffic(ctx, account, secret)
+	if err != nil {
+		_ = e.store.AddLog(ctx, "error", fmt.Sprintf("日报流量查询失败 [%s]: %v", masked(account.AccessKeyID), err))
+		return account
+	}
+	updatedAt := time.Now().UTC()
+	if err = e.store.UpdateRuntime(ctx, account.ID, traffic, account.InstanceStatus, updatedAt); err != nil {
+		return account
+	}
+	_ = e.store.AddTrafficStats(ctx, account.ID, traffic, now)
+	account.TrafficUsed = traffic
+	account.UpdatedAt = updatedAt
+	return account
+}
+
 type instanceReportItem struct {
 	account     domain.Account
 	consumed    float64
@@ -837,6 +882,8 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 		if !force && targetAcc.DailyReport != nil && !*targetAcc.DailyReport {
 			return "daily report disabled for this account", nil
 		}
+		refreshed := e.refreshTrafficForReport(ctx, *targetAcc, now, time.Duration(config.APIInterval)*time.Second)
+		*targetAcc = refreshed
 
 		consumed, periodDesc := e.calculateInstanceConsumption(ctx, *targetAcc, now, dateStr)
 		instName := targetAcc.Remark
@@ -928,6 +975,7 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 			excludedCount++
 			continue
 		}
+		acc = e.refreshTrafficForReport(ctx, acc, now, time.Duration(config.APIInterval)*time.Second)
 		consumed, periodDesc := e.calculateInstanceConsumption(ctx, acc, now, dateStr)
 
 		item := instanceReportItem{
@@ -1067,7 +1115,6 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 			sb.WriteString(fmt.Sprintf("   • 本月费用：%s | 账户余额：%s\n", costText, balText))
 		}
 	}
-	
 	fields := map[string]string{
 		"统计日期":   dateStr,
 		"纳入实例":   fmt.Sprintf("%d 台", len(items)),

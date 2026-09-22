@@ -335,3 +335,69 @@ func TestDailyReportFallbackWhenNo24HourData(t *testing.T) {
 		t.Fatalf("expected consumed ~0.5 GB from fallback, got: %s", result)
 	}
 }
+
+func TestDailyReportRefreshesTrafficBeforeCalculation(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+
+	cfg := domain.Config{
+		AdminPassword:     "Strong-Password-42!",
+		TrafficThreshold:  95,
+		ShutdownMode:      "KeepCharging",
+		ThresholdAction:   "stop_and_notify",
+		APIInterval:       600,
+		Timezone:          "Asia/Shanghai",
+		EnableDailyReport: true,
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{
+			Enabled: true,
+			URL:     "https://webhook.example.com/test",
+		}},
+		Accounts: []domain.Account{{
+			AccessKeyID:     "LTAI_REPORT_REFRESH",
+			AccessKeySecret: "secret",
+			RegionID:        "cn-hongkong",
+			InstanceID:      "i-report-refresh",
+			MaxTraffic:      200,
+			Remark:          "日报刷新测试节点",
+		}},
+	}
+	if err = st.Setup(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+	// The stored runtime starts at zero, while the last known baseline is 1 GB.
+	// The provider returns 1.25 GB when the report refreshes the account.
+	if err = st.AddTrafficStats(ctx, accounts[0].ID, 1.0, now.Add(-24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := New(st, billingTestProvider{}, notify.New(), nil, 1)
+	result, err := eng.generateAndSendDailyReport(ctx, true, accounts[0].ID)
+	if err != nil {
+		t.Fatalf("generateAndSendDailyReport failed: %v", err)
+	}
+	if !strings.Contains(result, "0.25 GB") && !strings.Contains(result, "0.250 GB") {
+		t.Fatalf("expected refreshed traffic consumption, got: %s", result)
+	}
+
+	outboxItem, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatalf("expected outbox item: %v", err)
+	}
+	var event domain.NotificationEvent
+	if err = json.Unmarshal([]byte(outboxItem.Payload), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Fields["消耗流量"] != "0.25 GB" {
+		t.Fatalf("expected 0.25 GB in event fields, got %q", event.Fields["消耗流量"])
+	}
+}
