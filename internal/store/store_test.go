@@ -2985,7 +2985,7 @@ func TestCreateSessionRejectsBlankIP(t *testing.T) {
 	if err != nil || kept == "" {
 		t.Fatal(err)
 	}
-	for _, ip := range []string{"", "   "} {
+	for _, ip := range []string{"", "   ", "127.0.0.\n1"} {
 		token, err := st.CreateSession(ctx, ip, "blank", time.Hour)
 		if token != "" || err == nil || !strings.Contains(err.Error(), "ip is invalid") {
 			t.Fatalf("create ip=%q token=%q err=%v", ip, token, err)
@@ -3124,7 +3124,7 @@ func TestLoginFailureRejectsBlankIP(t *testing.T) {
 	if err = st.RecordLoginFailure(ctx, "127.0.0.1"); err != nil {
 		t.Fatal(err)
 	}
-	for _, ip := range []string{"", "   "} {
+	for _, ip := range []string{"", "   ", "127.0.0.\n1"} {
 		if err = st.RecordLoginFailure(ctx, ip); err == nil || !strings.Contains(err.Error(), "ip is invalid") {
 			t.Fatalf("record ip=%q err=%v", ip, err)
 		}
