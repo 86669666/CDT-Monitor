@@ -1173,6 +1173,9 @@ scan_compose() {
   if grep -Eq 'oom_kill_disable:[[:space:]]*true' <<<"$body"; then
     bad "$f: oom_kill_disable is forbidden"
   fi
+  if grep -Eq '^[[:space:]]+oom_kill_disable:' <<<"$body"; then
+    bad "$f: oom_kill_disable is forbidden; keep the default OOM killer"
+  fi
   if grep -Eq '^[[:space:]]+oom_score_adj:' <<<"$body"; then
     bad "$f: oom_score_adj is forbidden"
   fi
