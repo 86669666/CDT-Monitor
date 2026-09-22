@@ -931,3 +931,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `statuses:` permission（含 `read`）。`statuses: write` 本来就在额外写权限组里。SHA pin 扫描已按 `uses:` 键锚定，不再把 `statuses:` 误判成 action
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T06:20Z` / 2026-09-22 14:20 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `b933d32` 再加 Dockerfile MAINTAINER 扫描：
+
+- Publish Guard 现禁止 Dockerfile `MAINTAINER`（大小写不敏感）。身份留在 OCI label，不要用废弃指令写维护者
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

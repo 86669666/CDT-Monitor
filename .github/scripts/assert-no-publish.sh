@@ -844,6 +844,9 @@ scan_dockerfile() {
   if grep -Eq '^SHELL ' <<<"$body"; then
     bad "$f: SHELL overrides are forbidden"
   fi
+  if grep -Eiq '^MAINTAINER ' <<<"$body"; then
+    bad "$f: MAINTAINER is forbidden; keep OCI labels"
+  fi
   if grep -Eq -- '--mount=type=(ssh|secret)' <<<"$body"; then
     bad "$f: RUN --mount ssh/secret is forbidden"
   fi
