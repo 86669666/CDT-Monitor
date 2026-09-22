@@ -482,6 +482,13 @@ func TestListAccountsRejectsInvalidScheduleClock(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "schedule time is invalid") {
 		t.Fatalf("err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET start_time=' 09:00'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.ListAccounts(ctx)
+	if err == nil || !strings.Contains(err.Error(), "schedule time is invalid") {
+		t.Fatalf("padded clock err=%v", err)
+	}
 }
 
 func TestListAccountsRejectsInvalidTraffic(t *testing.T) {

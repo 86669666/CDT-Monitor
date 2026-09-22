@@ -465,7 +465,6 @@ func putSettingTx(ctx context.Context, tx *sql.Tx, key, value string) error {
 }
 
 func validScheduleClock(value string) bool {
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return true
 	}
