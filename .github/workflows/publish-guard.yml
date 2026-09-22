@@ -67,6 +67,7 @@ name: Publish Guard
 # Do not add Compose volume_driver.
 # Dockerfile must not use RUN --mount ssh/secret or --network=host.
 # Dockerfile EXPOSE stays exactly one line: EXPOSE 8080.
+# Dockerfile USER stays exactly one line: USER 65532:65532.
 # CI verify still skips these files so a login regression would
 # not run Go tests; this workflow covers that.
 
