@@ -926,3 +926,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 Compose `post_start` 和 `pre_stop`。不要在容器启动或停止时再跑额外命令
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T06:13Z` / 2026-09-22 14:13 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `348aae5` 再加 statuses permission 扫描：
+
+- Publish Guard 现禁止任何 `statuses:` permission（含 `read`）。`statuses: write` 本来就在额外写权限组里。SHA pin 扫描已按 `uses:` 键锚定，不再把 `statuses:` 误判成 action
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
