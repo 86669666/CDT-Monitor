@@ -1566,6 +1566,8 @@ func TestGetConfigRejectsInvalidNotifyOptions(t *testing.T) {
 		{key: "notify_tg_proxy_type", value: "http", reset: "none"},
 		{key: "notify_wh_request_type", value: "XML", reset: "JSON"},
 		{key: "notify_wh_provider", value: "slack", reset: "generic"},
+		{key: "notify_secure", value: "ssl\n", reset: "ssl"},
+		{key: "notify_wh_method", value: " GET", reset: "GET"},
 	}
 	for _, tc := range cases {
 		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.value, tc.key); err != nil {

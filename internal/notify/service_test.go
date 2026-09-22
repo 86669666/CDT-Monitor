@@ -368,6 +368,19 @@ func TestValidateNotifyOptionsRejectsUnknownValues(t *testing.T) {
 	if err := ValidateNotifyOptions(config); err != nil {
 		t.Fatalf("known options err=%v", err)
 	}
+	config.Webhook.Method = "post"
+	if err := ValidateNotifyOptions(config); err != nil {
+		t.Fatalf("case-insensitive method err=%v", err)
+	}
+	config.Webhook.Method = " POST"
+	if err := ValidateNotifyOptions(config); !errors.Is(err, errInvalidNotifyOption) {
+		t.Fatalf("padded method err=%v", err)
+	}
+	config.Email.Security = "ssl\n"
+	if err := ValidateNotifyOptions(config); !errors.Is(err, errInvalidNotifyOption) {
+		t.Fatalf("broken security err=%v", err)
+	}
+	config.Email.Security = "ssl"
 	config.Webhook.Method = "PUT"
 	if err := ValidateNotifyOptions(config); !errors.Is(err, errInvalidNotifyOption) {
 		t.Fatalf("method err=%v", err)

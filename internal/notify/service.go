@@ -242,9 +242,11 @@ func ValidateTCPPortString(value string) error {
 }
 
 func allowedNotifyOption(value string, options ...string) bool {
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return true
+	}
+	if containsHeaderBreak(value) || value != strings.TrimSpace(value) {
+		return false
 	}
 	for _, option := range options {
 		if strings.EqualFold(value, option) {
