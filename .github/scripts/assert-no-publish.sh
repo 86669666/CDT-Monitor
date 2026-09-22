@@ -518,6 +518,12 @@ scan_job_limits() {
     if grep -Eq '^[[:space:]]+issues:' <<<"$body"; then
       bad "$f: issues permission is forbidden on this fork"
     fi
+    if grep -Eq 'models:[[:space:]]*write' <<<"$body"; then
+      bad "$f: models: write is forbidden on this fork"
+    fi
+    if grep -Eq '^[[:space:]]+models:' <<<"$body"; then
+      bad "$f: models permission is forbidden on this fork"
+    fi
     if grep -Eq '(deployments|statuses|checks|pages|repository-projects):[[:space:]]*write' <<<"$body"; then
       bad "$f: extra GitHub write permissions are forbidden on this fork"
     fi
