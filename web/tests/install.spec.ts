@@ -12767,3 +12767,33 @@ test('instance stop refresh opens login on live unauthorized status', async ({ p
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
   expect(statusCalls).toBeGreaterThan(0)
 })
+
+test('instance refresh opens login on live unauthorized status', async ({ page }) => {
+  let failStatus = false
+  let statusCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failStatus) return route.fulfill({ json: dashboardStatus })
+    statusCalls += 1
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: jobFixture('refresh-ok', 'queued', 1) })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    failStatus = true
+    return route.fulfill({ json: jobFixture('refresh-ok', 'completed', 1) })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '刷新实例' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  expect(statusCalls).toBeGreaterThan(0)
+})
