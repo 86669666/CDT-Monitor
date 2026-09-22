@@ -301,6 +301,10 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		return
 	}
 	name := strings.TrimSpace(request.Name)
+	if strings.ContainsAny(name, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称无效")
+		return
+	}
 	if len([]rune(name)) > 64 {
 		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称过长")
 		return
@@ -885,6 +889,10 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" || len(request.Scopes) == 0 {
 		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称和权限不能为空")
+		return
+	}
+	if strings.ContainsAny(request.Name, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称无效")
 		return
 	}
 	if len(request.Scopes) > 8 {
