@@ -31,7 +31,7 @@ func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.T
 		return 0, errors.New("login window is invalid")
 	}
 	ip = clipIP(ip)
-	if ip == "" {
+	if !validStoredIP(ip) {
 		return 0, nil
 	}
 	var count int
@@ -41,7 +41,7 @@ func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.T
 
 func (s *Store) RecordLoginFailure(ctx context.Context, ip string) error {
 	ip = clipIP(ip)
-	if ip == "" {
+	if !validStoredIP(ip) {
 		return errors.New("ip is invalid")
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
@@ -50,7 +50,7 @@ func (s *Store) RecordLoginFailure(ctx context.Context, ip string) error {
 
 func (s *Store) ClearLoginFailures(ctx context.Context, ip string) error {
 	ip = clipIP(ip)
-	if ip == "" {
+	if !validStoredIP(ip) {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
@@ -62,7 +62,7 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 		return "", errors.New("session ttl is invalid")
 	}
 	ip = clipIP(ip)
-	if ip == "" {
+	if !validStoredIP(ip) {
 		return "", errors.New("ip is invalid")
 	}
 	userAgent, err := sessionUserAgent(userAgent)
@@ -114,6 +114,10 @@ func clipIP(value string) string {
 	return clipRunes(strings.TrimSpace(value), maxIPRunes)
 }
 
+func validStoredIP(ip string) bool {
+	return ip != "" && !hasTextBreak(ip)
+}
+
 func clipRunes(value string, max int) string {
 	runes := []rune(value)
 	if len(runes) <= max {
@@ -127,7 +131,7 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 		return "", errors.New("session ttl is invalid")
 	}
 	ip = clipIP(ip)
-	if ip == "" {
+	if !validStoredIP(ip) {
 		return "", errors.New("ip is invalid")
 	}
 	userAgent, err := sessionUserAgent(userAgent)
