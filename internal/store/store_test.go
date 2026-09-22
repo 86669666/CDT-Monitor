@@ -1690,6 +1690,13 @@ func TestGetConfigRejectsForbiddenNotifyDestinations(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "notification host is invalid") {
 		t.Fatalf("broken host err=%v", err)
 	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='notify_host'`, "smtp.example.test#25"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification host is invalid") {
+		t.Fatalf("fragment host err=%v", err)
+	}
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='100.100.100.200' WHERE key='notify_host'`); err != nil {
 		t.Fatal(err)
 	}

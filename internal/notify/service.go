@@ -200,9 +200,6 @@ func validateNotifyURL(raw string, schemes []string) error {
 	if host == "" {
 		return errors.New("notification URL host is required")
 	}
-	if strings.Contains(host, "#") {
-		return nil
-	}
 	if forbiddenNotifyHost(host) {
 		return errForbiddenNotifyHost
 	}
@@ -217,6 +214,9 @@ func ValidateDialHost(host string) error {
 	}
 	if host == "" {
 		return nil
+	}
+	if strings.Contains(host, "#") {
+		return errInvalidNotifyHost
 	}
 	if len([]rune(host)) > maxDialHostRunes {
 		return errInvalidNotifyIdentity
@@ -469,7 +469,16 @@ func validateNotifyDestination(ctx context.Context, raw string) error {
 
 func resolveForbiddenHost(ctx context.Context, host string) error {
 	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
-	if host == "" || strings.Contains(host, "#") || net.ParseIP(host) != nil {
+	if host == "" {
+		return nil
+	}
+	if strings.Contains(host, "#") {
+		return errInvalidNotifyHost
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if forbiddenNotifyIP(ip) {
+			return errForbiddenNotifyHost
+		}
 		return nil
 	}
 	if forbiddenNotifyHost(host) {
