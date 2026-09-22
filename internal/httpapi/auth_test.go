@@ -1463,6 +1463,11 @@ func TestStoreValidationErrorsStayPublic(t *testing.T) {
 		t.Fatalf("header injection status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
+	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("notification header name is invalid"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "notification header name is invalid") {
+		t.Fatalf("header name status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
 	writeStoreValidationError(rec, "config_failed", "配置保存失败", errors.New("account schedule time is invalid"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "account schedule time is invalid") {
 		t.Fatalf("schedule status = %d body = %s", rec.Code, rec.Body.String())

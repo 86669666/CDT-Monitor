@@ -161,6 +161,7 @@ var (
 	errUnsupportedNotifyScheme = errors.New("notification URL must use http or https")
 	errForbiddenNotifyHost     = errors.New("notification URL host is not allowed")
 	errInvalidNotifyHeader     = errors.New("notification header fields must not contain line breaks")
+	errInvalidNotifyHeaderName = errors.New("notification header name is invalid")
 	errInvalidNotifyHost       = errors.New("notification host is invalid")
 	errInvalidNotifyPort       = errors.New("notification port is invalid")
 	errInvalidNotifyOption     = errors.New("notification option is invalid")
@@ -374,6 +375,9 @@ func ValidateWebhookHeaders(raw string) error {
 	for key, value := range headers {
 		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
 			return errInvalidNotifyHeader
+		}
+		if key != strings.TrimSpace(key) {
+			return errInvalidNotifyHeaderName
 		}
 		if len([]rune(key)) > maxWebhookHeaderNameRunes || len([]rune(value)) > maxWebhookHeaderValueRunes {
 			return errInvalidNotifyPayload
