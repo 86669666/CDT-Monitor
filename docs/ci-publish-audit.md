@@ -891,3 +891,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许恰好一行 `USER 65532:65532`。`USER root` / `USER 0` 本来就禁止。不要换成其它用户
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T05:20Z` / 2026-09-22 13:20 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `840389d` 再加 issues permission 扫描：
+
+- Publish Guard 现禁止任何 `issues:` permission（含 `read`）。不要让 token 读或改 GitHub Issues
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
