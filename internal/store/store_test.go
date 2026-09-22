@@ -2588,6 +2588,45 @@ func TestGetJobClipsOversizedResultAndError(t *testing.T) {
 	}
 }
 
+func TestJobAndOutboxTextBreaksAreFlattened(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	id := "job-break"
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,status,max_attempts,available_at,created_at,updated_at) VALUES(?,'test_notification',0,'{}','running',3,unixepoch(),unixepoch(),unixepoch())`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.CompleteJob(ctx, id, "line\none"); err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.GetJob(ctx, id)
+	if err != nil || job.Result != "line one" {
+		t.Fatalf("result=%q err=%v", job.Result, err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE jobs SET status='running',error='' WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailJob(ctx, domain.Job{ID: id, Attempts: 3, MaxAttempts: 3}, errors.New("bad\r\nerr")); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err = st.db.QueryRowContext(ctx, `SELECT error FROM jobs WHERE id=?`, id).Scan(&stored); err != nil || stored != "bad  err" {
+		t.Fatalf("job error=%q err=%v", stored, err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO notification_outbox(id,event_id,channel,payload,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES('evt-break:email','evt-break','email','{"id":"evt-break","type":"threshold","title":"t","summary":"s"}','sending',1,3,unixepoch(),unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.FailOutbox(ctx, OutboxItem{ID: "evt-break:email", Attempts: 3, MaxAttempts: 3}, errors.New("out\nbox")); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.db.QueryRowContext(ctx, `SELECT last_error FROM notification_outbox WHERE id='evt-break:email'`).Scan(&stored); err != nil || stored != "out box" {
+		t.Fatalf("outbox error=%q err=%v", stored, err)
+	}
+}
+
 func TestClaimJobFailsOversizedPayload(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
