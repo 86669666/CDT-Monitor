@@ -941,3 +941,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `checks:` permission（含 `read`）。`checks: write` 本来就在额外写权限组里。不要让 token 读或改 GitHub Checks
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T06:45Z` / 2026-09-22 14:45 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `968c93d` 再加 Compose oom_kill_disable 扫描：
+
+- Publish Guard 现禁止任何 Compose `oom_kill_disable:`（含 `false`）。`oom_kill_disable: true` 本来就禁止。保持默认 OOM killer
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
