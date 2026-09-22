@@ -775,6 +775,13 @@ scan_dockerfile() {
   if grep -Eq '^EXPOSE (80|443)$' <<<"$body"; then
     bad "$f: do not EXPOSE 80/443; TLS stays at the reverse proxy"
   fi
+  extra_expose="$(grep -E '^EXPOSE ' <<<"$body" | grep -Ev '^EXPOSE 8080$' || true)"
+  if [ -n "$extra_expose" ]; then
+    bad "$f: extra EXPOSE lines are forbidden; keep only EXPOSE 8080"
+  fi
+  if [ "$(grep -c -E '^EXPOSE 8080$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: EXPOSE must stay exactly one EXPOSE 8080 line"
+  fi
   if ! grep -Eq '^STOPSIGNAL SIGTERM$' <<<"$body"; then
     bad "$f: STOPSIGNAL must stay SIGTERM"
   fi
