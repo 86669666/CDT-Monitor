@@ -1402,6 +1402,21 @@ func TestGetConfigRejectsInvalidNumericSetting(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	for _, value := range []string{" 600", "600\n"} {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='api_interval'`, value); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "setting api_interval is invalid") {
+			t.Fatalf("api_interval %q err=%v", value, err)
+		}
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='600' WHERE key='api_interval'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.GetConfig(ctx); err != nil {
+		t.Fatalf("canonical interval err=%v", err)
+	}
 }
 
 func TestGetConfigRejectsInvalidBooleanSetting(t *testing.T) {
@@ -1437,6 +1452,22 @@ func TestGetConfigRejectsInvalidBooleanSetting(t *testing.T) {
 		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key=?`, tc.reset, tc.key); err != nil {
 			t.Fatal(err)
 		}
+	}
+	for _, value := range []string{" true", "true\n"} {
+		if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='keep_alive'`, value); err != nil {
+			t.Fatal(err)
+		}
+		_, err = st.GetConfig(ctx)
+		if err == nil || !strings.Contains(err.Error(), "setting keep_alive is invalid") {
+			t.Fatalf("keep_alive %q err=%v", value, err)
+		}
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='TRUE' WHERE key='keep_alive'`); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := st.GetConfig(ctx)
+	if err != nil || !loaded.KeepAlive {
+		t.Fatalf("canonical bool loaded=%v err=%v", loaded.KeepAlive, err)
 	}
 }
 

@@ -46,7 +46,14 @@ func boolSetting(settings map[string]string, key string, fallback bool) (bool, e
 	if !ok {
 		return fallback, nil
 	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
+	if hasTextBreak(value) {
+		return false, fmt.Errorf("setting %s is invalid", key)
+	}
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && value != trimmed {
+		return false, fmt.Errorf("setting %s is invalid", key)
+	}
+	switch strings.ToLower(trimmed) {
 	case "1", "true":
 		return true, nil
 	case "0", "false", "":
@@ -58,10 +65,19 @@ func boolSetting(settings map[string]string, key string, fallback bool) (bool, e
 
 func intSetting(settings map[string]string, key string, fallback int) (int, error) {
 	value, ok := settings[key]
-	if !ok || strings.TrimSpace(value) == "" {
+	if !ok {
 		return fallback, nil
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if hasTextBreak(value) {
+		return 0, fmt.Errorf("setting %s is invalid", key)
+	}
+	if strings.TrimSpace(value) == "" {
+		return fallback, nil
+	}
+	if value != strings.TrimSpace(value) {
+		return 0, fmt.Errorf("setting %s is invalid", key)
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, fmt.Errorf("setting %s is invalid", key)
 	}
