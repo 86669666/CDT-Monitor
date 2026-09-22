@@ -65,13 +65,17 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	if ip == "" {
 		return "", errors.New("ip is invalid")
 	}
+	userAgent, err := sessionUserAgent(userAgent)
+	if err != nil {
+		return "", err
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
 	}
 	now := time.Now().UTC()
 	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-		security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
+		security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
 	return token, err
 }
 
@@ -94,6 +98,14 @@ func clipUserAgent(value string) string {
 	return clipRunes(value, maxUserAgentRunes)
 }
 
+func sessionUserAgent(value string) (string, error) {
+	clipped := clipUserAgent(value)
+	if strings.ContainsAny(clipped, "\r\n\x00") {
+		return "", errors.New("user agent is invalid")
+	}
+	return clipped, nil
+}
+
 func clipIP(value string) string {
 	return clipRunes(strings.TrimSpace(value), maxIPRunes)
 }
@@ -114,6 +126,10 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 	if ip == "" {
 		return "", errors.New("ip is invalid")
 	}
+	userAgent, err := sessionUserAgent(userAgent)
+	if err != nil {
+		return "", err
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
@@ -124,7 +140,7 @@ func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
-			security.TokenHash(token), ip, clipUserAgent(userAgent), now.Unix(), now.Add(ttl).Unix())
+			security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
 		return err
 	})
 	return token, err
