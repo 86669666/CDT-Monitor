@@ -3210,7 +3210,7 @@ func TestCreateSessionRejectsBlankIP(t *testing.T) {
 	if err != nil || kept == "" {
 		t.Fatal(err)
 	}
-	for _, ip := range []string{"", "   ", "127.0.0.\n1"} {
+	for _, ip := range []string{"", "   ", "127.0.0.\n1", strings.Repeat("9", maxIPRunes) + "\n"} {
 		token, err := st.CreateSession(ctx, ip, "blank", time.Hour)
 		if token != "" || err == nil || !strings.Contains(err.Error(), "ip is invalid") {
 			t.Fatalf("create ip=%q token=%q err=%v", ip, token, err)
@@ -3306,6 +3306,31 @@ func TestCreateSessionRejectsBrokenUserAgent(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("broken user agent must not replace the existing session, valid=%v err=%v", valid, err)
 	}
+	for _, ua := range []string{
+		strings.Repeat("A", maxUserAgentRunes) + "\n",
+		strings.Repeat("A", maxUserAgentRunes) + "\r",
+		strings.Repeat("A", maxUserAgentRunes) + "\x00",
+	} {
+		token, err := st.CreateSession(ctx, "127.0.0.1", ua, time.Hour)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "user agent is invalid") {
+			t.Fatalf("clipped create ua len=%d token=%q err=%v", len([]rune(ua)), token, err)
+		}
+		token, err = st.CreateExclusiveSession(ctx, "127.0.0.1", ua, time.Hour)
+		if token != "" || err == nil || !strings.Contains(err.Error(), "user agent is invalid") {
+			t.Fatalf("clipped exclusive ua len=%d token=%q err=%v", len([]rune(ua)), token, err)
+		}
+	}
+	valid, err = st.ValidateSession(ctx, kept)
+	if err != nil || !valid {
+		t.Fatalf("clipped break must not replace the existing session, valid=%v err=%v", valid, err)
+	}
+	var stored string
+	if err = st.db.QueryRowContext(ctx, `SELECT user_agent FROM sessions`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "kept" {
+		t.Fatalf("stored user agent = %q", stored)
+	}
 }
 
 func TestLoginFailureIPIsClipped(t *testing.T) {
@@ -3349,7 +3374,7 @@ func TestLoginFailureRejectsBlankIP(t *testing.T) {
 	if err = st.RecordLoginFailure(ctx, "127.0.0.1"); err != nil {
 		t.Fatal(err)
 	}
-	for _, ip := range []string{"", "   ", "127.0.0.\n1"} {
+	for _, ip := range []string{"", "   ", "127.0.0.\n1", strings.Repeat("9", maxIPRunes) + "\n"} {
 		if err = st.RecordLoginFailure(ctx, ip); err == nil || !strings.Contains(err.Error(), "ip is invalid") {
 			t.Fatalf("record ip=%q err=%v", ip, err)
 		}
