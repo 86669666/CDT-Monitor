@@ -667,6 +667,13 @@ scan_dockerfile() {
   if ! grep -Fq 'VOLUME ["/data"]' <<<"$body"; then
     bad "$f: VOLUME must stay /data"
   fi
+  extra_volume="$(grep -E '^VOLUME ' <<<"$body" | grep -Ev '^VOLUME \["/data"\]$' || true)"
+  if [ -n "$extra_volume" ]; then
+    bad "$f: extra VOLUME lines are forbidden; keep only VOLUME /data"
+  fi
+  if [ "$(grep -c -E '^VOLUME \["/data"\]$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: VOLUME must stay exactly one VOLUME /data line"
+  fi
   if ! grep -Fq -- '--chown=65532:65532 /runtime-data /data' <<<"$body"; then
     bad "$f: /data must be copied --chown=65532:65532"
   fi
