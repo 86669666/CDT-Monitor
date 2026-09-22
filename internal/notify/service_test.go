@@ -278,6 +278,9 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	if err := ValidateDialHost("smtp.example.test"); err != nil {
 		t.Fatalf("dial host err=%v", err)
 	}
+	if err := ValidateDialHost("smtp.example.test#25"); !errors.Is(err, errInvalidNotifyHost) {
+		t.Fatalf("fragment dial host err=%v", err)
+	}
 	if err := ValidateTCPPortString(""); err != nil {
 		t.Fatalf("empty proxy port err=%v", err)
 	}
@@ -292,6 +295,33 @@ func TestValidateCallbackURLRejectsMetadataAndNonHTTP(t *testing.T) {
 	}
 	if err := ValidateCallbackURL("https://example.test/" + strings.Repeat("x", maxNotifyURLRunes)); !errors.Is(err, errInvalidNotifyPayload) {
 		t.Fatalf("oversized webhook URL err=%v", err)
+	}
+}
+
+func TestResolveForbiddenHostChecksLiteralIPs(t *testing.T) {
+	ctx := context.Background()
+	for _, host := range []string{"169.254.169.254", "169.254.169.254.", "100.100.100.200", "::ffff:169.254.169.254", "fd00:ec2::254"} {
+		if err := resolveForbiddenHost(ctx, host); !errors.Is(err, errForbiddenNotifyHost) {
+			t.Fatalf("%s err=%v", host, err)
+		}
+	}
+	for _, host := range []string{"", "127.0.0.1", "192.168.1.1"} {
+		if err := resolveForbiddenHost(ctx, host); err != nil {
+			t.Fatalf("%s err=%v", host, err)
+		}
+	}
+	if err := resolveForbiddenHost(ctx, "metadata.google.internal#x"); !errors.Is(err, errInvalidNotifyHost) {
+		t.Fatalf("fragment host err=%v", err)
+	}
+	called := false
+	prev := lookupNotifyIPs
+	lookupNotifyIPs = func(context.Context, string) ([]net.IP, error) {
+		called = true
+		return nil, errors.New("lookup should not run")
+	}
+	defer func() { lookupNotifyIPs = prev }()
+	if err := resolveForbiddenHost(ctx, "8.8.8.8"); err != nil || called {
+		t.Fatalf("public ip err=%v lookup=%v", err, called)
 	}
 }
 
