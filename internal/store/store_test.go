@@ -2974,6 +2974,28 @@ func TestLoginFailureRejectsBlankIP(t *testing.T) {
 	}
 }
 
+func TestRecentLoginFailuresRejectsInvalidWindow(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err = st.RecordLoginFailure(ctx, "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, since := range []time.Time{{}, time.Unix(0, 0).UTC(), time.Unix(-1, 0).UTC()} {
+		count, err := st.RecentLoginFailures(ctx, "127.0.0.1", since)
+		if count != 0 || err == nil || !strings.Contains(err.Error(), "login window is invalid") {
+			t.Fatalf("since=%v count=%d err=%v", since, count, err)
+		}
+	}
+	count, err := st.RecentLoginFailures(ctx, "127.0.0.1", time.Now().Add(-time.Minute))
+	if err != nil || count != 1 {
+		t.Fatalf("valid window count=%d err=%v", count, err)
+	}
+}
+
 func TestSessionExpiry(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

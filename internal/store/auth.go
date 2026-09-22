@@ -27,6 +27,9 @@ func (s *Store) VerifyAdminPassword(ctx context.Context, password string) (bool,
 }
 
 func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.Time) (int, error) {
+	if since.IsZero() || since.Unix() <= 0 {
+		return 0, errors.New("login window is invalid")
+	}
 	ip = clipIP(ip)
 	if ip == "" {
 		return 0, nil
