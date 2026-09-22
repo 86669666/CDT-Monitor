@@ -648,6 +648,13 @@ scan_dockerfile() {
   if grep -Eq '^USER (0|root)(:0)?$' <<<"$body"; then
     bad "$f: USER root/0 is forbidden"
   fi
+  extra_user="$(grep -E '^USER ' <<<"$body" | grep -Ev '^USER 65532:65532$' || true)"
+  if [ -n "$extra_user" ]; then
+    bad "$f: extra USER lines are forbidden; keep only USER 65532:65532"
+  fi
+  if [ "$(grep -c -E '^USER 65532:65532$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: USER must stay exactly one USER 65532:65532 line"
+  fi
   if grep -Eq '^ADD ' <<<"$body"; then
     bad "$f: ADD is forbidden; keep COPY"
   fi
