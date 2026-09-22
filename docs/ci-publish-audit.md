@@ -916,3 +916,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `deployments:` permission（含 `read`）。`deployments: write` 本来就在额外写权限组里。不要让 token 创建 GitHub Deployment
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-22T05:54Z` / 2026-09-22 13:54 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `849324a` 再加 uses: 键锚点扫描：
+
+- Publish Guard 的 SHA pin 扫描只匹配真正的 `uses:` 键。`statuses:` 里的子串不再被当成未钉死的 action
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
