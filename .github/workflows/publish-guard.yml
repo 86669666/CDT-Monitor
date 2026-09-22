@@ -25,6 +25,7 @@ name: Publish Guard
 # Do not add pull-requests permission.
 # Do not add issues permission.
 # Do not add models permission.
+# Do not add deployments permission.
 # upload-artifact stays on widget CI and gated Release Binaries only.
 # download-artifact stays on gated Release Binaries only.
 # Do not add standalone actions/cache; setup-go/setup-node caches stay.
