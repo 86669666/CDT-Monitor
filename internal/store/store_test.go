@@ -1840,6 +1840,28 @@ func TestGetConfigRejectsInvalidNotifyPayloads(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "notification header name is invalid") {
 		t.Fatalf("padded header name err=%v", err)
 	}
+	headers, err = st.EncryptAAD("{\"X Token\":\"v\"}", "notify_wh_headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_headers',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, headers); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header name is invalid") {
+		t.Fatalf("spaced header name err=%v", err)
+	}
+	headers, err = st.EncryptAAD("{\"X-Token\":\"a\\u0001b\"}", "notify_wh_headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_headers',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, headers); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("control header value err=%v", err)
+	}
 	headers, err = st.EncryptAAD("{\"X-Bad\":\"a\\nb\"}", "notify_wh_headers")
 	if err != nil {
 		t.Fatal(err)
@@ -3930,6 +3952,35 @@ func TestAuthTokensRejectOversizedValues(t *testing.T) {
 	valid, err = st.ValidateSession(ctx, token)
 	if err != nil || !valid {
 		t.Fatalf("normal session valid=%v err=%v", valid, err)
+	}
+	for _, broken := range []string{"", " " + token, token + "\n"} {
+		valid, err = st.ValidateSession(ctx, broken)
+		if err != nil || valid {
+			t.Fatalf("token %q valid=%v err=%v", broken, valid, err)
+		}
+		if err = st.DeleteSession(ctx, broken); err != nil {
+			t.Fatalf("delete %q err=%v", broken, err)
+		}
+	}
+	valid, err = st.ValidateSession(ctx, token)
+	if err != nil || !valid {
+		t.Fatalf("real session removed valid=%v err=%v", valid, err)
+	}
+	_, apiToken, err := st.CreateAPIKey(ctx, "widget", []string{"widget:read"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, broken := range []string{" " + apiToken, apiToken + "\n"} {
+		if _, err = st.ValidateAPIKey(ctx, broken); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("api token %q err=%v", broken, err)
+		}
+	}
+	var lastUsed sql.NullInt64
+	if err = st.db.QueryRowContext(ctx, `SELECT last_used_at FROM api_keys WHERE name='widget'`).Scan(&lastUsed); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid {
+		t.Fatalf("broken api token recorded last_used=%v", lastUsed.Int64)
 	}
 }
 

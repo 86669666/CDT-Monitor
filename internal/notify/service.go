@@ -294,6 +294,15 @@ func containsHeaderBreak(value string) bool {
 	return false
 }
 
+func containsHeaderControl(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if value[i] < 0x20 || value[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 const (
 	maxNotifyEmailRunes        = 254
 	maxTelegramChatRunes       = 64
@@ -380,10 +389,10 @@ func ValidateWebhookHeaders(raw string) error {
 		return errInvalidNotifyPayload
 	}
 	for key, value := range headers {
-		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) {
+		if strings.TrimSpace(key) == "" || forbiddenWebhookHeader(key) || containsHeaderBreak(key) || containsHeaderBreak(value) || containsHeaderControl(value) {
 			return errInvalidNotifyHeader
 		}
-		if key != strings.TrimSpace(key) {
+		if key != strings.TrimSpace(key) || !validHTTPHeaderName(key) {
 			return errInvalidNotifyHeaderName
 		}
 		if len([]rune(key)) > maxWebhookHeaderNameRunes || len([]rune(value)) > maxWebhookHeaderValueRunes {
@@ -391,6 +400,25 @@ func ValidateWebhookHeaders(raw string) error {
 		}
 	}
 	return nil
+}
+
+func validHTTPHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+		switch c {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func forbiddenWebhookHeader(key string) bool {
