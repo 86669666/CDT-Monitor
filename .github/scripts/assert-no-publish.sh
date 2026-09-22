@@ -575,7 +575,7 @@ scan_action_pins() {
       if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
         bad "$f: third-party action must be SHA-pinned: $ref"
       fi
-    done < <(grep -E 'uses:' <<<"$body" || true)
+    done < <(grep -E '(^|[[:space:]])uses:' <<<"$body" || true)
   done
 }
 
