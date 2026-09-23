@@ -316,12 +316,12 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 		if statusChangedBySchedule {
 			if slices.Contains(actions, "scheduled_start") {
-				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, now.Format("2006-01-02"), "start", traffic, now.Format("15:04"))
+				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), "start", traffic, now.Format("15:04"))
 			}
 			if slices.Contains(actions, "scheduled_stop") {
-				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, now.Format("2006-01-02"), "stop", traffic, now.Format("15:04"))
+				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), "stop", traffic, now.Format("15:04"))
 				if config.EnableDailyReport && (account.DailyReport == nil || *account.DailyReport) {
-					reportKey := fmt.Sprintf("daily_report:%d:%s", account.ID, now.Format("20060102"))
+					reportKey := dailyReportKey(account, scheduleCycleDate(now, account.StartTime, account.StopTime))
 					freshReport, _ := e.store.RecordActionEvent(ctx, reportKey, account.ID, "daily_report", "attempting", "")
 					if freshReport {
 						payload, _ := json.Marshal(map[string]any{"force": false, "account_id": account.ID})
@@ -410,7 +410,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 }
 
 func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Config, account domain.Account, secret, action string, now time.Time) (bool, error) {
-	key := fmt.Sprintf("schedule:%d:%s:%s", account.ID, now.Format("20060102"), action)
+	key := scheduleActionKey(account, scheduleCycleDate(now, account.StartTime, account.StopTime), action)
 	fresh, err := e.store.RecordActionEvent(ctx, key, account.ID, "schedule_"+action, "attempting", "")
 	if err != nil || !fresh {
 		return false, err
@@ -420,7 +420,7 @@ func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Confi
 		_ = e.store.DeleteActionEvent(ctx, key)
 		return false, err
 	}
-	_ = e.store.RecordTrafficSnapshot(ctx, account.ID, now.Format("2006-01-02"), action, account.TrafficUsed, now.Format("15:04"))
+	_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), action, account.TrafficUsed, now.Format("15:04"))
 	status := domain.StatusStarting
 	if action == "stop" {
 		status = domain.StatusStopping
@@ -558,13 +558,76 @@ func (e *Engine) signal() {
 }
 
 func dueWithin(now time.Time, hhmm string, window time.Duration) bool {
-	parsed, err := time.Parse("15:04", hhmm)
+	parsed, err := parseClockTime(hhmm)
 	if err != nil {
 		return false
 	}
 	target := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
 	delta := now.Sub(target)
 	return delta >= 0 && delta <= window
+}
+
+func parseClockTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "：", ":"))
+	if value == "24:00" {
+		return time.Date(0, time.January, 1, 0, 0, 0, 0, time.UTC), nil
+	}
+	return time.Parse("15:04", value)
+}
+
+func overnightSchedule(start, stop string) bool {
+	startTime, startErr := parseClockTime(start)
+	stopTime, stopErr := parseClockTime(stop)
+	if startErr != nil || stopErr != nil {
+		return false
+	}
+	return startTime.Hour()*60+startTime.Minute() >= stopTime.Hour()*60+stopTime.Minute()
+}
+
+// scheduleCycleDate identifies the date on which a schedule window started.
+// For an overnight window, all times before today's start belong to yesterday's cycle.
+func scheduleCycleDate(now time.Time, start, stop string) string {
+	if overnightSchedule(start, stop) {
+		startTime, err := parseClockTime(start)
+		if err == nil && now.Hour()*60+now.Minute() < startTime.Hour()*60+startTime.Minute() {
+			return now.AddDate(0, 0, -1).Format("2006-01-02")
+		}
+	}
+	return now.Format("2006-01-02")
+}
+
+func compactDate(value string) string { return strings.ReplaceAll(value, "-", "") }
+
+func scheduleTimeKey(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "：", ":"))
+	if value == "24:00" {
+		return "00:00"
+	}
+	if parsed, err := time.Parse("15:04", value); err == nil {
+		return parsed.Format("15:04")
+	}
+	return value
+}
+
+func scheduleActionKey(account domain.Account, cycleDate, action string) string {
+	configuredTime := account.StartTime
+	if action == "stop" {
+		configuredTime = account.StopTime
+	}
+	return fmt.Sprintf("schedule:%d:%s:%s:%s", account.ID, compactDate(cycleDate), action, scheduleTimeKey(configuredTime))
+}
+
+func dailyReportKey(account domain.Account, cycleDate string) string {
+	configuredTime := account.DailyReportTime
+	if account.ScheduleEnabled {
+		configuredTime = account.StopTime
+		if configuredTime == "" {
+			configuredTime = "23:30"
+		}
+	} else if configuredTime == "" {
+		configuredTime = "00:00"
+	}
+	return fmt.Sprintf("daily_report:%d:%s:%s", account.ID, compactDate(cycleDate), scheduleTimeKey(configuredTime))
 }
 
 func inTimeRange(current, start, end string) bool {
@@ -616,7 +679,7 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 			ID: account.ID, Account: masked(account.AccessKeyID), Remark: account.Remark, Region: account.RegionID, RegionName: RegionName(account.RegionID),
 			FlowTotal: account.MaxTraffic, FlowUsed: math.Round(account.TrafficUsed*100) / 100, Percentage: percentage, Threshold: config.TrafficThreshold,
 			OverThreshold: percentage >= float64(config.TrafficThreshold), InstanceStatus: account.InstanceStatus, LastUpdated: account.UpdatedAt,
-			Stale: account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) > time.Duration(max(config.APIInterval*2, 180))*time.Second,
+			Stale:     account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) > time.Duration(max(config.APIInterval*2, 180))*time.Second,
 			KeepAlive: account.KeepAlive, ShutdownMode: account.ShutdownMode, ScheduleEnabled: account.ScheduleEnabled, StartTime: account.StartTime, StopTime: account.StopTime, DailyReport: account.DailyReport, DailyReportTime: account.DailyReportTime,
 		}
 		if config.EnableBilling {
@@ -677,7 +740,6 @@ func (e *Engine) checkDailyReport(ctx context.Context, now time.Time) {
 		location = time.FixedZone("CST", 8*3600)
 	}
 	localNow := now.In(location)
-	dateStr := localNow.Format("20060102")
 
 	for _, acc := range config.Accounts {
 		if acc.DailyReport != nil && !*acc.DailyReport {
@@ -698,7 +760,11 @@ func (e *Engine) checkDailyReport(ctx context.Context, now time.Time) {
 		if !dueWithin(localNow, targetTime, 10*time.Minute) {
 			continue
 		}
-		key := fmt.Sprintf("daily_report:%d:%s", acc.ID, dateStr)
+		dateStr := localNow.Format("20060102")
+		if acc.ScheduleEnabled {
+			dateStr = compactDate(scheduleCycleDate(localNow, acc.StartTime, acc.StopTime))
+		}
+		key := dailyReportKey(acc, dateStr)
 		fresh, err := e.store.RecordActionEvent(ctx, key, acc.ID, "daily_report", "attempting", "")
 		if err != nil || !fresh {
 			continue
@@ -734,12 +800,16 @@ func (e *Engine) findStartTrafficFor24Hours(ctx context.Context, accountID int64
 	return 0
 }
 
-func (e *Engine) findStartTrafficForSchedule(ctx context.Context, accountID int64, now time.Time, startTime string) float64 {
-	parsed, err := time.Parse("15:04", startTime)
+func (e *Engine) findStartTrafficForSchedule(ctx context.Context, accountID int64, now time.Time, startTime, stopTime string) float64 {
+	parsed, err := parseClockTime(startTime)
 	if err != nil {
 		return e.findStartTrafficFor24Hours(ctx, accountID, now)
 	}
-	target := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+	date := now
+	if overnightSchedule(startTime, stopTime) && now.Hour()*60+now.Minute() < parsed.Hour()*60+parsed.Minute() {
+		date = now.AddDate(0, 0, -1)
+	}
+	target := time.Date(date.Year(), date.Month(), date.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
 	if traffic, ok := e.store.TrafficAroundTime(ctx, accountID, target); ok {
 		return traffic
 	}
@@ -760,6 +830,9 @@ func formatTrafficGB(gb float64) string {
 }
 
 func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Account, now time.Time, dateStr string, force bool) (float64, string) {
+	if acc.ScheduleEnabled && !force {
+		dateStr = scheduleCycleDate(now, acc.StartTime, acc.StopTime)
+	}
 	snap, _ := e.store.GetTrafficSnapshot(ctx, acc.ID, dateStr)
 	consumed := 0.0
 	periodDesc := ""
@@ -771,7 +844,7 @@ func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Ac
 		periodDesc = fmt.Sprintf("定时时段 (%s ~ %s)", acc.StartTime, acc.StopTime)
 		startTraffic := snap.StartTraffic
 		if startTraffic < 0 {
-			startTraffic = e.findStartTrafficForSchedule(ctx, acc.ID, now, acc.StartTime)
+			startTraffic = e.findStartTrafficForSchedule(ctx, acc.ID, now, acc.StartTime, acc.StopTime)
 		}
 		if snap.StopTraffic >= 0 {
 			consumed = snap.StopTraffic - startTraffic
@@ -1103,7 +1176,7 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 			instName = masked(it.account.AccessKeyID)
 		}
 		sb.WriteString(fmt.Sprintf("%d. %s (%s / %s)\n", idx+1, instName, RegionName(it.account.RegionID), masked(it.account.AccessKeyID)))
-	sb.WriteString(fmt.Sprintf("   • 运行模式：%s\n", it.periodDesc))
+		sb.WriteString(fmt.Sprintf("   • 运行模式：%s\n", it.periodDesc))
 		sb.WriteString(fmt.Sprintf("   • 消耗流量：%s\n", formatTrafficGB(it.consumed)))
 		sb.WriteString(fmt.Sprintf("   • 当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(it.account.TrafficUsed), it.account.MaxTraffic, usagePercent(it.account.TrafficUsed, it.account.MaxTraffic)))
 		if config.EnableBilling {

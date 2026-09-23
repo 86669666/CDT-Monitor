@@ -546,14 +546,20 @@ function InstanceSettingsModal({
             <div className="form-grid" style={{ marginTop: '4px' }}>
               <Field label="开机时间">
                 <input
-                  type="time"
+                  type="text"
+                  maxLength={5}
+                  pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
+                  placeholder="HH:MM"
                   value={form.start_time}
                   onChange={(e) => setForm({ ...form, start_time: e.target.value })}
                 />
               </Field>
               <Field label="关机时间">
                 <input
-                  type="time"
+                  type="text"
+                  maxLength={5}
+                  pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
+                  placeholder="HH:MM"
                   value={form.stop_time}
                   onChange={(e) => setForm({ ...form, stop_time: e.target.value })}
                 />
@@ -698,7 +704,7 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
     <SelectField label="站点类型" value={account.site_type} options={[{ value: 'china', label: '中国站', meta: 'CNY' }, { value: 'international', label: '国际站', meta: 'USD' }]} onChange={(value) => onChange({ ...account, site_type: value as Account['site_type'] })} />
     <Field label="备注"><input value={account.remark} onChange={(event) => onChange({ ...account, remark: event.target.value })} placeholder="香港主节点" /></Field>
     <ToggleRow title="每日定时开关机" icon={<Clock3 />} checked={account.schedule_enabled} onChange={(checked) => onChange({ ...account, schedule_enabled: checked })} />
-    {account.schedule_enabled && <><Field label="开机时间"><input type="time" value={account.start_time} onChange={(event) => onChange({ ...account, start_time: event.target.value })} /></Field><Field label="关机时间"><input type="time" value={account.stop_time} onChange={(event) => onChange({ ...account, stop_time: event.target.value })} /></Field></>}
+    {account.schedule_enabled && <><Field label="开机时间"><input type="text" maxLength={5} pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:MM" value={account.start_time} onChange={(event) => onChange({ ...account, start_time: event.target.value })} /></Field><Field label="关机时间"><input type="text" maxLength={5} pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:MM" value={account.stop_time} onChange={(event) => onChange({ ...account, stop_time: event.target.value })} /></Field></>}
     {!compact && (
       <div className="account-fields__full">
         <div className="field">

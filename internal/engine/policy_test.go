@@ -31,6 +31,92 @@ func TestInTimeRangeAcrossMidnight(t *testing.T) {
 	}
 }
 
+func TestScheduleCycleDateAcrossMidnight(t *testing.T) {
+	location := time.FixedZone("CST", 8*3600)
+	start := time.Date(2026, 9, 24, 8, 0, 0, 0, location)
+	stop := time.Date(2026, 9, 25, 0, 34, 0, 0, location)
+	if got := scheduleCycleDate(start, "08:00", "00:34"); got != "2026-09-24" {
+		t.Fatalf("start action belongs to %s, got %s", "2026-09-24", got)
+	}
+	if got := scheduleCycleDate(stop, "08:00", "00:34"); got != "2026-09-24" {
+		t.Fatalf("overnight stop should use previous cycle date, got %s", got)
+	}
+	if got := scheduleCycleDate(time.Date(2026, 9, 25, 8, 0, 0, 0, location), "08:00", "00:34"); got != "2026-09-25" {
+		t.Fatalf("next start should begin a new cycle, got %s", got)
+	}
+}
+
+func TestDueWithinNormalizesFullWidthColon(t *testing.T) {
+	location := time.FixedZone("CST", 8*3600)
+	if !dueWithin(time.Date(2026, 9, 25, 0, 38, 0, 0, location), "00：34", 10*time.Minute) {
+		t.Fatal("expected normalized midnight schedule to be due")
+	}
+}
+
+func TestScheduleActionKeyIncludesConfiguredTime(t *testing.T) {
+	account := domain.Account{ID: 7, StartTime: "08:00", StopTime: "00:34"}
+	oldKey := scheduleActionKey(domain.Account{ID: 7, StartTime: "08:00", StopTime: "00:00"}, "2026-09-24", "stop")
+	newKey := scheduleActionKey(account, "2026-09-24", "stop")
+	if oldKey == newKey {
+		t.Fatalf("changing stop time must produce a new idempotency key: %q", newKey)
+	}
+	if newKey != "schedule:7:20260924:stop:00:34" {
+		t.Fatalf("unexpected schedule key: %q", newKey)
+	}
+	if scheduleActionKey(account, "2026-09-24", "stop") != newKey {
+		t.Fatal("same schedule configuration must remain idempotent")
+	}
+}
+
+func TestDailyReportKeyIncludesScheduleStopTime(t *testing.T) {
+	account := domain.Account{ID: 7, ScheduleEnabled: true, StartTime: "08:00", StopTime: "00:34"}
+	oldKey := dailyReportKey(domain.Account{ID: 7, ScheduleEnabled: true, StartTime: "08:00", StopTime: "00:00"}, "2026-09-24")
+	newKey := dailyReportKey(account, "2026-09-24")
+	if oldKey == newKey {
+		t.Fatalf("changing stop time must produce a new report key: %q", newKey)
+	}
+	if newKey != "daily_report:7:20260924:00:34" {
+		t.Fatalf("unexpected daily report key: %q", newKey)
+	}
+}
+
+func TestScheduledConsumptionUsesOvernightCycleSnapshot(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	trueVal := true
+	if err = st.Setup(ctx, domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai",
+		Accounts: []domain.Account{{AccessKeyID: "LTAI_OVERNIGHT", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-overnight", MaxTraffic: 200, ScheduleEnabled: true, StartTime: "08:00", StopTime: "00:34", DailyReport: &trueVal}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	location, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Date(2026, 9, 25, 0, 34, 0, 0, location)
+	if err = st.UpdateRuntime(ctx, accounts[0].ID, 15, domain.StatusStopped, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, accounts[0].ID, "2026-09-24", "start", 10, "08:00"); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, accounts[0].ID, "2026-09-24", "stop", 15, "00:34"); err != nil {
+		t.Fatal(err)
+	}
+	eng := New(st, nil, notify.New(), nil, 1)
+	consumed, period := eng.calculateInstanceConsumption(ctx, accounts[0], now, "2026-09-25", false)
+	if consumed != 5 || period != "定时时段 (08:00 ~ 00:34)" {
+		t.Fatalf("got consumed=%v period=%q", consumed, period)
+	}
+}
+
 func TestUsagePercent(t *testing.T) {
 	if value := usagePercent(95, 200); value != 47.5 {
 		t.Fatalf("got %v", value)
@@ -45,7 +131,6 @@ func TestRegionNameIncludesSeoul(t *testing.T) {
 		t.Fatalf("got %q", name)
 	}
 }
-
 
 func TestResolveKeepAliveAndShutdownMode(t *testing.T) {
 	trueVal := true
@@ -110,34 +195,34 @@ func TestDailyReportGenerationAndExclusion(t *testing.T) {
 		},
 		Accounts: []domain.Account{
 			{
-				AccessKeyID:      "LTAI1",
-				AccessKeySecret:  "sec1",
-				RegionID:         "cn-hongkong",
-				InstanceID:       "i-hk",
-				MaxTraffic:       200,
-				Remark:           "香港节点",
-				ScheduleEnabled:  true,
-				StartTime:        "08:00",
-				StopTime:         "22:00",
-				DailyReport:      &trueVal, // Included
+				AccessKeyID:     "LTAI1",
+				AccessKeySecret: "sec1",
+				RegionID:        "cn-hongkong",
+				InstanceID:      "i-hk",
+				MaxTraffic:      200,
+				Remark:          "香港节点",
+				ScheduleEnabled: true,
+				StartTime:       "08:00",
+				StopTime:        "22:00",
+				DailyReport:     &trueVal, // Included
 			},
 			{
-				AccessKeyID:      "LTAI2",
-				AccessKeySecret:  "sec2",
-				RegionID:         "ap-northeast-1",
-				InstanceID:       "i-jp",
-				MaxTraffic:       100,
-				Remark:           "东京节点",
-				DailyReport:      nil, // Default -> Included
+				AccessKeyID:     "LTAI2",
+				AccessKeySecret: "sec2",
+				RegionID:        "ap-northeast-1",
+				InstanceID:      "i-jp",
+				MaxTraffic:      100,
+				Remark:          "东京节点",
+				DailyReport:     nil, // Default -> Included
 			},
 			{
-				AccessKeyID:      "LTAI3",
-				AccessKeySecret:  "sec3",
-				RegionID:         "us-west-1",
-				InstanceID:       "i-us",
-				MaxTraffic:       300,
-				Remark:           "硅谷节点",
-				DailyReport:      &falseVal, // Excluded!
+				AccessKeyID:     "LTAI3",
+				AccessKeySecret: "sec3",
+				RegionID:        "us-west-1",
+				InstanceID:      "i-us",
+				MaxTraffic:      300,
+				Remark:          "硅谷节点",
+				DailyReport:     &falseVal, // Excluded!
 			},
 		},
 	}
@@ -286,14 +371,14 @@ func TestDailyReportSmallAmountPrecisionAndSingleInstance(t *testing.T) {
 		},
 		Accounts: []domain.Account{
 			{
-				AccessKeyID:      "LTAI_PRECISION",
-				AccessKeySecret:  "sec",
-				RegionID:         "cn-hongkong",
-				InstanceID:       "i-precision",
-				MaxTraffic:       200,
-				Remark:           "高精度测试节点",
-				ScheduleEnabled:  false,
-				DailyReportTime:  "00:00",
+				AccessKeyID:     "LTAI_PRECISION",
+				AccessKeySecret: "sec",
+				RegionID:        "cn-hongkong",
+				InstanceID:      "i-precision",
+				MaxTraffic:      200,
+				Remark:          "高精度测试节点",
+				ScheduleEnabled: false,
+				DailyReportTime: "00:00",
 			},
 		},
 	}

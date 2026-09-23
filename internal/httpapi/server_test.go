@@ -33,6 +33,18 @@ func TestSecurityHeadersAllowFaviconEndpoint(t *testing.T) {
 	}
 }
 
+func TestNormalizeClockTimeUses24HourValues(t *testing.T) {
+	for input, want := range map[string]string{"00:34": "00:34", "00：34": "00:34", "24:00": "00:00"} {
+		got, err := normalizeClockTime(input, true)
+		if err != nil || got != want {
+			t.Errorf("normalizeClockTime(%q) = %q, %v; want %q", input, got, err, want)
+		}
+	}
+	if _, err := normalizeClockTime("12:34 AM", true); err == nil {
+		t.Fatal("expected non-HH:MM time input to be rejected")
+	}
+}
+
 func TestBeginPasskeyLoginIncludesRegisteredCredentialIDs(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -130,7 +142,6 @@ func TestRefreshAllEnqueuesEveryConfiguredAccount(t *testing.T) {
 	}
 }
 
-
 func TestUpdateAccountSettingsEndpoint(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -152,7 +163,7 @@ func TestUpdateAccountSettingsEndpoint(t *testing.T) {
 	accounts, _ := st.ListAccounts(t.Context())
 	id := accounts[0].ID
 
-	body := `{"keep_alive":true,"shutdown_mode":"StopCharging","schedule_enabled":true,"start_time":"09:00","stop_time":"23:00","daily_report":false,"daily_report_time":"02:45"}`
+	body := `{"keep_alive":true,"shutdown_mode":"StopCharging","schedule_enabled":true,"start_time":"09:00","stop_time":"00:34","daily_report":false,"daily_report_time":"02:45"}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/accounts/1/settings", strings.NewReader(body))
 	req.SetPathValue("id", "1")
 	resp := httptest.NewRecorder()
@@ -172,7 +183,7 @@ func TestUpdateAccountSettingsEndpoint(t *testing.T) {
 	if updated.ShutdownMode != "StopCharging" {
 		t.Fatalf("expected shutdown_mode=StopCharging, got %s", updated.ShutdownMode)
 	}
-	if !updated.ScheduleEnabled || updated.StartTime != "09:00" || updated.StopTime != "23:00" {
+	if !updated.ScheduleEnabled || updated.StartTime != "09:00" || updated.StopTime != "00:34" {
 		t.Fatalf("unexpected schedule: %+v", updated)
 	}
 	if updated.DailyReport == nil || *updated.DailyReport != false {

@@ -565,6 +565,20 @@ func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	applyConfigDefaults(&config)
+	for index := range config.Accounts {
+		account := &config.Accounts[index]
+		var err error
+		account.StartTime, err = normalizeClockTime(account.StartTime, account.ScheduleEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_schedule_time", "开机时间必须使用 24 小时制 HH:MM 格式")
+			return
+		}
+		account.StopTime, err = normalizeClockTime(account.StopTime, account.ScheduleEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_schedule_time", "关机时间必须使用 24 小时制 HH:MM 格式")
+			return
+		}
+	}
 	if err := s.store.SaveConfig(r.Context(), config); err != nil {
 		writeError(w, http.StatusBadRequest, "config_failed", err.Error())
 		return
@@ -1050,6 +1064,16 @@ func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
 	if input.StopTime != nil {
 		stopTime = *input.StopTime
 	}
+	startTime, err = normalizeClockTime(startTime, scheduleEnabled)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_schedule_time", "开机时间必须使用 24 小时制 HH:MM 格式")
+		return
+	}
+	stopTime, err = normalizeClockTime(stopTime, scheduleEnabled)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_schedule_time", "关机时间必须使用 24 小时制 HH:MM 格式")
+		return
+	}
 	dailyReport := account.DailyReport
 	if input.DailyReport.Present {
 		dailyReport = input.DailyReport.Value
@@ -1057,6 +1081,11 @@ func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
 	dailyReportTime := account.DailyReportTime
 	if input.DailyReportTime != nil {
 		dailyReportTime = *input.DailyReportTime
+	}
+	dailyReportTime, err = normalizeClockTime(dailyReportTime, false)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_daily_report_time", "日报时间必须使用 24 小时制 HH:MM 格式")
+		return
 	}
 	if err := s.store.UpdateAccountSettings(r.Context(), id, keepAlive, shutdownMode, scheduleEnabled, startTime, stopTime, dailyReport, dailyReportTime); err != nil {
 		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
@@ -1070,6 +1099,21 @@ func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	updated.AccessKeySecret = ""
 	writeJSON(w, http.StatusOK, updated)
+}
+
+func normalizeClockTime(value string, required bool) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "：", ":"))
+	if value == "" && !required {
+		return "", nil
+	}
+	if value == "24:00" {
+		return "00:00", nil
+	}
+	parsed, err := time.Parse("15:04", value)
+	if err != nil {
+		return "", err
+	}
+	return parsed.Format("15:04"), nil
 }
 
 func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
