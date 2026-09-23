@@ -126,7 +126,7 @@ func (s *Store) Traffic24HoursAgo(ctx context.Context, accountID int64, now time
 	if err == nil {
 		return traffic, true
 	}
-	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+3600).Scan(&traffic)
+	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target).Scan(&traffic)
 	if err == nil {
 		return traffic, true
 	}

@@ -555,3 +555,25 @@ func TestTraffic24HoursAgoAndAroundTime(t *testing.T) {
 		t.Fatalf("expected 12.5 around 12h ago, got %v (ok=%v)", trafficAround, ok)
 	}
 }
+
+func TestTraffic24HoursAgoDoesNotUseCurrentDayDailySampleNearMidnight(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	location := time.UTC
+	now := time.Date(2026, 9, 23, 23, 56, 0, 0, location)
+	previousDayStart := time.Date(2026, 9, 22, 0, 0, 0, 0, location).Unix()
+	currentDayStart := time.Date(2026, 9, 23, 0, 0, 0, 0, location).Unix()
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO traffic_daily(account_id,traffic,recorded_at) VALUES(?,?,?),(?,?,?)`, 202, 10.0, previousDayStart, 202, 15.0, currentDayStart); err != nil {
+		t.Fatal(err)
+	}
+
+	traffic, ok := st.Traffic24HoursAgo(ctx, 202, now)
+	if !ok || traffic != 10.0 {
+		t.Fatalf("expected previous day's baseline 10.0, got %v (ok=%v)", traffic, ok)
+	}
+}
