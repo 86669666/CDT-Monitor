@@ -724,12 +724,11 @@ func (e *Engine) EnqueueDailyReport(ctx context.Context, force bool) (domain.Job
 	return e.EnqueueDailyReportForAccount(ctx, force, 0)
 }
 
-func (e *Engine) findStartTrafficForDay(ctx context.Context, accountID int64, now time.Time) float64 {
+func (e *Engine) findStartTrafficFor24Hours(ctx context.Context, accountID int64, now time.Time) float64 {
 	if traffic, ok := e.store.Traffic24HoursAgo(ctx, accountID, now); ok {
 		return traffic
 	}
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
-	if traffic, ok := e.store.EarliestTrafficSince(ctx, accountID, todayStart); ok {
+	if traffic, ok := e.store.EarliestTrafficSince(ctx, accountID, now.Add(-24*time.Hour).Unix()); ok {
 		return traffic
 	}
 	return 0
@@ -738,13 +737,13 @@ func (e *Engine) findStartTrafficForDay(ctx context.Context, accountID int64, no
 func (e *Engine) findStartTrafficForSchedule(ctx context.Context, accountID int64, now time.Time, startTime string) float64 {
 	parsed, err := time.Parse("15:04", startTime)
 	if err != nil {
-		return e.findStartTrafficForDay(ctx, accountID, now)
+		return e.findStartTrafficFor24Hours(ctx, accountID, now)
 	}
 	target := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
 	if traffic, ok := e.store.TrafficAroundTime(ctx, accountID, target); ok {
 		return traffic
 	}
-	return e.findStartTrafficForDay(ctx, accountID, now)
+	return e.findStartTrafficFor24Hours(ctx, accountID, now)
 }
 
 func formatTrafficGB(gb float64) string {
@@ -760,11 +759,15 @@ func formatTrafficGB(gb float64) string {
 	return fmt.Sprintf("%.2f GB", gb)
 }
 
-func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Account, now time.Time, dateStr string) (float64, string) {
+func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Account, now time.Time, dateStr string, force bool) (float64, string) {
 	snap, _ := e.store.GetTrafficSnapshot(ctx, acc.ID, dateStr)
 	consumed := 0.0
 	periodDesc := ""
-	if acc.ScheduleEnabled {
+	if force {
+		periodDesc = "测试推送（前24小时）"
+		startTraffic := e.findStartTrafficFor24Hours(ctx, acc.ID, now)
+		consumed = acc.TrafficUsed - startTraffic
+	} else if acc.ScheduleEnabled {
 		periodDesc = fmt.Sprintf("定时时段 (%s ~ %s)", acc.StartTime, acc.StopTime)
 		startTraffic := snap.StartTraffic
 		if startTraffic < 0 {
@@ -777,7 +780,7 @@ func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Ac
 		}
 	} else {
 		periodDesc = "前24小时运行"
-		startTraffic := e.findStartTrafficForDay(ctx, acc.ID, now)
+		startTraffic := e.findStartTrafficFor24Hours(ctx, acc.ID, now)
 		consumed = acc.TrafficUsed - startTraffic
 	}
 	if acc.TrafficUsed < 0 {
@@ -885,7 +888,7 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 		refreshed := e.refreshTrafficForReport(ctx, *targetAcc, now, time.Duration(config.APIInterval)*time.Second)
 		*targetAcc = refreshed
 
-		consumed, periodDesc := e.calculateInstanceConsumption(ctx, *targetAcc, now, dateStr)
+		consumed, periodDesc := e.calculateInstanceConsumption(ctx, *targetAcc, now, dateStr, force)
 		instName := targetAcc.Remark
 		if instName == "" {
 			instName = targetAcc.InstanceID
@@ -976,7 +979,7 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 			continue
 		}
 		acc = e.refreshTrafficForReport(ctx, acc, now, time.Duration(config.APIInterval)*time.Second)
-		consumed, periodDesc := e.calculateInstanceConsumption(ctx, acc, now, dateStr)
+		consumed, periodDesc := e.calculateInstanceConsumption(ctx, acc, now, dateStr, force)
 
 		item := instanceReportItem{
 			account:    acc,

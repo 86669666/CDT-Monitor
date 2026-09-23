@@ -164,7 +164,7 @@ func TestDailyReportGenerationAndExclusion(t *testing.T) {
 
 	_ = st.UpdateRuntime(ctx, accs[2].ID, 20.0, domain.StatusRunning, now)
 
-	result, err := eng.generateAndSendDailyReport(ctx, true)
+	result, err := eng.generateAndSendDailyReport(ctx, false)
 	if err != nil {
 		t.Fatalf("generateAndSendDailyReport failed: %v", err)
 	}
@@ -191,11 +191,74 @@ func TestDailyReportGenerationAndExclusion(t *testing.T) {
 		t.Fatalf("expected 1 excluded account, got %s", event.Fields["排除实例"])
 	}
 
-	// accs[0] consumed = 14.5 - 10.0 = 4.5 GB
-	// accs[1] consumed = 8.0 - 5.0 = 3.0 GB
-	// total consumed = 7.50 GB
+	// Normal reports use the configured mode: the scheduled instance uses its
+	// start/stop snapshots (14.5 - 10 = 4.5 GB), while the other uses 8 - 5 = 3 GB.
 	if event.Fields["流量消耗总和"] != "7.50 GB" {
 		t.Fatalf("expected 7.50 GB total consumed, got %s", event.Fields["流量消耗总和"])
+	}
+}
+
+func TestDailyReportTestPushUsesRolling24HourWindow(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	trueVal := true
+	cfg := domain.Config{
+		AdminPassword:     "Strong-Password-42!",
+		TrafficThreshold:  95,
+		ShutdownMode:      "KeepCharging",
+		ThresholdAction:   "stop_and_notify",
+		APIInterval:       600,
+		Timezone:          "Asia/Shanghai",
+		EnableDailyReport: true,
+		Notifications:     domain.NotificationConfig{Webhook: domain.WebhookConfig{Enabled: true, URL: "https://webhook.example.com/test"}},
+		Accounts: []domain.Account{{
+			AccessKeyID: "LTAI_TEST_WINDOW", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test-window",
+			MaxTraffic: 200, ScheduleEnabled: true, StartTime: "08:00", StopTime: "22:00", DailyReport: &trueVal,
+		}},
+	}
+	if err = st.Setup(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	accs, err := st.ListAccounts(ctx)
+	if err != nil || len(accs) != 1 {
+		t.Fatalf("accounts=%v err=%v", accs, err)
+	}
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+	if err = st.UpdateRuntime(ctx, accs[0].ID, 15, domain.StatusRunning, now); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, accs[0].ID, now.Format("2006-01-02"), "start", 10, "08:00"); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, accs[0].ID, now.Format("2006-01-02"), "stop", 14.5, "22:00"); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(ctx, accs[0].ID, 5, now.Add(-24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := New(st, nil, notify.New(), nil, 1)
+	if _, err = eng.generateAndSendDailyReport(ctx, true, accs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	outboxItem, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event domain.NotificationEvent
+	if err = json.Unmarshal([]byte(outboxItem.Payload), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Fields["消耗流量"] != "10.00 GB" {
+		t.Fatalf("expected 10.00 GB for test push, got %q", event.Fields["消耗流量"])
+	}
+	if event.Fields["运行模式"] != "测试推送（前24小时）" {
+		t.Fatalf("unexpected test push period: %q", event.Fields["运行模式"])
 	}
 }
 

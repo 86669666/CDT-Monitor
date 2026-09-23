@@ -122,11 +122,11 @@ func (s *Store) EarliestTrafficSince(ctx context.Context, accountID int64, since
 func (s *Store) Traffic24HoursAgo(ctx context.Context, accountID int64, now time.Time) (float64, bool) {
 	target := now.Add(-24 * time.Hour).Unix()
 	var traffic float64
-	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+1800).Scan(&traffic)
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at BETWEEN ? AND ? ORDER BY ABS(recorded_at-?) ASC LIMIT 1`, accountID, target-3600, target+3600, target).Scan(&traffic)
 	if err == nil {
 		return traffic, true
 	}
-	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+1800).Scan(&traffic)
+	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+3600).Scan(&traffic)
 	if err == nil {
 		return traffic, true
 	}
