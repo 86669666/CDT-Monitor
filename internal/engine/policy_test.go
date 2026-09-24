@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -114,6 +116,139 @@ func TestScheduledConsumptionUsesOvernightCycleSnapshot(t *testing.T) {
 	consumed, period := eng.calculateInstanceConsumption(ctx, accounts[0], now, "2026-09-25", false)
 	if consumed != 5 || period != "定时时段 (08:00 ~ 00:34)" {
 		t.Fatalf("got consumed=%v period=%q", consumed, period)
+	}
+}
+
+func TestScheduledConsumptionFallsBackWhenSnapshotIsMissing(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Date(2026, 9, 25, 0, 10, 0, 0, loc)
+	start := time.Date(2026, 9, 24, 8, 0, 0, 0, loc)
+	acc := domain.Account{ID: 101, AccessKeyID: "LTAI_SNAPSHOT", ScheduleEnabled: true, StartTime: "08:00", StopTime: "00:10", TrafficUsed: 54.44}
+	if err = st.AddTrafficStats(ctx, acc.ID, 51.98, start); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(ctx, acc.ID, 54.44, now); err != nil {
+		t.Fatal(err)
+	}
+	eng := New(st, nil, notify.New(), nil, 1)
+	assertConsumed := func(stage string) {
+		t.Helper()
+		consumed, period := eng.calculateInstanceConsumption(ctx, acc, now, "2026-09-25", false)
+		if consumed != 2.46 || period != "定时时段 (08:00 ~ 00:10)" {
+			t.Fatalf("%s: consumed=%v period=%q, want 2.46 GB", stage, consumed, period)
+		}
+	}
+	assertConsumed("no snapshot")
+	stopOnly := acc
+	stopOnly.ID++
+	if err = st.AddTrafficStats(ctx, stopOnly.ID, 51.98, start); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, stopOnly.ID, "2026-09-24", "stop", 54.44, "00:10"); err != nil {
+		t.Fatal(err)
+	}
+	if consumed, _ := eng.calculateInstanceConsumption(ctx, stopOnly, now, "2026-09-25", false); consumed != 2.46 {
+		t.Fatalf("stop snapshot only: consumed=%v, want 2.46 GB", consumed)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, acc.ID, "2026-09-24", "start", 51.98, "08:00"); err != nil {
+		t.Fatal(err)
+	}
+	assertConsumed("start snapshot only")
+	if err = st.RecordTrafficSnapshot(ctx, acc.ID, "2026-09-24", "stop", 54.44, "00:10"); err != nil {
+		t.Fatal(err)
+	}
+	assertConsumed("complete snapshot")
+}
+
+func TestScheduledReportWaitsForStopMonitor(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	cfg := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", EnableDailyReport: true,
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAI_SCHEDULED", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-scheduled", ScheduleEnabled: true, StartTime: "08:00", StopTime: "00:10"},
+			{AccessKeyID: "LTAI_UNSCHEDULED", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-unscheduled", DailyReportTime: "00:10"},
+		},
+	}
+	if err = st.Setup(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 2 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	eng := New(st, nil, notify.New(), nil, 1)
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	eng.checkDailyReport(ctx, time.Date(2026, 9, 25, 0, 10, 0, 0, loc))
+	job, err := st.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Type != JobDailyReport || job.AccountID != accounts[1].ID {
+		t.Fatalf("unexpected early report job: %+v", job)
+	}
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("scheduled account should wait for its stop monitor, got %v", err)
+	}
+}
+
+func TestScheduledReportRecoversAfterStopSnapshot(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	cfg := domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", EnableDailyReport: true,
+		Accounts: []domain.Account{{
+			AccessKeyID: "LTAI_RECOVERY", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-recovery",
+			ScheduleEnabled: true, StartTime: "08:00", StopTime: "00:10",
+		}},
+	}
+	if err = st.Setup(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts=%v err=%v", accounts, err)
+	}
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Date(2026, 9, 25, 0, 10, 0, 0, loc)
+	eng := New(st, nil, notify.New(), nil, 1)
+	if err = st.RecordTrafficSnapshot(ctx, accounts[0].ID, "2026-09-24", "stop", 54.44, "23:00"); err != nil {
+		t.Fatal(err)
+	}
+	eng.checkDailyReport(ctx, now)
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("stale stop snapshot should not queue a report: %v", err)
+	}
+	if err = st.RecordTrafficSnapshot(ctx, accounts[0].ID, "2026-09-24", "stop", 54.44, "00:10"); err != nil {
+		t.Fatal(err)
+	}
+	eng.checkDailyReport(ctx, now)
+	eng.checkDailyReport(ctx, now)
+	job, err := st.ClaimJob(ctx)
+	if err != nil || job.Type != JobDailyReport || job.AccountID != accounts[0].ID {
+		t.Fatalf("expected one recovered report job, got %+v err=%v", job, err)
+	}
+	if job.MaxAttempts != 12 {
+		t.Fatalf("scheduled report should retry transient API failures, got %d attempts", job.MaxAttempts)
+	}
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("duplicate report job: %v", err)
 	}
 }
 

@@ -102,11 +102,12 @@ h3 { letter-spacing: 0; }
 .input-shell { min-height: 52px; padding: 0 15px; display: flex; align-items: center; gap: 10px; border-radius: 12px; background: rgba(233, 236, 239, .72); box-shadow: inset 0 1px 3px rgba(28, 28, 30, .045), inset 0 0 0 1px var(--line), 0 1px 0 rgba(255, 255, 255, .76); transition: background var(--duration-fast) ease, box-shadow var(--duration-fast) ease, transform var(--duration-fast) ease; }
 .input-shell:hover { background: rgba(239, 241, 243, .88); }
 .input-shell:focus-within { background: rgba(255,255,255,.92); box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 0 3px rgba(50, 103, 178, .1); }
+.input-shell:has(> textarea) { padding-right: 0; }
 .input-shell > svg { flex: 0 0 auto; color: var(--muted-soft); }
 .input-shell input, .input-shell textarea { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); }
 .input-shell input::placeholder, .input-shell textarea::placeholder { color: #959ba3; }
 .input-shell input { height: 50px; }
-.input-shell textarea { min-height: 92px; padding: 14px 0; resize: vertical; }
+.input-shell textarea { min-height: 92px; padding: 14px 15px 14px 0; border-radius: 0 12px 12px 0; resize: vertical; scrollbar-color: var(--line-strong) transparent; }
 .select-control { position: relative; min-width: 0; }
 .select-trigger, .select-search { width: 100%; min-height: 52px; border: 0; border-radius: 12px; padding: 0 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 10px; color: var(--ink); background: rgba(255,255,255,.84); box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 0 rgba(255,255,255,.92), var(--shadow-sm); transition: background var(--duration-fast) ease, box-shadow var(--duration-fast) ease; }
 .select-trigger { cursor: pointer; text-align: left; }
@@ -294,6 +295,8 @@ h3 { letter-spacing: 0; }
 .account-editor__head span { font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-fields .toggle-row { align-self: end; }
 .account-fields__full { grid-column: 1 / -1; }
+.schedule-report-note { display: flex; align-items: flex-start; gap: 8px; margin: 10px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.schedule-report-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--blue); }
 .notification-action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .channel-tabs { display: flex; margin-bottom: 22px; padding: 4px; border-radius: 13px; background: rgba(225,229,233,.68); }
 .webhook-variables { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.5); }

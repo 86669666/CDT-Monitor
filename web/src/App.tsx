@@ -393,7 +393,6 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
       {configuringAccount && (
         <InstanceSettingsModal
           account={configuringAccount}
-          globalConfig={config}
           onClose={() => setConfiguringAccount(null)}
           onSaved={(updated) => {
             const nextAccounts = config.accounts.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
@@ -441,13 +440,11 @@ function AccountCard({ account, busy, keepAlive, billingEnabled, onAction, onCon
 
 function InstanceSettingsModal({
   account,
-  globalConfig,
   onClose,
   onSaved,
   notify,
 }: {
   account: Account
-  globalConfig: Config
   onClose: () => void
   onSaved: (account: Account) => void
   notify: (message: string, tone?: Toast['tone']) => void
@@ -517,7 +514,7 @@ function InstanceSettingsModal({
             <Segmented
               value={keepAliveVal}
               options={[
-                ['default', `跟随全局 (${globalConfig.keep_alive ? '开启' : '关闭'})`],
+                ['default', '跟随全局'],
                 ['enabled', '单独开启'],
                 ['disabled', '单独关闭'],
               ]}
@@ -529,7 +526,7 @@ function InstanceSettingsModal({
             <Segmented
               value={shutdownVal}
               options={[
-                ['default', `跟随全局 (${globalConfig.shutdown_mode === 'StopCharging' ? '节省停机' : '普通停机'})`],
+                ['default', '跟随全局'],
                 ['KeepCharging', '普通停机'],
                 ['StopCharging', '节省停机'],
               ]}
@@ -571,14 +568,15 @@ function InstanceSettingsModal({
             <Segmented
               value={dailyReportVal}
               options={[
-                ['default', `跟随全局 (${globalConfig.enable_daily_report ? '开启' : '关闭'})`],
+                ['default', '跟随全局'],
                 ['enabled', '单独开启'],
                 ['disabled', '单独关闭'],
               ]}
               onChange={(val) => setForm({ ...form, daily_report: val === 'default' ? null : val === 'enabled' })}
             />
+            {form.schedule_enabled && <ScheduleReportNote stopTime={form.stop_time} />}
           </div>
-          {!form.schedule_enabled ? (
+          {!form.schedule_enabled && (
             <div className="field">
               <Field label="日报推送时间">
                 <input
@@ -589,8 +587,6 @@ function InstanceSettingsModal({
               </Field>
               <p className="hint" style={{ margin: '4px 0 0' }}>默认每日 00:00 推送前 24 小时的流量消耗及账单</p>
             </div>
-          ) : (
-            <p className="hint" style={{ margin: '4px 0 0' }}>💡 已启用定时开关机，将在每日关机时（{form.stop_time || '关机时刻'}）自动推送本次运行的流量与账单消耗。</p>
           )}
         </div>
         <footer>
@@ -721,8 +717,9 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
               daily_report: val === 'default' ? null : val === 'enabled',
             })}
           />
+          {account.schedule_enabled && <ScheduleReportNote stopTime={account.stop_time} />}
         </div>
-        {!account.schedule_enabled ? (
+        {!account.schedule_enabled && (
           <div className="field">
             <Field label="日报推送时间">
               <input
@@ -733,14 +730,14 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
             </Field>
             <p className="hint" style={{ margin: '4px 0 0' }}>默认每日 00:00 推送前 24 小时的流量消耗及账单</p>
           </div>
-        ) : (
-          <p className="hint" style={{ margin: '4px 0 0', gridColumn: 'span 2' }}>
-            💡 已启用定时开关机，将在每日关机时（{account.stop_time || '关机时刻'}）自动推送本次运行的流量与账单消耗。
-          </p>
         )}
       </div>
     )}
   </div>
+}
+
+function ScheduleReportNote({ stopTime }: { stopTime: string }) {
+  return <p className="schedule-report-note"><Info size={15} aria-hidden="true" /><span>参与日报时，将在{stopTime ? `每日 ${stopTime} 关机时` : '每日关机时'}推送本次运行的流量与账单。</span></p>
 }
 
 function NotificationSettings({ config, onChange, notify }: { config: Config; onChange: (config: Config) => void; notify: (message: string, tone?: Toast['tone']) => void }) {

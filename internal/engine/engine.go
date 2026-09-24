@@ -79,7 +79,13 @@ func (e *Engine) Start(ctx context.Context) {
 }
 
 func (e *Engine) Enqueue(ctx context.Context, jobType string, accountID int64, payload, uniqueKey string) (domain.Job, error) {
-	job, err := e.store.EnqueueJob(ctx, jobType, accountID, payload, uniqueKey, 3)
+	maxAttempts := 3
+	if jobType == JobDailyReport {
+		// A transient traffic API outage at shutdown must not exhaust the
+		// report job in only a few seconds.
+		maxAttempts = 12
+	}
+	job, err := e.store.EnqueueJob(ctx, jobType, accountID, payload, uniqueKey, maxAttempts)
 	if err == nil {
 		e.signal()
 	}
@@ -298,7 +304,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			_ = e.store.AddLog(ctx, "error", fmt.Sprintf("实例状态查询失败 [%s]: %v", masked(account.AccessKeyID), statusErr))
 		}
 		updatedAt := time.Now().UTC()
-		if trafficErr != nil && statusErr != nil {
+		if trafficErr != nil {
 			updatedAt = account.UpdatedAt
 		}
 		if statusChangedBySchedule {
@@ -315,11 +321,13 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			_ = e.store.AddTrafficStats(ctx, account.ID, traffic, now)
 		}
 		if statusChangedBySchedule {
-			if slices.Contains(actions, "scheduled_start") {
+			if slices.Contains(actions, "scheduled_start") && trafficErr == nil {
 				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), "start", traffic, now.Format("15:04"))
 			}
 			if slices.Contains(actions, "scheduled_stop") {
-				_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), "stop", traffic, now.Format("15:04"))
+				if trafficErr == nil {
+					_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), "stop", traffic, now.Format("15:04"))
+				}
 				if config.EnableDailyReport && (account.DailyReport == nil || *account.DailyReport) {
 					reportKey := dailyReportKey(account, scheduleCycleDate(now, account.StartTime, account.StopTime))
 					freshReport, _ := e.store.RecordActionEvent(ctx, reportKey, account.ID, "daily_report", "attempting", "")
@@ -420,7 +428,6 @@ func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Confi
 		_ = e.store.DeleteActionEvent(ctx, key)
 		return false, err
 	}
-	_ = e.store.RecordTrafficSnapshot(ctx, account.ID, scheduleCycleDate(now, account.StartTime, account.StopTime), action, account.TrafficUsed, now.Format("15:04"))
 	status := domain.StatusStarting
 	if action == "stop" {
 		status = domain.StatusStopping
@@ -630,6 +637,21 @@ func dailyReportKey(account domain.Account, cycleDate string) string {
 	return fmt.Sprintf("daily_report:%d:%s:%s", account.ID, compactDate(cycleDate), scheduleTimeKey(configuredTime))
 }
 
+func scheduledStopSnapshotReady(snap store.TrafficSnapshot, configuredStop string) bool {
+	if snap.StopTraffic < 0 {
+		return false
+	}
+	actual, actualErr := parseClockTime(snap.StopTime)
+	target, targetErr := parseClockTime(configuredStop)
+	if actualErr != nil || targetErr != nil {
+		return false
+	}
+	actualMinute := actual.Hour()*60 + actual.Minute()
+	targetMinute := target.Hour()*60 + target.Minute()
+	delta := (actualMinute - targetMinute + 24*60) % (24 * 60)
+	return delta <= 10
+}
+
 func inTimeRange(current, start, end string) bool {
 	if start == "" || end == "" {
 		return false
@@ -745,24 +767,29 @@ func (e *Engine) checkDailyReport(ctx context.Context, now time.Time) {
 		if acc.DailyReport != nil && !*acc.DailyReport {
 			continue
 		}
-		var targetTime string
+		targetTime := acc.DailyReportTime
 		if acc.ScheduleEnabled {
 			targetTime = acc.StopTime
 			if targetTime == "" {
 				targetTime = "23:30"
 			}
-		} else {
-			targetTime = acc.DailyReportTime
-			if targetTime == "" {
-				targetTime = "00:00"
-			}
+		} else if targetTime == "" {
+			targetTime = "00:00"
 		}
 		if !dueWithin(localNow, targetTime, 10*time.Minute) {
 			continue
 		}
 		dateStr := localNow.Format("20060102")
 		if acc.ScheduleEnabled {
-			dateStr = compactDate(scheduleCycleDate(localNow, acc.StartTime, acc.StopTime))
+			cycleDate := scheduleCycleDate(localNow, acc.StartTime, acc.StopTime)
+			dateStr = compactDate(cycleDate)
+			// The stop monitor writes this snapshot after its final traffic
+			// query. It normally queues the report too; this recovers a crash
+			// between the snapshot write and the enqueue.
+			snap, err := e.store.GetTrafficSnapshot(ctx, acc.ID, cycleDate)
+			if err != nil || !scheduledStopSnapshotReady(snap, targetTime) {
+				continue
+			}
 		}
 		key := dailyReportKey(acc, dateStr)
 		fresh, err := e.store.RecordActionEvent(ctx, key, acc.ID, "daily_report", "attempting", "")
@@ -833,7 +860,12 @@ func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Ac
 	if acc.ScheduleEnabled && !force {
 		dateStr = scheduleCycleDate(now, acc.StartTime, acc.StopTime)
 	}
-	snap, _ := e.store.GetTrafficSnapshot(ctx, acc.ID, dateStr)
+	snap := store.TrafficSnapshot{StartTraffic: -1, StopTraffic: -1}
+	if stored, err := e.store.GetTrafficSnapshot(ctx, acc.ID, dateStr); err == nil {
+		snap = stored
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		_ = e.store.AddLog(ctx, "error", fmt.Sprintf("日报快照读取失败 [%s]: %v", masked(acc.AccessKeyID), err))
+	}
 	consumed := 0.0
 	periodDesc := ""
 	if force {
@@ -870,20 +902,20 @@ func (e *Engine) calculateInstanceConsumption(ctx context.Context, acc domain.Ac
 	return consumed, periodDesc
 }
 
-// Refresh the persisted traffic value before building a report. Daily reports
-// are queued before the regular monitor cycle, so relying on the stored value
-// can otherwise report the previous (often zero) sample.
-func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Account, now time.Time, maxAge time.Duration) domain.Account {
+// Refresh the persisted traffic value before building a report. Standalone
+// reports may be queued before the regular monitor cycle, so the stored value
+// may still be an older sample.
+func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Account, now time.Time, maxAge time.Duration) (domain.Account, error) {
 	if e.provider == nil {
-		return account
+		return account, nil
 	}
-	if maxAge <= 0 {
+	if maxAge < 0 {
 		maxAge = 10 * time.Minute
 	}
 	if account.TrafficUsed > 0 && !account.UpdatedAt.IsZero() {
 		age := time.Since(account.UpdatedAt)
 		if age >= 0 && age < maxAge {
-			return account
+			return account, nil
 		}
 	}
 	lock := e.accountLock(account.ID)
@@ -893,26 +925,39 @@ func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Acc
 	// for its per-account lock.
 	latest, err := e.store.GetAccount(ctx, account.ID)
 	if err == nil && latest.TrafficUsed > 0 && !latest.UpdatedAt.IsZero() && time.Since(latest.UpdatedAt) < maxAge {
-		return latest
+		return latest, nil
 	}
 
 	secret, err := e.store.AccountSecret(ctx, account.ID)
 	if err != nil {
-		return account
+		return account, err
 	}
 	traffic, err := e.provider.GetTraffic(ctx, account, secret)
 	if err != nil {
 		_ = e.store.AddLog(ctx, "error", fmt.Sprintf("日报流量查询失败 [%s]: %v", masked(account.AccessKeyID), err))
-		return account
+		return account, err
 	}
 	updatedAt := time.Now().UTC()
 	if err = e.store.UpdateRuntime(ctx, account.ID, traffic, account.InstanceStatus, updatedAt); err != nil {
-		return account
+		return account, err
 	}
 	_ = e.store.AddTrafficStats(ctx, account.ID, traffic, now)
 	account.TrafficUsed = traffic
 	account.UpdatedAt = updatedAt
-	return account
+	return account, nil
+}
+
+func (e *Engine) refreshTrafficForDailyReport(ctx context.Context, account domain.Account, now time.Time, maxAge time.Duration, force bool) (domain.Account, error) {
+	if account.ScheduleEnabled && !force {
+		cycleDate := scheduleCycleDate(now, account.StartTime, account.StopTime)
+		snap, err := e.store.GetTrafficSnapshot(ctx, account.ID, cycleDate)
+		if err != nil || snap.StopTraffic < 0 {
+			// A missing stop sample may mean the shutdown query failed. Retry the
+			// provider even when an earlier account sample is still cache-fresh.
+			maxAge = 0
+		}
+	}
+	return e.refreshTrafficForReport(ctx, account, now, maxAge)
 }
 
 type instanceReportItem struct {
@@ -958,7 +1003,10 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 		if !force && targetAcc.DailyReport != nil && !*targetAcc.DailyReport {
 			return "daily report disabled for this account", nil
 		}
-		refreshed := e.refreshTrafficForReport(ctx, *targetAcc, now, time.Duration(config.APIInterval)*time.Second)
+		refreshed, refreshErr := e.refreshTrafficForDailyReport(ctx, *targetAcc, now, time.Duration(config.APIInterval)*time.Second, force)
+		if refreshErr != nil && targetAcc.ScheduleEnabled && !force {
+			return "", fmt.Errorf("refresh scheduled report traffic: %w", refreshErr)
+		}
 		*targetAcc = refreshed
 
 		consumed, periodDesc := e.calculateInstanceConsumption(ctx, *targetAcc, now, dateStr, force)
@@ -1051,7 +1099,11 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 			excludedCount++
 			continue
 		}
-		acc = e.refreshTrafficForReport(ctx, acc, now, time.Duration(config.APIInterval)*time.Second)
+		refreshed, refreshErr := e.refreshTrafficForDailyReport(ctx, acc, now, time.Duration(config.APIInterval)*time.Second, force)
+		if refreshErr != nil && acc.ScheduleEnabled && !force {
+			return "", fmt.Errorf("refresh scheduled report traffic: %w", refreshErr)
+		}
+		acc = refreshed
 		consumed, periodDesc := e.calculateInstanceConsumption(ctx, acc, now, dateStr, force)
 
 		item := instanceReportItem{

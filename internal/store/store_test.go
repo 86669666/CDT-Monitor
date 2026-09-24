@@ -389,19 +389,19 @@ func TestCopyAccountReusesSecretUnderSameAK(t *testing.T) {
 		DailyReportTime:   "23:30",
 		Accounts: []domain.Account{
 			{
-				AccessKeyID:      "LTAIshared",
-				AccessKeySecret:  "super-secret-key",
-				RegionID:         "cn-hongkong",
-				InstanceID:       "i-source",
-				MaxTraffic:       200,
-				SiteType:         "china",
-				Remark:           "源实例",
-				KeepAlive:        &trueVal,
-				ShutdownMode:     "StopCharging",
-				ScheduleEnabled:  true,
-				StartTime:        "08:00",
-				StopTime:         "22:00",
-				DailyReport:      &trueVal,
+				AccessKeyID:     "LTAIshared",
+				AccessKeySecret: "super-secret-key",
+				RegionID:        "cn-hongkong",
+				InstanceID:      "i-source",
+				MaxTraffic:      200,
+				SiteType:        "china",
+				Remark:          "源实例",
+				KeepAlive:       &trueVal,
+				ShutdownMode:    "StopCharging",
+				ScheduleEnabled: true,
+				StartTime:       "08:00",
+				StopTime:        "22:00",
+				DailyReport:     &trueVal,
 			},
 		},
 	}
@@ -553,6 +553,26 @@ func TestTraffic24HoursAgoAndAroundTime(t *testing.T) {
 	trafficAround, ok := st.TrafficAroundTime(ctx, 201, t12Ago)
 	if !ok || trafficAround != 12.5 {
 		t.Fatalf("expected 12.5 around 12h ago, got %v (ok=%v)", trafficAround, ok)
+	}
+}
+
+func TestTrafficAroundTimeIgnoresSamplesOutsideWindow(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	start := time.Date(2026, 9, 24, 8, 0, 0, 0, loc)
+	if err = st.AddTrafficStats(ctx, 202, 51.98, start.Add(-8*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.AddTrafficStats(ctx, 202, 54.44, start.Add(16*time.Hour+10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if traffic, ok := st.TrafficAroundTime(ctx, 202, start); ok {
+		t.Fatalf("sample outside the start window was accepted: %v", traffic)
 	}
 }
 

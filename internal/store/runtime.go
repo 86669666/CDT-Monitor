@@ -142,15 +142,9 @@ func (s *Store) Traffic24HoursAgo(ctx context.Context, accountID int64, now time
 func (s *Store) TrafficAroundTime(ctx context.Context, accountID int64, targetTime time.Time) (float64, bool) {
 	target := targetTime.Unix()
 	var traffic float64
-	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target+2700).Scan(&traffic)
-	if err == nil {
-		return traffic, true
-	}
-	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at>=? ORDER BY recorded_at ASC LIMIT 1`, accountID, target-2700).Scan(&traffic)
-	if err == nil {
-		return traffic, true
-	}
-	return 0, false
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at BETWEEN ? AND ? ORDER BY ABS(recorded_at-?) ASC, recorded_at ASC LIMIT 1`,
+		accountID, target-2700, target+2700, target).Scan(&traffic)
+	return traffic, err == nil
 }
 
 func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic float64, now time.Time) error {
