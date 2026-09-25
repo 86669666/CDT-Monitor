@@ -32,6 +32,10 @@ type Account struct {
 	Currency         string    `json:"currency,omitempty"`
 	BillingError     string    `json:"billing_error,omitempty"`
 	BillingUpdatedAt time.Time `json:"billing_updated_at,omitempty"`
+	KeepAlive        *bool     `json:"keep_alive"`
+	ShutdownMode     string    `json:"shutdown_mode"`
+	DailyReport      *bool     `json:"daily_report"`
+	DailyReportTime  string    `json:"daily_report_time"`
 }
 
 type EmailConfig struct {
@@ -87,6 +91,8 @@ type Config struct {
 	APIInterval        int                `json:"api_interval"`
 	EnableBilling      bool               `json:"enable_billing"`
 	Timezone           string             `json:"timezone"`
+	EnableDailyReport  bool               `json:"enable_daily_report"`
+	DailyReportTime    string             `json:"daily_report_time"`
 	Notifications      NotificationConfig `json:"notifications"`
 	Accounts           []Account          `json:"accounts"`
 }
@@ -109,6 +115,13 @@ type AccountSummary struct {
 	Balance        *float64  `json:"balance,omitempty"`
 	Currency       string    `json:"currency,omitempty"`
 	BillingError   string    `json:"billing_error,omitempty"`
+	KeepAlive      *bool     `json:"keep_alive"`
+	ShutdownMode   string    `json:"shutdown_mode"`
+	ScheduleEnabled bool     `json:"schedule_enabled"`
+	StartTime      string    `json:"start_time,omitempty"`
+	StopTime       string    `json:"stop_time,omitempty"`
+	DailyReport    *bool     `json:"daily_report"`
+	DailyReportTime string    `json:"daily_report_time,omitempty"`
 }
 
 type Job struct {
