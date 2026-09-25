@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -22,35 +23,52 @@ func (s *Store) VerifyAdminPassword(ctx context.Context, password string) (bool,
 	if !security.VerifyPassword(encoded, password) {
 		return false, nil
 	}
-	if !strings.HasPrefix(encoded, "$argon2id$") {
-		hash, err := security.HashLegacyPassword(password)
-		if err != nil {
-			return false, err
-		}
-		if _, err = s.db.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash); err != nil {
-			return false, err
-		}
-	}
 	return true, nil
 }
 
 func (s *Store) RecentLoginFailures(ctx context.Context, ip string, since time.Time) (int, error) {
+	if since.IsZero() || since.Unix() <= 0 {
+		return 0, errors.New("login window is invalid")
+	}
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return 0, nil
+	}
 	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, ip, since.Unix()).Scan(&count)
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM login_attempts WHERE ip=? AND attempt_time>?`, ip, since.Unix()).Scan(&count)
 	return count, err
 }
 
 func (s *Store) RecordLoginFailure(ctx context.Context, ip string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO login_attempts(ip,attempt_time) VALUES(?,unixepoch())`, ip)
 	return err
 }
 
 func (s *Store) ClearLoginFailures(ctx context.Context, ip string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE ip=?`, ip)
 	return err
 }
 
 func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		return "", errors.New("session ttl is invalid")
+	}
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return "", err
+	}
+	userAgent, err = sessionUserAgent(userAgent)
+	if err != nil {
+		return "", err
+	}
 	token, err := security.NewToken(32)
 	if err != nil {
 		return "", err
@@ -61,8 +79,97 @@ func (s *Store) CreateSession(ctx context.Context, ip, userAgent string, ttl tim
 	return token, err
 }
 
+const (
+	maxUserAgentRunes         = 256
+	maxIPRunes                = 64
+	maxLogRunes               = 4096
+	maxAPIKeyNameRunes        = 64
+	maxPasskeyNameRunes       = 64
+	maxAPIKeys                = 16
+	maxAPIKeyScopes           = 8
+	maxPasskeys               = 8
+	maxPasskeyJSONBytes       = 8192
+	maxPasskeyCredentialBytes = 1024
+	maxAPIKeyScopesJSONBytes  = 512
+	maxAuthTokenBytes         = 128
+)
+
+func clipUserAgent(value string) string {
+	return clipRunes(value, maxUserAgentRunes)
+}
+
+func hasTextBreak(value string) bool {
+	return strings.ContainsAny(value, "\r\n\x00")
+}
+
+func sessionUserAgent(value string) (string, error) {
+	if hasTextBreak(value) {
+		return "", errors.New("user agent is invalid")
+	}
+	return clipUserAgent(value), nil
+}
+
+func clipIP(value string) string {
+	return clipRunes(strings.TrimSpace(value), maxIPRunes)
+}
+
+func validStoredIP(ip string) bool {
+	return ip != "" && !hasTextBreak(ip)
+}
+
+func normalizeStoredIP(value string) (string, error) {
+	if hasTextBreak(value) {
+		return "", errors.New("ip is invalid")
+	}
+	ip := clipIP(value)
+	if !validStoredIP(ip) {
+		return "", errors.New("ip is invalid")
+	}
+	return ip, nil
+}
+
+func clipRunes(value string, max int) string {
+	runes := []rune(value)
+	if len(runes) <= max {
+		return value
+	}
+	return string(runes[:max])
+}
+
+func (s *Store) CreateExclusiveSession(ctx context.Context, ip, userAgent string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		return "", errors.New("session ttl is invalid")
+	}
+	ip, err := normalizeStoredIP(ip)
+	if err != nil {
+		return "", err
+	}
+	userAgent, err = sessionUserAgent(userAgent)
+	if err != nil {
+		return "", err
+	}
+	token, err := security.NewToken(32)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().UTC()
+	err = s.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions`); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,ip,user_agent,created_at,expires_at) VALUES(?,?,?,?,?)`,
+			security.TokenHash(token), ip, userAgent, now.Unix(), now.Add(ttl).Unix())
+		return err
+	})
+	return token, err
+}
+
+func validAuthToken(token string) bool {
+	return token != "" && token == strings.TrimSpace(token) && !hasTextBreak(token) && len(token) <= maxAuthTokenBytes
+}
+
 func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error) {
-	if token == "" {
+	if !validAuthToken(token) {
 		return false, nil
 	}
 	var count int
@@ -71,20 +178,102 @@ func (s *Store) ValidateSession(ctx context.Context, token string) (bool, error)
 }
 
 func (s *Store) DeleteSession(ctx context.Context, token string) error {
+	if !validAuthToken(token) {
+		return nil
+	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash=?`, security.TokenHash(token))
 	return err
 }
 
+func parseAPIKeyScopes(raw string) ([]string, error) {
+	if len(raw) > maxAPIKeyScopesJSONBytes {
+		return nil, errors.New("api key scopes are too large")
+	}
+	var result []string
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil, err
+	}
+	if result == nil || len(result) == 0 {
+		return nil, errors.New("invalid API key scope")
+	}
+	for _, scope := range result {
+		if strings.TrimSpace(scope) == "" || scope != strings.TrimSpace(scope) || hasTextBreak(scope) {
+			return nil, errors.New("invalid API key scope")
+		}
+	}
+	return result, nil
+}
+
+func allowedAPIKeyScope(scope string) bool {
+	return scope == "widget:read" || scope == "instance:control" || scope == "cron:run"
+}
+
+func validAPIKeyScopes(scopes []string) bool {
+	if len(scopes) == 0 {
+		return false
+	}
+	for _, scope := range scopes {
+		if !allowedAPIKeyScope(scope) {
+			return false
+		}
+	}
+	return true
+}
+
+func uniqueAPIKeyScopes(scopes []string) []string {
+	seen := make(map[string]bool, len(scopes))
+	unique := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		unique = append(unique, scope)
+	}
+	return unique
+}
+
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
-	if strings.TrimSpace(name) == "" || len(scopes) == 0 {
+	name = strings.TrimSpace(name)
+	if name == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
+	}
+	if len(scopes) > maxAPIKeyScopes {
+		return domain.APIKey{}, "", errors.New("invalid API key scope")
+	}
+	if len([]rune(name)) > maxAPIKeyNameRunes {
+		return domain.APIKey{}, "", errors.New("api key name is too long")
+	}
+	if hasTextBreak(name) {
+		return domain.APIKey{}, "", errors.New("api key name is invalid")
+	}
+	scopes = uniqueAPIKeyScopes(scopes)
+	if !validAPIKeyScopes(scopes) {
+		return domain.APIKey{}, "", errors.New("invalid API key scope")
+	}
+	if expiresAt != nil {
+		now := time.Now().UTC()
+		exp := expiresAt.UTC()
+		if !exp.After(now) || exp.Unix() <= now.Unix() {
+			return domain.APIKey{}, "", errors.New("api key expiry must be in the future")
+		}
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL`).Scan(&count); err != nil {
+		return domain.APIKey{}, "", err
+	}
+	if count >= maxAPIKeys {
+		return domain.APIKey{}, "", errors.New("too many api keys")
 	}
 	secret, err := security.NewToken(32)
 	if err != nil {
 		return domain.APIKey{}, "", err
 	}
 	token := "cdt_" + secret
-	scopeJSON, _ := json.Marshal(scopes)
+	scopeJSON, err := json.Marshal(scopes)
+	if err != nil {
+		return domain.APIKey{}, "", err
+	}
 	now := time.Now().UTC()
 	var expires any
 	if expiresAt != nil {
@@ -95,7 +284,10 @@ func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, 
 	if err != nil {
 		return domain.APIKey{}, "", err
 	}
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil || id < 1 {
+		return domain.APIKey{}, "", errors.New("api key id is invalid")
+	}
 	return domain.APIKey{ID: id, Name: name, Scopes: scopes, CreatedAt: now, ExpiresAt: expiresAt}, token, nil
 }
 
@@ -114,7 +306,23 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 		if err = rows.Scan(&key.ID, &key.Name, &scopes, &created, &lastUsed, &expires, &revoked); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(scopes), &key.Scopes)
+		parsed, parseErr := parseAPIKeyScopes(scopes)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		if len(parsed) > maxAPIKeyScopes || !validAPIKeyScopes(parsed) || len(parsed) != len(uniqueAPIKeyScopes(parsed)) {
+			return nil, errors.New("invalid API key scope")
+		}
+		if key.ID < 1 {
+			return nil, errors.New("api key id is invalid")
+		}
+		if created <= 0 || (expires.Valid && expires.Int64 <= 0) || (lastUsed.Valid && lastUsed.Int64 <= 0) {
+			return nil, errors.New("api key timestamp is invalid")
+		}
+		if strings.TrimSpace(key.Name) == "" || key.Name != strings.TrimSpace(key.Name) || hasTextBreak(key.Name) || len([]rune(key.Name)) > maxAPIKeyNameRunes {
+			return nil, errors.New("api key name is invalid")
+		}
+		key.Scopes = parsed
 		key.CreatedAt = time.Unix(created, 0).UTC()
 		key.LastUsedAt, key.ExpiresAt, key.RevokedAt = nullTime(lastUsed), nullTime(expires), nullTime(revoked)
 		keys = append(keys, key)
@@ -123,12 +331,18 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 }
 
 func (s *Store) RevokeAPIKey(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE api_keys SET revoked_at=unixepoch() WHERE id=?`, id)
-	return err
+	if id < 1 {
+		return sql.ErrNoRows
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE api_keys SET revoked_at=unixepoch() WHERE id=? AND revoked_at IS NULL`, id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, error) {
-	if token == "" {
+	if !validAuthToken(token) {
 		return nil, sql.ErrNoRows
 	}
 	var scopes string
@@ -136,12 +350,22 @@ func (s *Store) ValidateAPIKey(ctx context.Context, token string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
-	var result []string
-	if err = json.Unmarshal([]byte(scopes), &result); err != nil {
+	result, err := parseAPIKeyScopes(scopes)
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	filtered := make([]string, 0, len(result))
+	for _, scope := range result {
+		if allowedAPIKeyScope(scope) {
+			filtered = append(filtered, scope)
+		}
+	}
+	filtered = uniqueAPIKeyScopes(filtered)
+	if len(filtered) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at=unixepoch() WHERE token_hash=?`, security.TokenHash(token))
+	return filtered, nil
 }
 
 func (s *Store) UpdateAdminPassword(ctx context.Context, password, keepSessionToken string) error {
@@ -176,6 +400,15 @@ func (s *Store) ListPasskeys(ctx context.Context) ([]domain.Passkey, error) {
 		if err = rows.Scan(&item.ID, &item.Name, &created, &lastUsed); err != nil {
 			return nil, err
 		}
+		if item.ID < 1 {
+			return nil, errors.New("passkey id is invalid")
+		}
+		if created <= 0 || (lastUsed.Valid && lastUsed.Int64 <= 0) {
+			return nil, errors.New("passkey timestamp is invalid")
+		}
+		if strings.TrimSpace(item.Name) == "" || item.Name != strings.TrimSpace(item.Name) || hasTextBreak(item.Name) || len([]rune(item.Name)) > maxPasskeyNameRunes {
+			return nil, errors.New("passkey name is invalid")
+		}
 		item.CreatedAt = time.Unix(created, 0).UTC()
 		item.LastUsedAt = nullTime(lastUsed)
 		items = append(items, item)
@@ -184,48 +417,102 @@ func (s *Store) ListPasskeys(ctx context.Context) ([]domain.Passkey, error) {
 }
 
 func (s *Store) LoadPasskeyCredentials(ctx context.Context) ([]webauthn.Credential, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT credential_json FROM passkeys ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT credential_id,credential_json FROM passkeys ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	credentials := make([]webauthn.Credential, 0)
 	for rows.Next() {
+		var storedID []byte
 		var encoded string
-		if err = rows.Scan(&encoded); err != nil {
+		if err = rows.Scan(&storedID, &encoded); err != nil {
 			return nil, err
+		}
+		if len(encoded) > maxPasskeyJSONBytes {
+			return nil, errors.New("passkey credential is too large")
 		}
 		var credential webauthn.Credential
 		if err = json.Unmarshal([]byte(encoded), &credential); err != nil {
 			return nil, err
+		}
+		if err = validPasskeyCredential(credential); err != nil {
+			return nil, err
+		}
+		if len(storedID) == 0 || !bytes.Equal(storedID, credential.ID) {
+			return nil, errors.New("passkey credential is invalid")
 		}
 		credentials = append(credentials, credential)
 	}
 	return credentials, rows.Err()
 }
 
-func (s *Store) SavePasskey(ctx context.Context, name string, credential webauthn.Credential) error {
-	if strings.TrimSpace(name) == "" {
-		name = "管理员 Passkey"
+func validPasskeyCredential(credential webauthn.Credential) error {
+	if len(credential.ID) == 0 || len(credential.ID) > maxPasskeyCredentialBytes || len(credential.PublicKey) == 0 || len(credential.PublicKey) > maxPasskeyCredentialBytes {
+		return errors.New("passkey credential is invalid")
+	}
+	return nil
+}
+
+func encodePasskeyCredential(credential webauthn.Credential) (string, error) {
+	if err := validPasskeyCredential(credential); err != nil {
+		return "", err
 	}
 	encoded, err := json.Marshal(credential)
 	if err != nil {
+		return "", err
+	}
+	if len(encoded) > maxPasskeyJSONBytes {
+		return "", errors.New("passkey credential is too large")
+	}
+	return string(encoded), nil
+}
+
+func (s *Store) SavePasskey(ctx context.Context, name string, credential webauthn.Credential) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "管理员 Passkey"
+	}
+	if len([]rune(name)) > maxPasskeyNameRunes {
+		return errors.New("passkey name is too long")
+	}
+	if hasTextBreak(name) {
+		return errors.New("passkey name is invalid")
+	}
+	encoded, err := encodePasskeyCredential(credential)
+	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES(?,?,?,unixepoch())`, name, credential.ID, string(encoded))
+	var count int
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passkeys`).Scan(&count); err != nil {
+		return err
+	}
+	if count >= maxPasskeys {
+		return errors.New("too many passkeys")
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO passkeys(name,credential_id,credential_json,created_at) VALUES(?,?,?,unixepoch())`, name, credential.ID, encoded)
 	return err
 }
 
 func (s *Store) UpdatePasskeyCredential(ctx context.Context, credential webauthn.Credential) error {
-	encoded, err := json.Marshal(credential)
+	encoded, err := encodePasskeyCredential(credential)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE passkeys SET credential_json=?,last_used_at=unixepoch() WHERE credential_id=?`, string(encoded), credential.ID)
-	return err
+	res, err := s.db.ExecContext(ctx, `UPDATE passkeys SET credential_json=?,last_used_at=unixepoch() WHERE credential_id=?`, encoded, credential.ID)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func (s *Store) DeletePasskey(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM passkeys WHERE id=?`, id)
-	return err
+	if id < 1 {
+		return sql.ErrNoRows
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM passkeys WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }

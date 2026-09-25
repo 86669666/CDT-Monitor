@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/tls"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -14,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +27,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/engine"
+	"github.com/wang4386/CDT-Monitor/internal/notify"
 	"github.com/wang4386/CDT-Monitor/internal/security"
 	"github.com/wang4386/CDT-Monitor/internal/store"
 )
@@ -64,9 +69,12 @@ type passkeySession struct {
 
 const adminWebAuthnID = "cdt-monitor-admin-v1"
 
+const maxPasskeySessions = 8
+
 type rateWindow struct {
-	start time.Time
-	count int
+	start   time.Time
+	count   int
+	expires time.Time
 }
 
 func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger, build ...BuildInfo) *Server {
@@ -98,7 +106,9 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("POST /api/v1/accounts/refresh", s.require("instance:control", http.HandlerFunc(s.refreshAll)))
 	mux.Handle("POST /api/v1/accounts/{id}/refresh", s.require("instance:control", http.HandlerFunc(s.refresh)))
 	mux.Handle("POST /api/v1/accounts/{id}/actions/{action}", s.require("instance:control", http.HandlerFunc(s.control)))
-	mux.Handle("GET /api/v1/jobs/{id}", s.require("widget:read", http.HandlerFunc(s.job)))
+	mux.Handle("PATCH /api/v1/accounts/{id}/settings", s.require("admin", http.HandlerFunc(s.updateAccountSettings)))
+	mux.Handle("POST /api/v1/notifications/daily-report", s.require("admin", http.HandlerFunc(s.triggerDailyReport)))
+	mux.Handle("GET /api/v1/jobs/{id}", s.requireAny([]string{"widget:read", "instance:control"}, http.HandlerFunc(s.job)))
 	mux.Handle("GET /api/v1/logs", s.require("admin", http.HandlerFunc(s.logs)))
 	mux.Handle("DELETE /api/v1/logs", s.require("admin", http.HandlerFunc(s.clearLogs)))
 	mux.Handle("POST /api/v1/notifications/test/{channel}", s.require("admin", http.HandlerFunc(s.testNotification)))
@@ -119,7 +129,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ready(r.Context()); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "database_not_ready", err.Error())
+		writeError(w, http.StatusServiceUnavailable, "database_not_ready", "数据库暂时不可用")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ready"})
@@ -128,7 +138,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 func (s *Server) initStatus(w http.ResponseWriter, r *http.Request) {
 	initialized, err := s.store.IsInitialized(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "init_status_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "init_status_failed", "无法读取初始化状态")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"initialized": initialized})
@@ -160,21 +170,21 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	var config domain.Config
 	if err := decodeJSON(r, &config); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	applyConfigDefaults(&config)
 	if err := s.store.Setup(r.Context(), config); err != nil {
-		writeError(w, http.StatusBadRequest, "setup_failed", err.Error())
+		writeStoreValidationError(w, "setup_failed", "系统初始化失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "系统初始化完成 [IP: "+clientIP(r)+"]")
-	token, err := s.store.CreateSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
+	token, err := s.store.CreateExclusiveSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
-	csrf := newCSRFToken()
+	csrf := csrfToken(token)
 	setAuthCookies(w, r, token, csrf)
 	writeJSON(w, http.StatusCreated, map[string]any{"success": true, "csrf_token": csrf})
 }
@@ -187,7 +197,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	failures, err := s.store.RecentLoginFailures(r.Context(), ip, time.Now().Add(-15*time.Minute))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "login_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "login_failed", "登录失败")
 		return
 	}
 	if failures >= 5 {
@@ -198,7 +208,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err = decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	valid, err := s.store.VerifyAdminPassword(r.Context(), request.Password)
@@ -209,12 +219,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.store.ClearLoginFailures(r.Context(), ip)
-	token, err := s.store.CreateSession(r.Context(), ip, r.UserAgent(), 24*time.Hour)
+	token, err := s.store.CreateExclusiveSession(r.Context(), ip, r.UserAgent(), 24*time.Hour)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
-	csrf := newCSRFToken()
+	csrf := csrfToken(token)
 	setAuthCookies(w, r, token, csrf)
 	_ = s.store.AddLog(r.Context(), "audit", "管理员登录成功 [IP: "+ip+"]")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
@@ -226,7 +236,7 @@ func (s *Server) updateAdminPassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword     string `json:"new_password"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	valid, err := s.store.VerifyAdminPassword(r.Context(), request.CurrentPassword)
@@ -236,6 +246,10 @@ func (s *Server) updateAdminPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(request.NewPassword) < 10 {
 		writeError(w, http.StatusBadRequest, "invalid_password", "新密码至少需要 10 个字符")
+		return
+	}
+	if len([]rune(request.NewPassword)) > security.MaxPasswordRunes {
+		writeError(w, http.StatusBadRequest, "invalid_password", "新密码过长")
 		return
 	}
 	currentToken := ""
@@ -265,6 +279,10 @@ func (s *Server) deletePasskey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeletePasskey(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not_found", "Passkey 不存在")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 删除失败")
 		return
 	}
@@ -281,7 +299,16 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		Name string `json:"name"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
+		return
+	}
+	name := strings.TrimSpace(request.Name)
+	if strings.ContainsAny(name, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称无效")
+		return
+	}
+	if len([]rune(name)) > 64 {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称过长")
 		return
 	}
 	credentials, err := s.store.LoadPasskeyCredentials(r.Context())
@@ -289,9 +316,13 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 数据加载失败")
 		return
 	}
+	if len(credentials) >= maxPasskeySessions {
+		writeError(w, http.StatusBadRequest, "passkey_failed", "too many passkeys")
+		return
+	}
 	creation, session, err := s.webAuthn(r).BeginRegistration(&adminWebAuthnUser{credentials: credentials})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
 	id, err := security.NewToken(24)
@@ -299,7 +330,10 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
-	s.savePasskeySession(id, passkeySession{kind: "registration", name: strings.TrimSpace(request.Name), session: *session, expires: time.Now().Add(5 * time.Minute)})
+	if !s.savePasskeySession(id, passkeySession{kind: "registration", name: name, session: *session, expires: time.Now().Add(5 * time.Minute)}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Passkey 挑战过多，请稍后再试")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "public_key": creation})
 }
 
@@ -329,7 +363,7 @@ func (s *Server) completePasskeyRegistration(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err = s.store.SavePasskey(r.Context(), ceremony.name, *credential); err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 保存失败")
+		writeStoreValidationError(w, "passkey_failed", "Passkey 保存失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "创建管理员 Passkey")
@@ -339,6 +373,10 @@ func (s *Server) completePasskeyRegistration(w http.ResponseWriter, r *http.Requ
 func (s *Server) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	if !requestSecure(r) {
 		writeError(w, http.StatusBadRequest, "https_required", "Passkey 登录只能在 HTTPS 安全上下文中使用")
+		return
+	}
+	if !s.allowRate("passkey:"+clientIP(r), 8, 15*time.Minute) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Passkey 尝试过多，请稍后再试")
 		return
 	}
 	credentials, err := s.store.LoadPasskeyCredentials(r.Context())
@@ -353,7 +391,7 @@ func (s *Server) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	assertion, session, err := s.webAuthn(r).BeginLogin(user)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "passkey_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
 	id, err := security.NewToken(24)
@@ -361,7 +399,10 @@ func (s *Server) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "无法创建 Passkey 挑战")
 		return
 	}
-	s.savePasskeySession(id, passkeySession{kind: "login", session: *session, expires: time.Now().Add(5 * time.Minute)})
+	if !s.savePasskeySession(id, passkeySession{kind: "login", session: *session, expires: time.Now().Add(5 * time.Minute)}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Passkey 挑战过多，请稍后再试")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": id, "public_key": assertion})
 }
 
@@ -395,12 +436,12 @@ func (s *Server) completePasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "passkey_failed", "Passkey 状态保存失败")
 		return
 	}
-	token, err := s.store.CreateSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
+	token, err := s.store.CreateExclusiveSession(r.Context(), clientIP(r), r.UserAgent(), 24*time.Hour)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "session_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
 		return
 	}
-	csrf := newCSRFToken()
+	csrf := csrfToken(token)
 	setAuthCookies(w, r, token, csrf)
 	_ = s.store.AddLog(r.Context(), "audit", "管理员使用 Passkey 登录成功 [IP: "+clientIP(r)+"]")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
@@ -434,29 +475,38 @@ func requestOrigin(r *http.Request) string {
 	if requestSecure(r) {
 		scheme = "https"
 	}
-	host := r.Header.Get("X-Forwarded-Host")
-	if host == "" {
-		host = r.Host
-	}
-	if strings.Contains(host, ",") {
-		host = strings.TrimSpace(strings.Split(host, ",")[0])
+	host := r.Host
+	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
+		if trustedProxy(remoteIP(r)) {
+			host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		}
 	}
 	return scheme + "://" + host
 }
 
-func (s *Server) savePasskeySession(id string, session passkeySession) {
+func (s *Server) savePasskeySession(id string, session passkeySession) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	for key, item := range s.passkeys {
-		if item.expires.Before(now) {
+		if !item.expires.After(now) {
 			delete(s.passkeys, key)
 		}
 	}
+	if len(s.passkeys) >= maxPasskeySessions {
+		return false
+	}
 	s.passkeys[id] = session
+	return true
 }
 
 func (s *Server) takePasskeySession(id, kind string) (passkeySession, bool) {
+	if id == "" || len(id) > 128 {
+		return passkeySession{}, false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.passkeys[id]
@@ -468,33 +518,167 @@ func (s *Server) takePasskeySession(id, kind string) (passkeySession, bool) {
 	return session, true
 }
 
+const githubReleaseURL = "https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest"
+
+var errGitHubRedirect = errors.New("github redirects are not allowed")
+var errGitHubForbiddenHost = errors.New("github host is not allowed")
+
+var githubHTTPClient = &http.Client{
+	Timeout: 4 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		DialContext:     githubDialContext,
+	},
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return errGitHubRedirect
+	},
+}
+
+func githubDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errGitHubForbiddenHost
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if port != "443" {
+		return nil, errGitHubForbiddenHost
+	}
+	if net.ParseIP(host) != nil || !allowedGitHubHost(host) {
+		return nil, errGitHubForbiddenHost
+	}
+	ips, err := lookupGitHubIPs(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 || len(ips) > maxGitHubResolvedIPs {
+		return nil, errGitHubForbiddenHost
+	}
+	for _, ip := range ips {
+		if forbiddenGitHubIP(ip) {
+			return nil, errGitHubForbiddenHost
+		}
+	}
+	dialer := &net.Dialer{Timeout: 4 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+const (
+	maxGitHubResolvedIPs = 8
+	maxGitHubTagRunes    = 64
+)
+
+var lookupGitHubIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
+		}
+	}
+	return ips, nil
+}
+
+func allowedGitHubHost(host string) bool {
+	return strings.EqualFold(strings.TrimSuffix(host, "."), "api.github.com")
+}
+
+func validGitHubTag(tag string) bool {
+	if tag == "" || len([]rune(tag)) > maxGitHubTagRunes {
+		return false
+	}
+	for _, r := range tag {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func forbiddenGitHubIP(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+		return true
+	}
+	return ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254"))
+}
+
 func latestRelease(ctx context.Context, version string) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/wang4386/CDT-Monitor/releases/latest", nil)
+	return fetchLatestRelease(ctx, version, githubReleaseURL)
+}
+
+func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	if version == "" {
-		version = "dev"
-	}
-	request.Header.Set("User-Agent", "CDT-Monitor/"+version)
-	client := &http.Client{Timeout: 4 * time.Second}
-	response, err := client.Do(request)
+	request.Header.Set("User-Agent", githubUserAgent(version))
+	response, err := githubHTTPClient.Do(request)
 	if err != nil {
 		return "", err
 	}
 	defer response.Body.Close()
-	if response.StatusCode >= 400 {
+	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github HTTP %d", response.StatusCode)
 	}
+	return decodeGitHubReleaseTag(response.Body)
+}
+
+func githubUserAgent(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "dev"
+	}
+	for _, r := range version {
+		if r == '\r' || r == '\n' || r == 0 {
+			version = "dev"
+			break
+		}
+	}
+	if runes := []rune(version); len(runes) > maxGitHubTagRunes {
+		version = string(runes[:maxGitHubTagRunes])
+	}
+	return "CDT-Monitor/" + version
+}
+
+func decodeGitHubReleaseTag(body io.Reader) (string, error) {
 	var payload struct {
 		TagName string `json:"tag_name"`
 	}
-	if err = json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(body, 1<<20))
+	if err := decoder.Decode(&payload); err != nil {
 		return "", err
+	}
+	if decoder.More() {
+		return "", errors.New("latest release response is invalid")
 	}
 	if payload.TagName == "" {
 		return "", errors.New("latest release has no tag")
+	}
+	if !validGitHubTag(payload.TagName) {
+		if len([]rune(payload.TagName)) > maxGitHubTagRunes {
+			return "", errors.New("latest release tag is too long")
+		}
+		return "", errors.New("latest release tag is invalid")
 	}
 	return payload.TagName, nil
 }
@@ -510,7 +694,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	accounts, lastRun, err := s.engine.Summary(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "status_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
 	etag := fmt.Sprintf(`W/"%d-%d"`, lastRun.Unix(), len(accounts))
@@ -526,7 +710,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 func (s *Server) widgetSummary(w http.ResponseWriter, r *http.Request) {
 	accounts, lastRun, err := s.engine.Summary(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "status_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
 	type compact struct {
@@ -549,7 +733,7 @@ func (s *Server) widgetSummary(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	config, err := s.store.GetConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "config_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "config_failed", "配置加载失败")
 		return
 	}
 	scrubConfig(&config)
@@ -559,12 +743,26 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {
 	var config domain.Config
 	if err := decodeJSON(r, &config); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
 	applyConfigDefaults(&config)
+	for index := range config.Accounts {
+		account := &config.Accounts[index]
+		var err error
+		account.StartTime, err = normalizeClockTime(account.StartTime, account.ScheduleEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_schedule_time", "开机时间必须使用 24 小时制 HH:MM 格式")
+			return
+		}
+		account.StopTime, err = normalizeClockTime(account.StopTime, account.ScheduleEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_schedule_time", "关机时间必须使用 24 小时制 HH:MM 格式")
+			return
+		}
+	}
 	if err := s.store.SaveConfig(r.Context(), config); err != nil {
-		writeError(w, http.StatusBadRequest, "config_failed", err.Error())
+		writeStoreValidationError(w, "config_failed", "配置保存失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "管理员更新系统配置")
@@ -577,8 +775,12 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	history, err := s.store.History(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "not_found", "账号不存在")
+		return
+	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "history_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "history_failed", "历史记录加载失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, history)
@@ -591,7 +793,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := s.engine.Enqueue(r.Context(), engine.JobRefreshAccount, id, `{}`, engine.JobUniqueKey(engine.JobRefreshAccount, id, time.Now().UTC().Format("200601021504")))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -600,7 +802,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 func (s *Server) refreshAll(w http.ResponseWriter, r *http.Request) {
 	jobs, err := s.engine.EnqueueRefreshAll(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"jobs": jobs})
@@ -611,14 +813,14 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	action := strings.ToLower(r.PathValue("action"))
+	action := strings.ToLower(strings.TrimSpace(r.PathValue("action")))
 	if action != "start" && action != "stop" {
 		writeError(w, http.StatusBadRequest, "invalid_action", "action must be start or stop")
 		return
 	}
 	job, err := s.engine.Enqueue(r.Context(), engine.JobControlInstance, id, engine.ParseControlPayload(action, "手动"), engine.JobUniqueKey(engine.JobControlInstance, id, action))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -631,38 +833,51 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "job_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "job_failed", "任务查询失败")
 		return
 	}
+	job.Error = s.redactSecrets(r.Context(), job.Error)
+	job.Result = s.redactSecrets(r.Context(), job.Result)
 	writeJSON(w, http.StatusOK, job)
 }
 
 func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.store.ListLogs(r.Context(), r.URL.Query().Get("tab"), 100)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "logs_failed", err.Error())
+		if err.Error() == "log tab is invalid" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "日志类型无效")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
+	}
+	for i := range entries {
+		entries[i].Message = s.redactSecrets(r.Context(), entries[i].Message)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": entries})
 }
 
 func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.ClearLogs(r.Context(), r.URL.Query().Get("tab")); err != nil {
-		writeError(w, http.StatusInternalServerError, "logs_failed", err.Error())
+		if err.Error() == "log tab is invalid" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "日志类型无效")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "logs_failed", "日志操作失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
-	channel := r.PathValue("channel")
+	channel := strings.ToLower(strings.TrimSpace(r.PathValue("channel")))
 	if channel != "email" && channel != "telegram" && channel != "webhook" {
 		writeError(w, http.StatusBadRequest, "invalid_channel", "invalid notification channel")
 		return
 	}
 	job, err := s.engine.Enqueue(r.Context(), engine.JobTestNotify, 0, engine.ParseNotifyPayload(channel), "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", "任务提交失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -671,7 +886,7 @@ func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	keys, err := s.store.ListAPIKeys(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "api_keys_failed", err.Error())
+		writeError(w, http.StatusInternalServerError, "api_keys_failed", "API Key 加载失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
@@ -684,18 +899,34 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt *time.Time `json:"expires_at"`
 	}
 	if err := decodeJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
+	request.Name = strings.TrimSpace(request.Name)
+	if request.Name == "" || len(request.Scopes) == 0 {
+		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称和权限不能为空")
+		return
+	}
+	if strings.ContainsAny(request.Name, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称无效")
+		return
+	}
+	if len(request.Scopes) > 8 {
+		writeError(w, http.StatusBadRequest, "invalid_scope", "invalid API key scope")
+		return
+	}
+	scopes := make([]string, 0, len(request.Scopes))
 	for _, scope := range request.Scopes {
+		scope = strings.TrimSpace(scope)
 		if scope != "widget:read" && scope != "instance:control" && scope != "cron:run" {
 			writeError(w, http.StatusBadRequest, "invalid_scope", "invalid API key scope")
 			return
 		}
+		scopes = append(scopes, scope)
 	}
-	key, token, err := s.store.CreateAPIKey(r.Context(), request.Name, request.Scopes, request.ExpiresAt)
+	key, token, err := s.store.CreateAPIKey(r.Context(), request.Name, scopes, request.ExpiresAt)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "api_key_failed", err.Error())
+		writeStoreValidationError(w, "api_key_failed", "API Key 创建失败", err)
 		return
 	}
 	_ = s.store.AddLog(r.Context(), "audit", "创建 API Key: "+request.Name)
@@ -708,14 +939,22 @@ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.RevokeAPIKey(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "api_key_failed", err.Error())
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not_found", "API Key 不存在")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "api_key_failed", "API Key 操作失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (s *Server) legacyMonitor(w http.ResponseWriter, r *http.Request) {
-	scopes, err := s.store.ValidateAPIKey(r.Context(), r.URL.Query().Get("key"))
+	token := bearerToken(r)
+	if token == "" {
+		token = strings.TrimSpace(r.URL.Query().Get("key"))
+	}
+	scopes, err := s.store.ValidateAPIKey(r.Context(), token)
 	if err != nil || !contains(scopes, "cron:run") {
 		writeError(w, http.StatusUnauthorized, "invalid_key", "需要具有 cron:run 权限的 API Key")
 		return
@@ -725,22 +964,35 @@ func (s *Server) legacyMonitor(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "monitor_busy", "监控任务正在由其他进程执行")
 			return
 		}
-		writeError(w, http.StatusConflict, "monitor_busy", err.Error())
+		writeError(w, http.StatusConflict, "monitor_busy", "监控任务执行失败")
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
 }
 
 func (s *Server) require(scope string, next http.Handler) http.Handler {
+	return s.requireAny([]string{scope}, next)
+}
+
+func (s *Server) requireAny(scopes []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, err := s.authenticate(r)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "请登录或提供有效 API Key")
 			return
 		}
-		if !p.admin && !p.scopes[scope] {
-			writeError(w, http.StatusForbidden, "forbidden", "API Key 权限不足")
-			return
+		if !p.admin {
+			allowed := false
+			for _, scope := range scopes {
+				if p.scopes[scope] {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				writeError(w, http.StatusForbidden, "forbidden", "API Key 权限不足")
+				return
+			}
 		}
 		if p.admin && r.Method != http.MethodGet && r.Method != http.MethodHead && !validCSRF(r) {
 			writeError(w, http.StatusForbidden, "csrf_failed", "CSRF 校验失败")
@@ -776,10 +1028,16 @@ func (s *Server) authenticate(r *http.Request) (principal, error) {
 
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
+	token := ""
 	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		return strings.TrimSpace(header[7:])
+		token = strings.TrimSpace(header[7:])
+	} else {
+		token = strings.TrimSpace(r.Header.Get("X-API-Key"))
 	}
-	return strings.TrimSpace(r.Header.Get("X-API-Key"))
+	if len(token) > 128 {
+		return ""
+	}
+	return token
 }
 
 func setAuthCookies(w http.ResponseWriter, r *http.Request, token, csrf string) {
@@ -796,18 +1054,38 @@ func clearAuthCookies(w http.ResponseWriter, r *http.Request) {
 }
 
 func validCSRF(r *http.Request) bool {
+	session, err := r.Cookie("cdt_session")
+	if err != nil || session.Value == "" {
+		return false
+	}
 	cookie, err := r.Cookie("cdt_csrf")
-	return err == nil && cookie.Value != "" && r.Header.Get("X-CDT-CSRF") == cookie.Value
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	header := r.Header.Get("X-CDT-CSRF")
+	if header == "" {
+		return false
+	}
+	if len(session.Value) > 128 || len(cookie.Value) > 128 || len(header) > 128 {
+		return false
+	}
+	expected := csrfToken(session.Value)
+	cookieOK := subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(expected)) == 1
+	headerOK := subtle.ConstantTimeCompare([]byte(header), []byte(expected)) == 1
+	return cookieOK && headerOK
 }
 
 func requestSecure(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && trustedProxy(remoteIP(r))
 }
 
-func newCSRFToken() string {
-	raw := make([]byte, 24)
-	_, _ = rand.Read(raw)
-	return base64.RawURLEncoding.EncodeToString(raw)
+func csrfToken(session string) string {
+	mac := hmac.New(sha256.New, []byte(session))
+	mac.Write([]byte("cdt-csrf-v1"))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:24])
 }
 
 func (s *Server) staticHandler() http.Handler {
@@ -837,6 +1115,9 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://a.favicon.im; connect-src 'self' https://api.github.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
@@ -846,7 +1127,7 @@ func (s *Server) recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.logger.Error("request panic", "panic", recovered, "path", r.URL.Path)
+				s.logger.Error("request panic", "path", r.URL.Path)
 				writeError(w, http.StatusInternalServerError, "internal_error", "服务暂时不可用")
 			}
 		}()
@@ -858,9 +1139,14 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
+	for k, item := range s.limits {
+		if !item.expires.After(now) {
+			delete(s.limits, k)
+		}
+	}
 	entry := s.limits[key]
-	if entry == nil || now.Sub(entry.start) >= window {
-		s.limits[key] = &rateWindow{start: now, count: 1}
+	if entry == nil {
+		s.limits[key] = &rateWindow{start: now, count: 1, expires: now.Add(window)}
 		return true
 	}
 	if entry.count >= max {
@@ -870,22 +1156,108 @@ func (s *Server) allowRate(key string, max int, window time.Duration) bool {
 	return true
 }
 
+const maxClientIPRunes = 64
+
 func clientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
+	host := remoteIP(r)
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" && trustedProxy(host) {
+		if len(forwarded) > 256 {
+			forwarded = forwarded[:256]
+		}
+		if i := strings.IndexByte(forwarded, ','); i >= 0 {
+			forwarded = forwarded[:i]
+		}
+		host = strings.TrimSpace(forwarded)
 	}
+	return clipClientIP(host)
+}
+
+func clipClientIP(value string) string {
+	runes := []rune(value)
+	if len(runes) > maxClientIPRunes {
+		return string(runes[:maxClientIPRunes])
+	}
+	return value
+}
+
+func remoteIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
+	if err != nil {
+		return r.RemoteAddr
 	}
-	return r.RemoteAddr
+	return host
+}
+
+func trustedProxy(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	if parsed.IsLoopback() {
+		return true
+	}
+	return trustedProxyAllowlistContains(parsed)
+}
+
+func trustedProxyAllowlistContains(ip net.IP) bool {
+	for _, network := range trustedProxyNetworks() {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	maxTrustedProxyEnvBytes = 4096
+	maxTrustedProxyNetworks = 32
+)
+
+func trustedProxyNetworks() []*net.IPNet {
+	raw := strings.TrimSpace(os.Getenv("CDT_TRUSTED_PROXIES"))
+	if raw == "" || len(raw) > maxTrustedProxyEnvBytes {
+		return nil
+	}
+	networks := make([]*net.IPNet, 0, 4)
+	for _, part := range strings.Split(raw, ",") {
+		if len(networks) >= maxTrustedProxyNetworks {
+			break
+		}
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			parsed := net.ParseIP(part)
+			if parsed == nil {
+				continue
+			}
+			if parsed.To4() != nil {
+				part += "/32"
+			} else {
+				part += "/128"
+			}
+		}
+		_, network, err := net.ParseCIDR(part)
+		if err != nil {
+			continue
+		}
+		networks = append(networks, network)
+	}
+	return networks
 }
 
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.More() {
+		return errors.New("request body is invalid")
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -896,6 +1268,54 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+func writeStoreValidationError(w http.ResponseWriter, code, fallback string, err error) {
+	msg := err.Error()
+	if !safeStoreValidationMessage(msg) {
+		msg = fallback
+	}
+	writeError(w, http.StatusBadRequest, code, msg)
+}
+
+func safeStoreValidationMessage(msg string) bool {
+	switch msg {
+	case "system is already initialized",
+		"traffic threshold must be between 1 and 100",
+		"invalid shutdown mode",
+		"invalid threshold action",
+		"api interval must be between 30 and 86400 seconds",
+		"invalid timezone",
+		"administrator password must be at least 10 characters",
+		"administrator password is required",
+		"password is too long",
+		"account access_key_id and region_id are required",
+		"account access_key_id is invalid",
+		"account region_id is invalid",
+		"account instance_id is invalid",
+		"account remark is too long",
+		"account remark is invalid",
+		"account access_key_secret is too long",
+		"notification header fields must not contain line breaks",
+		"notification header name is invalid",
+		"account schedule time is invalid",
+		"notification port is invalid",
+		"notification host is invalid",
+		"notification option is invalid",
+		"account max traffic is invalid",
+		"too many accounts",
+		"too many api keys",
+		"too many passkeys",
+		"passkey credential is too large",
+		"passkey credential is invalid",
+		"notification identity is too long",
+		"notification identity is invalid",
+		"notification payload is too long",
+		"notification URL is invalid":
+		return true
+	default:
+		return strings.HasPrefix(msg, "account ") && strings.HasSuffix(msg, " is missing access key secret")
+	}
 }
 
 func pathInt64(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
@@ -923,6 +1343,9 @@ func applyConfigDefaults(config *domain.Config) {
 	if config.Timezone == "" {
 		config.Timezone = "Asia/Shanghai"
 	}
+	if config.DailyReportTime == "" {
+		config.DailyReportTime = "22:00"
+	}
 	if config.Notifications.Email.Port == 0 {
 		config.Notifications.Email.Port = 465
 	}
@@ -943,13 +1366,25 @@ func applyConfigDefaults(config *domain.Config) {
 	}
 }
 
+func (s *Server) redactSecrets(ctx context.Context, message string) string {
+	if message == "" {
+		return ""
+	}
+	config, _ := s.store.GetConfig(ctx)
+	extras, _ := s.store.AccountSecrets(ctx)
+	return notify.RedactSecrets(message, config, extras...)
+}
+
 func scrubConfig(config *domain.Config) {
 	config.AdminPassword = ""
 	config.Notifications.Email.Password = ""
 	config.Notifications.Telegram.Token = ""
 	config.Notifications.Telegram.ProxyPass = ""
+	config.Notifications.Telegram.ProxyURL = ""
 	config.Notifications.Webhook.Headers = ""
 	config.Notifications.Webhook.Secret = ""
+	config.Notifications.Webhook.URL = ""
+	config.Notifications.Webhook.Body = ""
 	for index := range config.Accounts {
 		config.Accounts[index].AccessKeySecret = ""
 	}
@@ -970,4 +1405,142 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return "CDT"
+}
+
+type NullableBool struct {
+	Present bool
+	Value   *bool
+}
+
+func (n *NullableBool) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	s := strings.TrimSpace(string(data))
+	if s == "null" || s == `"default"` {
+		n.Value = nil
+		return nil
+	}
+	var b bool
+	if err := json.Unmarshal(data, &b); err != nil {
+		return err
+	}
+	n.Value = &b
+	return nil
+}
+
+type accountSettingsInput struct {
+	KeepAlive       NullableBool `json:"keep_alive"`
+	ShutdownMode    *string      `json:"shutdown_mode"`
+	ScheduleEnabled *bool        `json:"schedule_enabled"`
+	StartTime       *string      `json:"start_time"`
+	StopTime        *string      `json:"stop_time"`
+	DailyReport     NullableBool `json:"daily_report"`
+	DailyReportTime *string      `json:"daily_report_time"`
+}
+
+func (s *Server) updateAccountSettings(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+	account, err := s.store.GetAccount(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "实例不存在")
+		return
+	}
+	var input accountSettingsInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	keepAlive := account.KeepAlive
+	if input.KeepAlive.Present {
+		keepAlive = input.KeepAlive.Value
+	}
+	shutdownMode := account.ShutdownMode
+	if input.ShutdownMode != nil {
+		mode := *input.ShutdownMode
+		if mode != "" && mode != "default" && mode != "KeepCharging" && mode != "StopCharging" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "无效的停机模式")
+			return
+		}
+		if mode == "default" {
+			mode = ""
+		}
+		shutdownMode = mode
+	}
+	scheduleEnabled := account.ScheduleEnabled
+	if input.ScheduleEnabled != nil {
+		scheduleEnabled = *input.ScheduleEnabled
+	}
+	startTime := account.StartTime
+	if input.StartTime != nil {
+		startTime = *input.StartTime
+	}
+	stopTime := account.StopTime
+	if input.StopTime != nil {
+		stopTime = *input.StopTime
+	}
+	startTime, err = normalizeClockTime(startTime, scheduleEnabled)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_schedule_time", "开机时间必须使用 24 小时制 HH:MM 格式")
+		return
+	}
+	stopTime, err = normalizeClockTime(stopTime, scheduleEnabled)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_schedule_time", "关机时间必须使用 24 小时制 HH:MM 格式")
+		return
+	}
+	dailyReport := account.DailyReport
+	if input.DailyReport.Present {
+		dailyReport = input.DailyReport.Value
+	}
+	dailyReportTime := account.DailyReportTime
+	if input.DailyReportTime != nil {
+		dailyReportTime = *input.DailyReportTime
+	}
+	dailyReportTime, err = normalizeClockTime(dailyReportTime, false)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_daily_report_time", "日报时间必须使用 24 小时制 HH:MM 格式")
+		return
+	}
+	if err := s.store.UpdateAccountSettings(r.Context(), id, keepAlive, shutdownMode, scheduleEnabled, startTime, stopTime, dailyReport, dailyReportTime); err != nil {
+		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	_ = s.store.AddLog(r.Context(), "audit", fmt.Sprintf("管理员更新实例 [%s] 配置", account.Remark))
+	updated, err := s.store.GetAccount(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		return
+	}
+	updated.AccessKeySecret = ""
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func normalizeClockTime(value string, required bool) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "：", ":"))
+	if value == "" && !required {
+		return "", nil
+	}
+	if value == "24:00" {
+		return "", errors.New("clock time must use 24-hour HH:MM format")
+	}
+	parsed, err := time.Parse("15:04", value)
+	if err != nil {
+		return "", err
+	}
+	return parsed.Format("15:04"), nil
+}
+
+func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		AccountID int64 `json:"account_id"`
+	}
+	_ = decodeJSON(r, &body)
+	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, body.AccountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, job)
 }

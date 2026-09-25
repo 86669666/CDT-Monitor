@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -57,15 +59,114 @@ type balanceCacheEntry struct {
 	createdAt time.Time
 }
 
+var errAliyunRedirect = errors.New("aliyun redirects are not allowed")
+var errAliyunForbiddenHost = errors.New("aliyun host is not allowed")
+
 func NewClient() *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 18 * time.Second},
-		traffic:    make(map[string]trafficCacheEntry),
-		balance:    make(map[string]balanceCacheEntry),
+		httpClient: &http.Client{
+			Timeout: 18 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+				DialContext:     aliyunDialContext,
+			},
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return errAliyunRedirect
+			},
+		},
+		traffic: make(map[string]trafficCacheEntry),
+		balance: make(map[string]balanceCacheEntry),
 	}
 }
 
+func aliyunDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errAliyunForbiddenHost
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if port != "443" {
+		return nil, errAliyunForbiddenHost
+	}
+	if net.ParseIP(host) != nil || !allowedAliyunHost(host) {
+		return nil, errAliyunForbiddenHost
+	}
+	ips, err := lookupAliyunIPs(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 || len(ips) > maxAliyunResolvedIPs {
+		return nil, errAliyunForbiddenHost
+	}
+	for _, ip := range ips {
+		if forbiddenAliyunIP(ip) {
+			return nil, errAliyunForbiddenHost
+		}
+	}
+	dialer := &net.Dialer{Timeout: 18 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+const maxAliyunResolvedIPs = 8
+
+var lookupAliyunIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			ips = append(ips, addr.IP)
+		}
+	}
+	return ips, nil
+}
+
+func forbiddenAliyunIP(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+		return true
+	}
+	return ip.Equal(net.ParseIP("100.100.100.200")) || ip.Equal(net.ParseIP("fd00:ec2::254"))
+}
+
+func validECSRegion(region string) bool {
+	region = strings.TrimSpace(region)
+	if region == "" || len(region) > 32 {
+		return false
+	}
+	for i := 0; i < len(region); i++ {
+		c := region[i]
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (c *Client) GetTraffic(ctx context.Context, account domain.Account, secret string) (float64, error) {
+	if strings.TrimSpace(account.RegionID) == "" {
+		return 0, errors.New("region_id is required")
+	}
+	if !validECSRegion(account.RegionID) {
+		return 0, errors.New("region_id is invalid")
+	}
 	key := account.AccessKeyID + ":" + trafficClass(account.RegionID)
 	c.trafficMu.Lock()
 	if cached, ok := c.traffic[key]; ok && time.Since(cached.createdAt) < 45*time.Second {
@@ -94,11 +195,24 @@ func trafficClass(region string) string {
 	return "international"
 }
 
-func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
-	params := map[string]string{"RegionId": account.RegionID}
-	if account.InstanceID != "" {
-		params["InstanceId"] = account.InstanceID
+func ecsTargetError(account domain.Account) error {
+	if account.InstanceID == "" {
+		return errors.New("instance_id is required")
 	}
+	if strings.TrimSpace(account.RegionID) == "" {
+		return errors.New("region_id is required")
+	}
+	if !validECSRegion(account.RegionID) {
+		return errors.New("region_id is invalid")
+	}
+	return nil
+}
+
+func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, secret string) (string, error) {
+	if err := ecsTargetError(account); err != nil {
+		return domain.StatusUnknown, err
+	}
+	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
 	result, err := c.call(ctx, account.AccessKeyID, secret, account.RegionID, "ecs."+account.RegionID+".aliyuncs.com", "2014-05-26", "DescribeInstanceStatus", params)
 	if err != nil {
 		return domain.StatusUnknown, err
@@ -112,32 +226,46 @@ func (c *Client) GetInstanceStatus(ctx context.Context, account domain.Account, 
 		return domain.StatusUnknown, nil
 	}
 	status, _ := first["Status"].(string)
-	if status == "" {
-		return domain.StatusUnknown, nil
+	return normalizeInstanceStatus(status), nil
+}
+
+func normalizeInstanceStatus(status string) string {
+	if len(status) > 32 {
+		return domain.StatusUnknown
 	}
-	return status, nil
+	switch status {
+	case domain.StatusUnknown, domain.StatusRunning, domain.StatusStopped, domain.StatusStarting, domain.StatusStopping, "Pending":
+		return status
+	default:
+		return domain.StatusUnknown
+	}
 }
 
 func (c *Client) ControlInstance(ctx context.Context, account domain.Account, secret, action, shutdownMode string) error {
-	if account.InstanceID == "" {
-		return errors.New("instance_id is required")
+	if err := ecsTargetError(account); err != nil {
+		return err
 	}
 	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
-	action = strings.ToLower(action)
-	apiAction := "StartInstance"
-	if action == "stop" {
+	action = strings.ToLower(strings.TrimSpace(action))
+	var apiAction string
+	switch action {
+	case "start":
+		apiAction = "StartInstance"
+	case "stop":
 		apiAction = "StopInstance"
 		if shutdownMode != "StopCharging" {
 			shutdownMode = "KeepCharging"
 		}
 		params["StoppedMode"] = shutdownMode
+	default:
+		return errors.New("instance action is invalid")
 	}
 	_, err := c.call(ctx, account.AccessKeyID, secret, account.RegionID, "ecs."+account.RegionID+".aliyuncs.com", "2014-05-26", apiAction, params)
 	return err
 }
 
 func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, secret string) (BillingBalance, error) {
-	key := account.AccessKeyID + ":" + account.SiteType
+	key := account.AccessKeyID + ":" + billingSite(account.SiteType)
 	c.balanceMu.Lock()
 	if cached, ok := c.balance[key]; ok && time.Since(cached.createdAt) < 6*time.Hour {
 		c.balanceMu.Unlock()
@@ -150,10 +278,15 @@ func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, 
 		return BillingBalance{}, err
 	}
 	data, _ := result["Data"].(map[string]any)
-	value := BillingBalance{Amount: number(data["AvailableAmount"]), Currency: stringValue(data["Currency"])}
-	if value.Currency == "" {
-		value.Currency = "CNY"
+	amount, err := parseFiniteNumber(data["AvailableAmount"])
+	if err != nil {
+		return BillingBalance{}, errors.New("aliyun balance is invalid")
 	}
+	currency, err := normalizeAliyunCurrency(stringValue(data["Currency"]))
+	if err != nil {
+		return BillingBalance{}, err
+	}
+	value := BillingBalance{Amount: amount, Currency: currency}
 	c.balanceMu.Lock()
 	c.balance[key] = balanceCacheEntry{value: value, createdAt: time.Now()}
 	c.balanceMu.Unlock()
@@ -161,6 +294,12 @@ func (c *Client) GetAccountBalance(ctx context.Context, account domain.Account, 
 }
 
 func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, secret, cycle string) (BillingBill, error) {
+	if account.InstanceID == "" {
+		return BillingBill{}, errors.New("instance_id is required")
+	}
+	if err := validBillingCycle(cycle); err != nil {
+		return BillingBill{}, err
+	}
 	bss := bssEndpoint(account.SiteType)
 	params := map[string]string{"BillingCycle": cycle, "InstanceID": account.InstanceID, "Granularity": "MONTHLY"}
 	result, err := c.call(ctx, account.AccessKeyID, secret, bss.region, bss.host, "2017-12-14", "DescribeInstanceBill", params)
@@ -175,7 +314,11 @@ func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, se
 	var total float64
 	for _, item := range items {
 		if obj, ok := item.(map[string]any); ok {
-			total += number(obj["PretaxAmount"])
+			amount, err := parseFiniteNumber(obj["PretaxAmount"])
+			if err != nil {
+				return BillingBill{}, errors.New("aliyun bill is invalid")
+			}
+			total += amount
 		}
 	}
 	return BillingBill{TotalCost: math.Round(total*100) / 100}, nil
@@ -184,30 +327,254 @@ func (c *Client) GetInstanceBill(ctx context.Context, account domain.Account, se
 type bssConfig struct{ region, host string }
 
 func bssEndpoint(siteType string) bssConfig {
-	if siteType == "international" {
+	if billingSite(siteType) == "international" {
 		return bssConfig{region: "ap-southeast-1", host: "business.ap-southeast-1.aliyuncs.com"}
 	}
 	return bssConfig{region: "cn-hangzhou", host: "business.aliyuncs.com"}
 }
 
+func billingSite(siteType string) string {
+	if siteType == "international" {
+		return "international"
+	}
+	return "china"
+}
+
+func normalizeAliyunCurrency(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "CNY", nil
+	}
+	if len(value) != 3 {
+		return "", errors.New("aliyun currency is invalid")
+	}
+	out := make([]byte, 3)
+	for i := 0; i < 3; i++ {
+		c := value[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		if c < 'A' || c > 'Z' {
+			return "", errors.New("aliyun currency is invalid")
+		}
+		out[i] = c
+	}
+	return string(out), nil
+}
+
+func validBillingCycle(cycle string) error {
+	cycle = strings.TrimSpace(cycle)
+	parsed, err := time.Parse("2006-01", cycle)
+	if err != nil || parsed.Format("2006-01") != cycle {
+		return errors.New("billing cycle is required")
+	}
+	return nil
+}
+
+func allowedAliyunEndpoint(host, version, action string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch action {
+	case "ListCdtInternetTraffic":
+		return host == "cdt.aliyuncs.com" && version == "2021-08-13"
+	case "DescribeInstanceStatus", "StartInstance", "StopInstance":
+		return strings.HasPrefix(host, "ecs.") && strings.HasSuffix(host, ".aliyuncs.com") && version == "2014-05-26"
+	case "QueryAccountBalance", "DescribeInstanceBill":
+		return (host == "business.aliyuncs.com" || host == "business.ap-southeast-1.aliyuncs.com") && version == "2017-12-14"
+	default:
+		return false
+	}
+}
+
+func allowedAliyunAction(action string) bool {
+	switch action {
+	case "ListCdtInternetTraffic", "DescribeInstanceStatus", "StartInstance", "StopInstance", "QueryAccountBalance", "DescribeInstanceBill":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowedAliyunExtra(key string) bool {
+	switch key {
+	case "RegionId", "InstanceId", "InstanceID", "StoppedMode", "BillingCycle", "Granularity":
+		return true
+	default:
+		return false
+	}
+}
+
+func validAliyunInstanceID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func allowedAliyunExtraValue(key, value string) bool {
+	switch key {
+	case "RegionId":
+		return validECSRegion(value)
+	case "InstanceId", "InstanceID":
+		return validAliyunInstanceID(value)
+	case "StoppedMode":
+		return value == "KeepCharging" || value == "StopCharging"
+	case "BillingCycle":
+		return validBillingCycle(value) == nil
+	case "Granularity":
+		return value == "MONTHLY"
+	default:
+		return false
+	}
+}
+
+func allowedAliyunExtraForAction(action, key string) bool {
+	switch action {
+	case "DescribeInstanceStatus", "StartInstance":
+		return key == "RegionId" || key == "InstanceId"
+	case "StopInstance":
+		return key == "RegionId" || key == "InstanceId" || key == "StoppedMode"
+	case "DescribeInstanceBill":
+		return key == "BillingCycle" || key == "InstanceID" || key == "Granularity"
+	default:
+		return false
+	}
+}
+
+func requiredAliyunExtras(action string) []string {
+	switch action {
+	case "DescribeInstanceStatus", "StartInstance":
+		return []string{"RegionId", "InstanceId"}
+	case "StopInstance":
+		return []string{"RegionId", "InstanceId", "StoppedMode"}
+	case "DescribeInstanceBill":
+		return []string{"BillingCycle", "InstanceID", "Granularity"}
+	default:
+		return nil
+	}
+}
+
+func validateAliyunExtras(action string, extras map[string]string) error {
+	if len(extras) > 8 {
+		return errors.New("aliyun extras are invalid")
+	}
+	for _, key := range requiredAliyunExtras(action) {
+		if extras[key] == "" {
+			return errors.New("aliyun extras are invalid")
+		}
+	}
+	for key, value := range extras {
+		if !allowedAliyunExtra(key) || !allowedAliyunExtraForAction(action, key) || !allowedAliyunExtraValue(key, value) {
+			return errors.New("aliyun extras are invalid")
+		}
+	}
+	return nil
+}
+
+func allowedAliyunVersion(version string) bool {
+	switch version {
+	case "2014-05-26", "2017-12-14", "2021-08-13":
+		return true
+	default:
+		return false
+	}
+}
+
+func aliyunRequestURL(host string) (string, error) {
+	if !allowedAliyunHost(host) {
+		return "", errors.New("aliyun host is invalid")
+	}
+	endpoint := url.URL{Scheme: "https", Host: host, Path: "/"}
+	if endpoint.Scheme != "https" || endpoint.Hostname() != host || endpoint.Port() != "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return "", errors.New("aliyun host is invalid")
+	}
+	return endpoint.String(), nil
+}
+
+func allowedAliyunHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || strings.ContainsAny(host, "/:@") {
+		return false
+	}
+	switch host {
+	case "cdt.aliyuncs.com", "business.aliyuncs.com", "business.ap-southeast-1.aliyuncs.com":
+		return true
+	}
+	const prefix, suffix = "ecs.", ".aliyuncs.com"
+	if !strings.HasPrefix(host, prefix) || !strings.HasSuffix(host, suffix) {
+		return false
+	}
+	return validECSRegion(strings.TrimSuffix(strings.TrimPrefix(host, prefix), suffix))
+}
+
+const (
+	maxAliyunAttempts      = 3
+	maxAliyunResponseBytes = 1 << 20
+)
+
 func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, error) {
+	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
+		return nil, errors.New("access key is required")
+	}
+	if !allowedAliyunAction(action) {
+		return nil, errors.New("aliyun action is invalid")
+	}
+	if !allowedAliyunHost(host) {
+		return nil, errors.New("aliyun host is invalid")
+	}
+	if !allowedAliyunVersion(version) {
+		return nil, errors.New("aliyun version is invalid")
+	}
+	if !allowedAliyunEndpoint(host, version, action) {
+		return nil, errors.New("aliyun endpoint is invalid")
+	}
+	if err := validateAliyunExtras(action, extras); err != nil {
+		return nil, err
+	}
 	var last error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < maxAliyunAttempts; attempt++ {
 		result, retry, err := c.callOnce(ctx, accessKeyID, secret, region, host, version, action, extras)
 		if err == nil {
 			return result, nil
 		}
 		last = err
-		if !retry || attempt == 2 {
+		if !retry || attempt == maxAliyunAttempts-1 {
 			break
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, redactErr(ctx.Err(), accessKeyID, secret)
 		case <-time.After(time.Duration(1<<attempt)*300*time.Millisecond + time.Duration(attempt*100)*time.Millisecond):
 		}
 	}
-	return nil, last
+	return nil, redactErr(last, accessKeyID, secret)
+}
+
+func redactErr(err error, accessKeyID, secret string) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if secret != "" {
+		msg = strings.ReplaceAll(msg, secret, "[redacted]")
+	}
+	if accessKeyID != "" {
+		masked := accessKeyID + "***"
+		if len(accessKeyID) > 7 {
+			masked = accessKeyID[:7] + "***"
+		}
+		msg = strings.ReplaceAll(msg, accessKeyID, masked)
+	}
+	if msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
 }
 
 func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host, version, action string, extras map[string]string) (map[string]any, bool, error) {
@@ -230,7 +597,11 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	for key, value := range params {
 		form.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+host+"/", strings.NewReader(form.Encode()))
+	endpoint, err := aliyunRequestURL(host)
+	if err != nil {
+		return nil, false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, true, err
 	}
@@ -240,7 +611,7 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 		return nil, true, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAliyunResponseBytes))
 	if err != nil {
 		return nil, resp.StatusCode >= 500, err
 	}
@@ -248,13 +619,106 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 	if err = json.Unmarshal(body, &result); err != nil {
 		return nil, resp.StatusCode >= 500, fmt.Errorf("aliyun %s invalid response: %w", action, err)
 	}
+	if jsonDepth(result) > maxAliyunJSONDepth {
+		return nil, false, fmt.Errorf("aliyun %s invalid response: nesting is too deep", action)
+	}
+	if jsonTooWide(result) {
+		return nil, false, fmt.Errorf("aliyun %s invalid response: nesting is too wide", action)
+	}
+	if reason := jsonLimitError(result); reason != "" {
+		return nil, false, fmt.Errorf("aliyun %s invalid response: %s", action, reason)
+	}
 	if resp.StatusCode >= 400 {
 		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
 	}
-	if code := stringValue(result["Code"]); code != "" && !isSuccessCode(code) {
-		return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, stringValue(result["Message"]))
+	if code := stringValue(result["Code"]); code != "" {
+		if len([]rune(code)) > maxAliyunCodeRunes {
+			return nil, false, fmt.Errorf("aliyun %s invalid response: code is too long", action)
+		}
+		if !isSuccessCode(code) {
+			return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, clipAliyunErrorText(stringValue(result["Message"])))
+		}
 	}
 	return result, false, nil
+}
+
+const (
+	maxAliyunJSONDepth       = 16
+	maxAliyunJSONBreadth     = 1024
+	maxAliyunJSONKeyRunes    = 128
+	maxAliyunJSONStringRunes = 4096
+)
+
+func jsonDepth(value any) int {
+	switch nested := value.(type) {
+	case map[string]any:
+		max := 0
+		for _, child := range nested {
+			if depth := jsonDepth(child); depth > max {
+				max = depth
+			}
+		}
+		return max + 1
+	case []any:
+		max := 0
+		for _, child := range nested {
+			if depth := jsonDepth(child); depth > max {
+				max = depth
+			}
+		}
+		return max + 1
+	default:
+		return 0
+	}
+}
+
+func jsonTooWide(value any) bool {
+	switch nested := value.(type) {
+	case map[string]any:
+		if len(nested) > maxAliyunJSONBreadth {
+			return true
+		}
+		for _, child := range nested {
+			if jsonTooWide(child) {
+				return true
+			}
+		}
+	case []any:
+		if len(nested) > maxAliyunJSONBreadth {
+			return true
+		}
+		for _, child := range nested {
+			if jsonTooWide(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsonLimitError(value any) string {
+	switch nested := value.(type) {
+	case map[string]any:
+		for key, child := range nested {
+			if len([]rune(key)) > maxAliyunJSONKeyRunes {
+				return "key is too long"
+			}
+			if reason := jsonLimitError(child); reason != "" {
+				return reason
+			}
+		}
+	case []any:
+		for _, child := range nested {
+			if reason := jsonLimitError(child); reason != "" {
+				return reason
+			}
+		}
+	case string:
+		if len([]rune(nested)) > maxAliyunJSONStringRunes {
+			return "string is too long"
+		}
+	}
+	return ""
 }
 
 func isSuccessCode(code string) bool {
@@ -266,11 +730,25 @@ func isSuccessCode(code string) bool {
 	}
 }
 
+const (
+	maxAliyunErrorRunes = 240
+	maxAliyunCodeRunes  = 64
+)
+
+func clipAliyunErrorText(text string) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) > maxAliyunErrorRunes {
+		return string(runes[:maxAliyunErrorRunes]) + "..."
+	}
+	return text
+}
+
 func compactMessage(result map[string]any, raw []byte) string {
 	if message := stringValue(result["Message"]); message != "" {
-		return message
+		return clipAliyunErrorText(message)
 	}
-	return string(raw)
+	return clipAliyunErrorText(string(raw))
 }
 
 func sign(values map[string]string, secret string) string {
@@ -328,8 +806,15 @@ func trafficFromResponse(result map[string]any, class string) (float64, error) {
 			continue
 		}
 		region := stringValue(obj["BusinessRegionId"])
+		if !validECSRegion(region) {
+			continue
+		}
 		if trafficClass(region) == class {
-			total += number(obj["Traffic"])
+			amount, err := parseFiniteNumber(obj["Traffic"])
+			if err != nil {
+				return 0, errors.New("CDT traffic is invalid")
+			}
+			total += amount
 		}
 	}
 	return total / (1024 * 1024 * 1024), nil
@@ -358,23 +843,45 @@ func asSlice(value any) []any {
 		if item, ok := obj["Item"].(map[string]any); ok {
 			return []any{item}
 		}
+		return []any{obj}
 	}
 	return nil
 }
 
 func number(value any) float64 {
-	switch number := value.(type) {
+	result, _ := parseFiniteNumber(value)
+	return result
+}
+
+func parseFiniteNumber(value any) (float64, error) {
+	var result float64
+	switch n := value.(type) {
 	case float64:
-		return number
+		result = n
 	case json.Number:
-		result, _ := number.Float64()
-		return result
+		parsed, err := n.Float64()
+		if err != nil {
+			return 0, err
+		}
+		result = parsed
 	case string:
-		result, _ := strconv.ParseFloat(number, 64)
-		return result
+		if strings.TrimSpace(n) == "" {
+			return 0, nil
+		}
+		parsed, err := strconv.ParseFloat(n, 64)
+		if err != nil {
+			return 0, err
+		}
+		result = parsed
+	case nil:
+		return 0, nil
 	default:
-		return 0
+		return 0, errors.New("number is invalid")
 	}
+	if math.IsNaN(result) || math.IsInf(result, 0) {
+		return 0, errors.New("number is not finite")
+	}
+	return result, nil
 }
 
 func stringValue(value any) string {

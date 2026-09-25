@@ -1,0 +1,112 @@
+name: Publish Guard
+
+# Cheap tripwire for this fork. Does not publish, log in, or push.
+# Fails if production publish vars are set, if workflow YAML
+# regains GHCR/Hub login, packages: permission, secrets: inherit, or
+# registry image names, or if Compose drops 127.0.0.1:43210.
+# Do not add pull_request_target, workflow_run, or repository_dispatch.
+# Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
+# shell: stays bash when set.
+# Do not set continue-on-error or dump toJSON(secrets).
+# Do not add issue_comment, schedule, discussion, watch, or other extra on: triggers.
+# Do not add on.push tags:.
+# Do not set ENABLE_PRODUCTION_PUBLISH or ENABLE_DOCKERHUB_PUBLISH true in YAML.
+# Do not add job services: sidecars, job container:, uses: docker://, or type=gha/registry build cache.
+# Do not add GitHub Environment jobs (production, staging, or otherwise).
+# Workflow secrets.* allowlist is the optional Android keystore names only.
+# Do not add actions/github-script.
+# Do not add gh release create, actions/create-release, or npm publish.
+# Do not add QEMU or docker-container Buildx.
+# Do not add deployments/pages/statuses/checks write permissions.
+# Do not add id-token permission (OIDC).
+# Do not add actions permission.
+# Do not add attestations permission.
+# Do not add security-events permission.
+# Do not add pull-requests permission.
+# Do not add issues permission.
+# Do not add models permission.
+# Do not add deployments permission.
+# Do not add statuses permission.
+# Do not add checks permission.
+# SHA pin scan matches a uses: key, not the substring inside statuses:.
+# upload-artifact stays on widget CI and gated Release Binaries only.
+# download-artifact stays on gated Release Binaries only.
+# Do not add standalone actions/cache; setup-go/setup-node caches stay.
+# Do not add GitHub Pages deploy actions.
+# Buildx/build-push-action stays on Container Images verify only.
+# action-gh-release stays on gated Release Binaries only.
+# Android/Gradle actions stay on widget CI only.
+# setup-go/setup-node stay on CI verify and gated Release Binaries only.
+# Do not add SSH deploy keys or scp/ssh actions.
+# Do not pass checkout token: PATs.
+# Do not add checkout submodules: (including auto-release).
+# Do not add checkout lfs: (including auto-release).
+# Do not add checkout sparse-checkout (including auto-release).
+# Do not add checkout repository: overrides (including auto-release).
+# Do not add checkout github-server-url: (including auto-release).
+# Do not add checkout ssh-user: / ssh-known-hosts: / ssh-strict: (including auto-release).
+# Do not add checkout clean: (including auto-release).
+# Do not add checkout filter: (including auto-release).
+# Do not add checkout set-safe-directory: (including auto-release).
+# Do not add checkout fetch-tags: (including auto-release).
+# Do not add checkout show-progress: (including auto-release).
+# Do not add checkout log-level: (including auto-release).
+# Compose build stays context/dockerfile/args (VERSION/COMMIT/BUILT_AT/IMAGE_SOURCE only).
+# Compose cap_drop stays ALL only.
+# Do not add Compose gpus or device_cgroup_rules.
+# Compose healthcheck stays test/interval/timeout/retries/start_period only.
+# Do not add Compose deploy: or cgroup_parent.
+# Do not add Compose secrets: or configs:.
+# Do not add Compose credential_spec or isolation.
+# Do not add Compose working_dir or platform overrides.
+# Do not add Compose scale or links/external_links.
+# Compose named volumes stay cdt-data only, with no driver/options.
+# Do not add Compose annotations, cpu_shares, cpu_quota/period, cpuset, or extra cpu_* knobs.
+# Do not add Compose blkio_config or oom_score_adj.
+# Do not add Compose oom_kill_disable.
+# Do not add Compose blkio_weight or device_* bps/iops limits.
+# Do not add Compose mem_reservation or mem_swappiness.
+# Do not add Compose network_mode (keep default bridge + loopback publish).
+# Do not add Compose pid: or ipc: overrides.
+# Do not add Compose uts: or userns_mode: overrides.
+# Do not add Compose cgroup: or cgroupns overrides.
+# Do not add Compose volumes_from or extends.
+# Do not add Compose volume_driver.
+# Do not add Compose develop: watch/sync.
+# Do not add Compose post_start or pre_stop hooks.
+# Dockerfile must not use RUN --mount ssh/secret or --network=host.
+# Dockerfile EXPOSE stays exactly one line: EXPOSE 8080.
+# Dockerfile USER stays exactly one line: USER 65532:65532.
+# Dockerfile VOLUME stays exactly one line: VOLUME ["/data"].
+# Do not add a Dockerfile MAINTAINER instruction.
+# CI verify still skips these files so a login regression would
+# not run Go tests; this workflow covers that.
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main, 'work/**']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-guard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  assert-no-publish:
+    name: Assert no publish surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Assert fork publish surfaces stay closed
+        env:
+          ENABLE_PRODUCTION_PUBLISH: ${{ vars.ENABLE_PRODUCTION_PUBLISH }}
+          ENABLE_DOCKERHUB_PUBLISH: ${{ vars.ENABLE_DOCKERHUB_PUBLISH }}
+        run: bash .github/scripts/assert-no-publish.sh

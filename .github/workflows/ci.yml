@@ -1,23 +1,67 @@
 name: CI
 
+# Verify only: frontend build, Go test/vet, linux/amd64 binary.
+# No GHCR/Docker Hub/GitHub Release. Manual dispatch is for when
+# GitHub has registered workflows on this fork; it still does not publish.
+# Widget, Dependabot, and publish-workflow-only changes also skip this job.
+# Publish Guard still scans those YAML files; this job does not publish.
+
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'android-widget/**'
+      - 'README.MD'
+      - 'LICENSE'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/dependabot.yml'
+      - '.github/workflows/android-widget.yml'
+      - '.github/workflows/auto-release.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/docker-build-push.yml'
+      - '.github/workflows/publish-guard.yml'
+      - '.github/scripts/**'
   push:
-    branches: [dev, main]
+    branches: [dev, main, 'work/**']
+    paths-ignore:
+      - 'docs/**'
+      - 'android-widget/**'
+      - 'README.MD'
+      - 'LICENSE'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/dependabot.yml'
+      - '.github/workflows/android-widget.yml'
+      - '.github/workflows/auto-release.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/docker-build-push.yml'
+      - '.github/workflows/publish-guard.yml'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   verify:
+    name: Verify (no publish)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.24.x'
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.x'
           cache: npm
