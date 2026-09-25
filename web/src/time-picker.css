@@ -65,7 +65,8 @@
   .time-picker__handle { width: 34px; height: 4px; margin: 0 auto 12px; display: block; border-radius: 99px; background: #b8c1cc; flex: 0 0 auto; }
   .time-picker__close { width: 44px; height: 44px; }
   .time-picker__selection { margin: 10px 0 18px; padding: 13px 16px; }
-  .time-picker__options { min-height: 190px; max-height: none; }
+  .time-picker__options { min-height: 190px; max-height: none; scrollbar-width: none; }
+  .time-picker__options::-webkit-scrollbar { display: none; }
   .time-picker__option { min-height: 48px; font-size: 16px; }
   .time-picker__footer { margin-top: 18px; }
   .time-picker__footer button { min-height: 48px; flex: 1; font-size: 15px; }

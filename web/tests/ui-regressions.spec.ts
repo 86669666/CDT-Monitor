@@ -472,6 +472,7 @@ test('time picker works in desktop settings and mobile schedule', async ({ page 
   await shutdown.click()
   picker = page.getByRole('dialog', { name: '关机时间，选择时间' })
   await expect(picker).toBeVisible()
+  expect(await picker.locator('.time-picker__options').first().evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('none')
   await expect.poll(async () => {
     const box = await picker.boundingBox()
     return box ? Math.ceil(box.y + box.height) : Number.POSITIVE_INFINITY
@@ -499,11 +500,16 @@ test('settings tabs and webhook body remain usable at narrow widths', async ({ p
   await page.getByRole('button', { name: '设置', exact: true }).click()
   const tabs = page.locator('.settings-tabs')
   await page.getByRole('button', { name: '关于' }).click()
-  for (const width of [900, 700, 640, 390]) {
+  for (const width of [900, 700, 641, 640, 390]) {
     await page.setViewportSize({ width, height: 844 })
     await expect(tabs).toBeVisible()
     const directions = await tabs.locator('button').evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).flexDirection))
-    expect(directions).toEqual(Array(directions.length).fill('row'))
+    expect(directions).toEqual(Array(directions.length).fill(width <= 640 ? 'column' : 'row'))
+    expect(await tabs.evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('none')
+    if (width === 641) {
+      const pcScroll = await tabs.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth }))
+      expect(pcScroll.content).toBeGreaterThan(pcScroll.width)
+    }
     await page.screenshot({ path: testInfo.outputPath(`settings-tabs-${width}.png`) })
   }
 
