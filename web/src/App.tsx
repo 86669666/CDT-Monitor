@@ -708,7 +708,7 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
 }
 
 function ScheduleReportNote({ stopTime }: { stopTime: string }) {
-  return <p className="schedule-report-note"><Info size={15} aria-hidden="true" /><span>参与日报时，将在{stopTime ? `每日 ${stopTime} 关机时` : '每日关机时'}单独推送本次运行的流量与账单。</span></p>
+  return <p className="report-time-note"><Info size={15} aria-hidden="true" /><span>参与日报时，将在{stopTime ? <>每日 <strong>{stopTime}</strong> 关机时</> : '每日关机时'}单独推送本次运行的流量与账单。</span></p>
 }
 
 function DailyReportNote({ time }: { time?: string }) {

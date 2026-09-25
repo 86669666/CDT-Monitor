@@ -275,7 +275,8 @@ test('dashboard billing, history precision and settings remain usable', async ({
   // Enable schedule: daily report time picker is hidden, shutdown timing is explained
   await modal.locator('.toggle-row:has-text("每日定时开关机")').click()
   await expect(modal.getByLabel('日报推送时间')).not.toBeVisible()
-  await expect(modal.locator('.schedule-report-note')).toContainText('每日 23:30 关机时')
+  await expect(modal.locator('.report-time-note')).toContainText('每日 23:30 关机时')
+  await page.screenshot({ path: testInfo.outputPath('scheduled-report-note-desktop.png') })
   await modal.locator('header').getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '查看历史流量' }).click()
@@ -487,4 +488,61 @@ test('time picker works in desktop settings and mobile schedule', async ({ page 
   await page.getByRole('button', { name: '保存更改' }).click()
   expect(savedConfig?.accounts[0].daily_report_time).toBe('03:45')
   expect(savedConfig?.accounts[0].stop_time).toBe('22:15')
+})
+
+test('settings tabs and webhook body remain usable at narrow widths', async ({ page, browser }, testInfo) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({ json: { initialized: true } }))
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: { accounts: [], system_last_run: new Date().toISOString() } }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: config }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  const tabs = page.locator('.settings-tabs')
+  await page.getByRole('button', { name: '关于' }).click()
+  for (const width of [900, 700, 640, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(tabs).toBeVisible()
+    const directions = await tabs.locator('button').evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).flexDirection))
+    expect(directions).toEqual(Array(directions.length).fill('row'))
+    await page.screenshot({ path: testInfo.outputPath(`settings-tabs-${width}.png`) })
+  }
+
+  const scroll = await tabs.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth
+    return { left: element.scrollLeft, width: element.clientWidth, content: element.scrollWidth }
+  })
+  expect(scroll.content).toBeGreaterThan(scroll.width)
+  expect(scroll.left).toBeGreaterThan(0)
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const body = page.getByLabel('Body 模板')
+  await body.fill(Array.from({ length: 30 }, (_, index) => `line ${index + 1}: #MSG#`).join('\n'))
+  const bodyScroll = await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    return element.scrollTop
+  })
+  expect(bodyScroll).toBeGreaterThan(0)
+  await body.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('webhook-body-mobile.png') })
+
+  const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  try {
+    const touchPage = await touchContext.newPage()
+    await touchPage.route('**/api/v1/system/init-status', (route) => route.fulfill({ json: { initialized: true } }))
+    await touchPage.route('**/api/v1/status', (route) => route.fulfill({ json: { accounts: [], system_last_run: new Date().toISOString() } }))
+    await touchPage.route('**/api/v1/config', (route) => route.fulfill({ json: config }))
+    await touchPage.goto('/')
+    await touchPage.getByRole('button', { name: '菜单' }).click()
+    await touchPage.getByRole('button', { name: '设置', exact: true }).click()
+    const touchTabs = touchPage.locator('.settings-tabs')
+    expect(await touchTabs.evaluate((element) => matchMedia('(pointer: coarse)').matches && getComputedStyle(element).scrollbarWidth === 'none')).toBe(true)
+    const touchScroll = await touchTabs.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+      return element.scrollLeft
+    })
+    expect(touchScroll).toBeGreaterThan(0)
+    await touchPage.screenshot({ path: testInfo.outputPath('settings-tabs-touch.png') })
+  } finally {
+    await touchContext.close()
+  }
 })
