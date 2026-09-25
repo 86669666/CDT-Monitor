@@ -272,10 +272,10 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await expect(modal.getByText('参与日报推送')).toBeVisible()
   // Non-scheduled: daily report time input is visible
   await expect(modal.getByLabel('日报推送时间')).toBeVisible()
-  // Enable schedule: daily report time input is hidden, hint shown
+  // Enable schedule: daily report time picker is hidden, shutdown timing is explained
   await modal.locator('.toggle-row:has-text("每日定时开关机")').click()
   await expect(modal.getByLabel('日报推送时间')).not.toBeVisible()
-  await expect(modal.getByText('已启用定时开关机，将在每日关机时')).toBeVisible()
+  await expect(modal.locator('.schedule-report-note')).toContainText('每日 23:30 关机时')
   await modal.locator('header').getByRole('button', { name: '关闭' }).click()
 
   await page.getByRole('button', { name: '查看历史流量' }).click()
@@ -434,4 +434,57 @@ test('dashboard billing, history precision and settings remain usable', async ({
   const adminOverflow = await page.locator('.admin-settings-panel').evaluate((element) => element.scrollWidth - element.clientWidth)
   expect(adminOverflow).toBeLessThanOrEqual(1)
   await page.screenshot({ path: testInfo.outputPath('admin-settings-mobile.png'), fullPage: true })
+})
+
+test('time picker works in desktop settings and mobile schedule', async ({ page }, testInfo) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({ json: { initialized: true } }))
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: { accounts: [], system_last_run: new Date().toISOString() } }))
+  let savedConfig: typeof config | undefined
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      savedConfig = route.request().postDataJSON()
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: config })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  const editor = page.locator('.account-editor')
+  const daily = editor.getByRole('button', { name: '日报推送时间' })
+  await daily.click()
+  let picker = page.getByRole('dialog', { name: '日报推送时间，选择时间' })
+  await expect(picker).toBeVisible()
+  await picker.getByRole('button', { name: '03 时' }).click()
+  await picker.getByRole('button', { name: '45 分' }).click()
+  await page.screenshot({ path: testInfo.outputPath('time-picker-desktop.png') })
+  await picker.getByRole('button', { name: '确定' }).click()
+  await expect(daily).toContainText('03:45')
+  await expect(editor.locator('.report-time-note')).toContainText('每日 03:45 推送')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await editor.locator('.report-time-note').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('daily-report-note-mobile.png') })
+  await editor.locator('.toggle-row:has-text("每日定时开关机")').click()
+  const shutdown = editor.getByRole('button', { name: '关机时间' })
+  await shutdown.click()
+  picker = page.getByRole('dialog', { name: '关机时间，选择时间' })
+  await expect(picker).toBeVisible()
+  await expect.poll(async () => {
+    const box = await picker.boundingBox()
+    return box ? Math.ceil(box.y + box.height) : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(844)
+  const panelBox = await picker.boundingBox()
+  expect(panelBox).not.toBeNull()
+  expect(panelBox!.x).toBeGreaterThanOrEqual(0)
+  expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(390)
+  await picker.getByRole('button', { name: '22 时' }).click()
+  await picker.getByRole('button', { name: '15 分' }).click()
+  await page.screenshot({ path: testInfo.outputPath('time-picker-mobile.png') })
+  await picker.getByRole('button', { name: '确定' }).click()
+  await expect(shutdown).toContainText('22:15')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  expect(savedConfig?.accounts[0].daily_report_time).toBe('03:45')
+  expect(savedConfig?.accounts[0].stop_time).toBe('22:15')
 })

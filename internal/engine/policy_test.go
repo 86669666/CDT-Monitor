@@ -252,6 +252,230 @@ func TestScheduledReportRecoversAfterStopSnapshot(t *testing.T) {
 	}
 }
 
+func TestDailyReportGroupsOnlyUnscheduledAccountsAtSameTime(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	falseValue := false
+	if err = st.Setup(ctx, domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", EnableDailyReport: true,
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAI_GROUP_A", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "group-a", DailyReportTime: "22:00"},
+			{AccessKeyID: "LTAI_GROUP_B", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "group-b", DailyReportTime: "22：00"},
+			{AccessKeyID: "LTAI_LATER", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "later", DailyReportTime: "22:05"},
+			{AccessKeyID: "LTAI_DISABLED", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "disabled", DailyReportTime: "22:00", DailyReport: &falseValue},
+			{AccessKeyID: "LTAI_STOP_A", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "stop-a", ScheduleEnabled: true, StartTime: "08:00", StopTime: "22:00"},
+			{AccessKeyID: "LTAI_STOP_B", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "stop-b", ScheduleEnabled: true, StartTime: "08:00", StopTime: "22:00"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byInstance := make(map[string]int64, len(accounts))
+	for _, acc := range accounts {
+		byInstance[acc.InstanceID] = acc.ID
+	}
+	location, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Date(2026, 9, 25, 22, 0, 0, 0, location)
+	for _, name := range []string{"stop-a", "stop-b"} {
+		if err = st.RecordTrafficSnapshot(ctx, byInstance[name], "2026-09-25", "stop", 15, "22:00"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eng := New(st, nil, notify.New(), nil, 1)
+	eng.checkDailyReport(ctx, now)
+	eng.checkDailyReport(ctx, now)
+
+	groupCount := 0
+	scheduled := make(map[int64]bool)
+	for {
+		job, claimErr := st.ClaimJob(ctx)
+		if errors.Is(claimErr, sql.ErrNoRows) {
+			break
+		}
+		if claimErr != nil {
+			t.Fatal(claimErr)
+		}
+		if job.Type != JobDailyReport {
+			t.Fatalf("unexpected job: %+v", job)
+		}
+		var payload struct {
+			AccountID  int64   `json:"account_id"`
+			AccountIDs []int64 `json:"account_ids"`
+		}
+		if err = json.Unmarshal([]byte(job.Payload), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if job.AccountID == 0 {
+			groupCount++
+			if len(payload.AccountIDs) != 2 || payload.AccountIDs[0] != byInstance["group-a"] || payload.AccountIDs[1] != byInstance["group-b"] {
+				t.Fatalf("unexpected grouped accounts: %v", payload.AccountIDs)
+			}
+		} else {
+			scheduled[job.AccountID] = true
+			if payload.AccountID != job.AccountID {
+				t.Fatalf("scheduled report must remain individual: %+v", job)
+			}
+		}
+	}
+	if groupCount != 1 || len(scheduled) != 2 || !scheduled[byInstance["stop-a"]] || !scheduled[byInstance["stop-b"]] {
+		t.Fatalf("wanted one ordinary group and two scheduled reports, got groups=%d scheduled=%v", groupCount, scheduled)
+	}
+	for _, acc := range accounts {
+		if acc.InstanceID == "group-b" {
+			if err = st.UpdateAccountSettings(ctx, acc.ID, acc.KeepAlive, acc.ShutdownMode, acc.ScheduleEnabled, acc.StartTime, acc.StopTime, &falseValue, acc.DailyReportTime); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	eng.checkDailyReport(ctx, now.Add(time.Minute))
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("remaining group member must not receive a duplicate singleton report: %v", err)
+	}
+
+	eng.checkDailyReport(ctx, now.Add(5*time.Minute))
+	job, err := st.ClaimJob(ctx)
+	if err != nil || job.AccountID != byInstance["later"] {
+		t.Fatalf("different report time must remain individual: job=%+v err=%v", job, err)
+	}
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("duplicate or early report job: %v", err)
+	}
+	trueValue := true
+	for _, acc := range accounts {
+		if acc.InstanceID == "disabled" {
+			if err = st.UpdateAccountSettings(ctx, acc.ID, acc.KeepAlive, acc.ShutdownMode, acc.ScheduleEnabled, acc.StartTime, acc.StopTime, &trueValue, "22:05"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	eng.checkDailyReport(ctx, now.Add(6*time.Minute))
+	job, err = st.ClaimJob(ctx)
+	if err != nil || job.AccountID != byInstance["disabled"] {
+		t.Fatalf("new group member must not repeat an already sent member: job=%+v err=%v", job, err)
+	}
+	if _, err = st.ClaimJob(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unexpected repeated report after group membership changed: %v", err)
+	}
+}
+
+func TestGroupedDailyReportIncludesOnlySelectedAccounts(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	if err = st.Setup(ctx, domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", EnableDailyReport: true,
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{Enabled: true, URL: "https://webhook.example.com/test"}},
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAI_A", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-a", Remark: "分组甲", MaxTraffic: 100, DailyReportTime: "22:00"},
+			{AccessKeyID: "LTAI_B", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-b", Remark: "分组乙", MaxTraffic: 100, DailyReportTime: "22:00"},
+			{AccessKeyID: "LTAI_C", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-c", Remark: "其他时间", MaxTraffic: 100, DailyReportTime: "23:00"},
+			{AccessKeyID: "LTAI_D", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-d", Remark: "定时关机", MaxTraffic: 100, ScheduleEnabled: true, StartTime: "08:00", StopTime: "22:00"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, acc := range accounts {
+		if err = st.UpdateRuntime(ctx, acc.ID, 10, domain.StatusRunning, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eng := New(st, nil, notify.New(), nil, 1)
+	payload, _ := json.Marshal(map[string]any{"force": false, "account_ids": []int64{accounts[0].ID, accounts[1].ID}, "report_date": "2026-09-25"})
+	groupJob := domain.Job{ID: "selected-report-retry", Type: JobDailyReport, Payload: string(payload)}
+	if _, err = eng.runJob(ctx, groupJob); err != nil {
+		t.Fatal(err)
+	}
+	outboxItem, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event domain.NotificationEvent
+	if err = json.Unmarshal([]byte(outboxItem.Payload), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Fields["纳入实例"] != "2 台" || event.Fields["统计日期"] != "2026-09-25" {
+		t.Fatalf("unexpected grouped report fields: %+v", event.Fields)
+	}
+	if !strings.Contains(event.Summary, "分组甲") || !strings.Contains(event.Summary, "分组乙") || strings.Contains(event.Summary, "其他时间") || strings.Contains(event.Summary, "定时关机") {
+		t.Fatalf("report contains wrong accounts: %s", event.Summary)
+	}
+	if _, err = eng.runJob(ctx, groupJob); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ClaimOutbox(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("retry must not duplicate the grouped notification: %v", err)
+	}
+}
+
+func TestGroupedDailyReportKeepsQueuedMembershipAfterSettingsChange(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := t.Context()
+	if err = st.Setup(ctx, domain.Config{
+		AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging",
+		ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", EnableDailyReport: true,
+		Notifications: domain.NotificationConfig{Webhook: domain.WebhookConfig{Enabled: true, URL: "https://webhook.example.com/test"}},
+		Accounts: []domain.Account{
+			{AccessKeyID: "LTAI_CHANGE_A", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-change-a", Remark: "保留实例", MaxTraffic: 100, DailyReportTime: "22:00"},
+			{AccessKeyID: "LTAI_CHANGE_B", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-change-b", Remark: "关闭日报", MaxTraffic: 100, DailyReportTime: "22:00"},
+			{AccessKeyID: "LTAI_CHANGE_C", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-change-c", Remark: "后来改时", MaxTraffic: 100, DailyReportTime: "23:00"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, acc := range accounts {
+		if err = st.UpdateRuntime(ctx, acc.ID, 10, domain.StatusRunning, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	falseValue := false
+	if err = st.UpdateAccountSettings(ctx, accounts[1].ID, accounts[1].KeepAlive, accounts[1].ShutdownMode, false, "", "", &falseValue, "22:00"); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.UpdateAccountSettings(ctx, accounts[2].ID, accounts[2].KeepAlive, accounts[2].ShutdownMode, false, "", "", nil, "22:00"); err != nil {
+		t.Fatal(err)
+	}
+	eng := New(st, nil, notify.New(), nil, 1)
+	payload, _ := json.Marshal(map[string]any{"force": false, "account_ids": []int64{accounts[0].ID, accounts[1].ID}, "report_date": "2026-09-25"})
+	if _, err = eng.runJob(ctx, domain.Job{ID: "queued-membership", Type: JobDailyReport, Payload: string(payload)}); err != nil {
+		t.Fatal(err)
+	}
+	outboxItem, err := st.ClaimOutbox(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event domain.NotificationEvent
+	if err = json.Unmarshal([]byte(outboxItem.Payload), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.AccountID != accounts[0].ID || event.Fields["实例名称"] != "保留实例" || strings.Contains(event.Summary, "关闭日报") || strings.Contains(event.Summary, "后来改时") {
+		t.Fatalf("queued group should fall back to one remaining member: %+v", event)
+	}
+}
+
 func TestUsagePercent(t *testing.T) {
 	if value := usagePercent(95, 200); value != 47.5 {
 		t.Fatalf("got %v", value)

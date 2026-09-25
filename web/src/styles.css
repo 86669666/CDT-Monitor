@@ -297,6 +297,9 @@ h3 { letter-spacing: 0; }
 .account-fields__full { grid-column: 1 / -1; }
 .schedule-report-note { display: flex; align-items: flex-start; gap: 8px; margin: 10px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .schedule-report-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--blue); }
+.report-time-note { display: flex; align-items: flex-start; gap: 9px; margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: rgba(225, 235, 248, .58); color: #3c5879; font-size: 12px; line-height: 1.5; }
+.report-time-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--blue); }
+.report-time-note strong { font-variant-numeric: tabular-nums; font-weight: 750; }
 .notification-action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .channel-tabs { display: flex; margin-bottom: 22px; padding: 4px; border-radius: 13px; background: rgba(225,229,233,.68); }
 .webhook-variables { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.5); }

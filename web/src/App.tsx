@@ -9,6 +9,7 @@ import {
   Trash2, UserCog, Webhook, X, Zap,
 } from 'lucide-react'
 import { APIError, api, fetchLatestReleaseFromGitHub, waitForJob } from './api'
+import TimePicker from './TimePicker'
 import {
   APIKeyRecord, Account, AccountSummary, Config, History, Job, LogEntry, PasskeyRecord,
   StatusResponse, SystemInfo, defaultConfig, emptyAccount,
@@ -541,26 +542,8 @@ function InstanceSettingsModal({
           />
           {form.schedule_enabled && (
             <div className="form-grid" style={{ marginTop: '4px' }}>
-              <Field label="开机时间">
-                <input
-                  type="text"
-                  maxLength={5}
-                  pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
-                  placeholder="HH:MM"
-                  value={form.start_time}
-                  onChange={(e) => setForm({ ...form, start_time: e.target.value })}
-                />
-              </Field>
-              <Field label="关机时间">
-                <input
-                  type="text"
-                  maxLength={5}
-                  pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
-                  placeholder="HH:MM"
-                  value={form.stop_time}
-                  onChange={(e) => setForm({ ...form, stop_time: e.target.value })}
-                />
-              </Field>
+              <TimePicker label="开机时间" value={form.start_time} onChange={(value) => setForm({ ...form, start_time: value })} />
+              <TimePicker label="关机时间" value={form.stop_time} onChange={(value) => setForm({ ...form, stop_time: value })} />
             </div>
           )}
           <div className="field">
@@ -577,15 +560,9 @@ function InstanceSettingsModal({
             {form.schedule_enabled && <ScheduleReportNote stopTime={form.stop_time} />}
           </div>
           {!form.schedule_enabled && (
-            <div className="field">
-              <Field label="日报推送时间">
-                <input
-                  type="time"
-                  value={form.daily_report_time || '00:00'}
-                  onChange={(e) => setForm({ ...form, daily_report_time: e.target.value })}
-                />
-              </Field>
-              <p className="hint" style={{ margin: '4px 0 0' }}>默认每日 00:00 推送前 24 小时的流量消耗及账单</p>
+            <div>
+              <TimePicker label="日报推送时间" value={form.daily_report_time || '00:00'} onChange={(value) => setForm({ ...form, daily_report_time: value })} />
+              <DailyReportNote time={form.daily_report_time} />
             </div>
           )}
         </div>
@@ -700,7 +677,7 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
     <SelectField label="站点类型" value={account.site_type} options={[{ value: 'china', label: '中国站', meta: 'CNY' }, { value: 'international', label: '国际站', meta: 'USD' }]} onChange={(value) => onChange({ ...account, site_type: value as Account['site_type'] })} />
     <Field label="备注"><input value={account.remark} onChange={(event) => onChange({ ...account, remark: event.target.value })} placeholder="香港主节点" /></Field>
     <ToggleRow title="每日定时开关机" icon={<Clock3 />} checked={account.schedule_enabled} onChange={(checked) => onChange({ ...account, schedule_enabled: checked })} />
-    {account.schedule_enabled && <><Field label="开机时间"><input type="text" maxLength={5} pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:MM" value={account.start_time} onChange={(event) => onChange({ ...account, start_time: event.target.value })} /></Field><Field label="关机时间"><input type="text" maxLength={5} pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:MM" value={account.stop_time} onChange={(event) => onChange({ ...account, stop_time: event.target.value })} /></Field></>}
+    {account.schedule_enabled && <><TimePicker label="开机时间" value={account.start_time} onChange={(value) => onChange({ ...account, start_time: value })} /><TimePicker label="关机时间" value={account.stop_time} onChange={(value) => onChange({ ...account, stop_time: value })} /></>}
     {!compact && (
       <div className="account-fields__full">
         <div className="field">
@@ -720,15 +697,9 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
           {account.schedule_enabled && <ScheduleReportNote stopTime={account.stop_time} />}
         </div>
         {!account.schedule_enabled && (
-          <div className="field">
-            <Field label="日报推送时间">
-              <input
-                type="time"
-                value={account.daily_report_time || '00:00'}
-                onChange={(e) => onChange({ ...account, daily_report_time: e.target.value })}
-              />
-            </Field>
-            <p className="hint" style={{ margin: '4px 0 0' }}>默认每日 00:00 推送前 24 小时的流量消耗及账单</p>
+          <div>
+            <TimePicker label="日报推送时间" value={account.daily_report_time || '00:00'} onChange={(value) => onChange({ ...account, daily_report_time: value })} />
+            <DailyReportNote time={account.daily_report_time} />
           </div>
         )}
       </div>
@@ -737,7 +708,11 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
 }
 
 function ScheduleReportNote({ stopTime }: { stopTime: string }) {
-  return <p className="schedule-report-note"><Info size={15} aria-hidden="true" /><span>参与日报时，将在{stopTime ? `每日 ${stopTime} 关机时` : '每日关机时'}推送本次运行的流量与账单。</span></p>
+  return <p className="schedule-report-note"><Info size={15} aria-hidden="true" /><span>参与日报时，将在{stopTime ? `每日 ${stopTime} 关机时` : '每日关机时'}单独推送本次运行的流量与账单。</span></p>
+}
+
+function DailyReportNote({ time }: { time?: string }) {
+  return <p className="report-time-note"><Info size={15} aria-hidden="true" /><span>每日 <strong>{time || '00:00'}</strong> 推送前 24 小时的流量与账单；同一时间的普通日报合并发送。</span></p>
 }
 
 function NotificationSettings({ config, onChange, notify }: { config: Config; onChange: (config: Config) => void; notify: (message: string, tone?: Toast['tone']) => void }) {

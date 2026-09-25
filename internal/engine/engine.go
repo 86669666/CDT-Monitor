@@ -217,10 +217,15 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		return "notification sent", e.notify.Send(ctx, payload.Channel, event, config)
 	case JobDailyReport:
 		var payload struct {
-			Force     bool  `json:"force"`
-			AccountID int64 `json:"account_id"`
+			Force      bool    `json:"force"`
+			AccountID  int64   `json:"account_id"`
+			AccountIDs []int64 `json:"account_ids"`
+			ReportDate string  `json:"report_date"`
 		}
 		_ = json.Unmarshal([]byte(job.Payload), &payload)
+		if len(payload.AccountIDs) > 0 {
+			return e.generateAndSendDailyReportForAccounts(ctx, payload.AccountIDs, payload.ReportDate, job.ID)
+		}
 		return e.generateAndSendDailyReport(ctx, payload.Force, payload.AccountID)
 	default:
 		return "", fmt.Errorf("unknown job type %q", job.Type)
@@ -762,36 +767,37 @@ func (e *Engine) checkDailyReport(ctx context.Context, now time.Time) {
 		location = time.FixedZone("CST", 8*3600)
 	}
 	localNow := now.In(location)
+	unscheduledGroups := make(map[string][]domain.Account)
 
 	for _, acc := range config.Accounts {
 		if acc.DailyReport != nil && !*acc.DailyReport {
 			continue
 		}
-		targetTime := acc.DailyReportTime
-		if acc.ScheduleEnabled {
-			targetTime = acc.StopTime
+		if !acc.ScheduleEnabled {
+			targetTime := acc.DailyReportTime
 			if targetTime == "" {
-				targetTime = "23:30"
+				targetTime = "00:00"
 			}
-		} else if targetTime == "" {
-			targetTime = "00:00"
+			targetTime = scheduleTimeKey(targetTime)
+			unscheduledGroups[targetTime] = append(unscheduledGroups[targetTime], acc)
+			continue
+		}
+		targetTime := acc.StopTime
+		if targetTime == "" {
+			targetTime = "23:30"
 		}
 		if !dueWithin(localNow, targetTime, 10*time.Minute) {
 			continue
 		}
-		dateStr := localNow.Format("20060102")
-		if acc.ScheduleEnabled {
-			cycleDate := scheduleCycleDate(localNow, acc.StartTime, acc.StopTime)
-			dateStr = compactDate(cycleDate)
-			// The stop monitor writes this snapshot after its final traffic
-			// query. It normally queues the report too; this recovers a crash
-			// between the snapshot write and the enqueue.
-			snap, err := e.store.GetTrafficSnapshot(ctx, acc.ID, cycleDate)
-			if err != nil || !scheduledStopSnapshotReady(snap, targetTime) {
-				continue
-			}
+		cycleDate := scheduleCycleDate(localNow, acc.StartTime, acc.StopTime)
+		// The stop monitor writes this snapshot after its final traffic
+		// query. It normally queues the report too; this recovers a crash
+		// between the snapshot write and the enqueue.
+		snap, err := e.store.GetTrafficSnapshot(ctx, acc.ID, cycleDate)
+		if err != nil || !scheduledStopSnapshotReady(snap, targetTime) {
+			continue
 		}
-		key := dailyReportKey(acc, dateStr)
+		key := dailyReportKey(acc, compactDate(cycleDate))
 		fresh, err := e.store.RecordActionEvent(ctx, key, acc.ID, "daily_report", "attempting", "")
 		if err != nil || !fresh {
 			continue
@@ -799,6 +805,62 @@ func (e *Engine) checkDailyReport(ctx context.Context, now time.Time) {
 		payload, _ := json.Marshal(map[string]any{"force": false, "account_id": acc.ID})
 		if _, err = e.Enqueue(ctx, JobDailyReport, acc.ID, string(payload), key); err != nil {
 			_ = e.store.DeleteActionEvent(ctx, key)
+		}
+	}
+
+	groupTimes := make([]string, 0, len(unscheduledGroups))
+	for targetTime := range unscheduledGroups {
+		groupTimes = append(groupTimes, targetTime)
+	}
+	slices.Sort(groupTimes)
+	for _, targetTime := range groupTimes {
+		if !dueWithin(localNow, targetTime, 10*time.Minute) {
+			continue
+		}
+		dateKey := localNow.Format("20060102")
+		var freshAccounts []domain.Account
+		var claimErr error
+		for _, acc := range unscheduledGroups[targetTime] {
+			key := dailyReportKey(acc, dateKey)
+			fresh, err := e.store.RecordActionEvent(ctx, key, acc.ID, "daily_report", "attempting", "")
+			if err != nil {
+				claimErr = err
+				break
+			}
+			if fresh {
+				freshAccounts = append(freshAccounts, acc)
+			}
+		}
+		if claimErr != nil {
+			for _, acc := range freshAccounts {
+				_ = e.store.DeleteActionEvent(ctx, dailyReportKey(acc, dateKey))
+			}
+			continue
+		}
+		if len(freshAccounts) == 0 {
+			continue
+		}
+		if len(freshAccounts) == 1 {
+			acc := freshAccounts[0]
+			key := dailyReportKey(acc, dateKey)
+			payload, _ := json.Marshal(map[string]any{"force": false, "account_id": acc.ID})
+			if _, err := e.Enqueue(ctx, JobDailyReport, acc.ID, string(payload), key); err != nil {
+				_ = e.store.DeleteActionEvent(ctx, key)
+			}
+			continue
+		}
+
+		key := fmt.Sprintf("daily_report:group:%s:%s", dateKey, targetTime)
+		accountIDs := make([]int64, 0, len(freshAccounts))
+		for _, acc := range freshAccounts {
+			accountIDs = append(accountIDs, acc.ID)
+			key += ":" + strconv.FormatInt(acc.ID, 10)
+		}
+		payload, _ := json.Marshal(map[string]any{"force": false, "account_ids": accountIDs, "report_date": localNow.Format("2006-01-02")})
+		if _, err := e.Enqueue(ctx, JobDailyReport, 0, string(payload), key); err != nil {
+			for _, acc := range freshAccounts {
+				_ = e.store.DeleteActionEvent(ctx, dailyReportKey(acc, dateKey))
+			}
 		}
 	}
 }
@@ -970,6 +1032,21 @@ type instanceReportItem struct {
 }
 
 func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, targetAccountID ...int64) (string, error) {
+	var targetID int64
+	if len(targetAccountID) > 0 {
+		targetID = targetAccountID[0]
+	}
+	return e.generateAndSendDailyReportSelected(ctx, force, targetID, nil, "", "")
+}
+
+func (e *Engine) generateAndSendDailyReportForAccounts(ctx context.Context, accountIDs []int64, reportDate, jobID string) (string, error) {
+	if len(accountIDs) == 0 {
+		return "", errors.New("daily report group has no accounts")
+	}
+	return e.generateAndSendDailyReportSelected(ctx, false, 0, accountIDs, reportDate, jobID)
+}
+
+func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force bool, targetID int64, accountIDs []int64, reportDate, jobID string) (string, error) {
 	config, err := e.store.GetConfig(ctx)
 	if err != nil {
 		return "", err
@@ -983,10 +1060,26 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 	}
 	now := time.Now().In(location)
 	dateStr := now.Format("2006-01-02")
+	if parsed, parseErr := time.Parse("2006-01-02", reportDate); parseErr == nil && parsed.Format("2006-01-02") == reportDate {
+		dateStr = reportDate
+	}
 
-	var targetID int64
-	if len(targetAccountID) > 0 {
-		targetID = targetAccountID[0]
+	var selected map[int64]bool
+	if accountIDs != nil {
+		selected = make(map[int64]bool, len(accountIDs))
+		for _, id := range accountIDs {
+			selected[id] = true
+		}
+		remaining := 0
+		for _, acc := range config.Accounts {
+			if selected[acc.ID] && !acc.ScheduleEnabled && (acc.DailyReport == nil || *acc.DailyReport) {
+				targetID = acc.ID
+				remaining++
+			}
+		}
+		if remaining != 1 {
+			targetID = 0
+		}
 	}
 
 	if targetID > 0 {
@@ -1078,6 +1171,9 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 
 		title := fmt.Sprintf("CDT Monitor · 实例 [%s] 流量与账单日报 (%s)", instName, dateStr)
 		event := newEvent("daily_report", title, sb.String(), targetAcc.ID, fields)
+		if jobID != "" {
+			event.ID = "daily_report_group:" + jobID
+		}
 		channels := notify.EnabledChannels(config)
 		if len(channels) == 0 {
 			msg := fmt.Sprintf("实例 [%s] 日报已生成，但未启用任何通知渠道 (消耗: %s)", instName, formatTrafficGB(consumed))
@@ -1095,6 +1191,9 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 	var items []instanceReportItem
 	var excludedCount int
 	for _, acc := range config.Accounts {
+		if selected != nil && (!selected[acc.ID] || acc.ScheduleEnabled) {
+			continue
+		}
 		if acc.DailyReport != nil && !*acc.DailyReport {
 			excludedCount++
 			continue
@@ -1134,6 +1233,11 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 	}
 
 	if len(items) == 0 {
+		if selected != nil {
+			msg := "该时段没有可生成日报的实例，未发送日报"
+			_ = e.store.AddLog(ctx, "info", msg)
+			return msg, nil
+		}
 		if excludedCount > 0 {
 			msg := "所有实例已关闭日报推送，未发送日报"
 			_ = e.store.AddLog(ctx, "info", msg)
@@ -1290,6 +1394,9 @@ func (e *Engine) generateAndSendDailyReport(ctx context.Context, force bool, tar
 
 	title := fmt.Sprintf("CDT Monitor · 每日流量与账单日报 (%s)", dateStr)
 	event := newEvent("daily_report", title, sb.String(), 0, fields)
+	if jobID != "" {
+		event.ID = "daily_report_group:" + jobID
+	}
 	channels := notify.EnabledChannels(config)
 	if len(channels) == 0 {
 		msg := fmt.Sprintf("日报已生成，但未启用任何通知通道 (消耗总和: %s)", formatTrafficGB(totalConsumed))
