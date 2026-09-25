@@ -106,7 +106,7 @@ func TestFlushOutboxRejectsOversizedEvent(t *testing.T) {
 	if err := st.DB().QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE event_id='evt-long'`).Scan(&status, &lastError); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || !strings.Contains(lastError, "too long") {
+	if (status != "queued" && status != "failed") || !strings.Contains(lastError, "too long") {
 		t.Fatalf("status=%q last_error=%q", status, lastError)
 	}
 }

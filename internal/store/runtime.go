@@ -118,6 +118,7 @@ DELETE FROM sessions WHERE expires_at<unixepoch();
 DELETE FROM login_attempts WHERE attempt_time<unixepoch()-86400;
 DELETE FROM jobs WHERE status IN ('completed','failed') AND updated_at<unixepoch()-604800;
 DELETE FROM notification_outbox WHERE status IN ('sent','failed') AND updated_at<unixepoch()-2592000;
+DELETE FROM daily_traffic_snapshots WHERE updated_at<unixepoch()-2592000;
 `)
 	return err
 }
@@ -133,6 +134,84 @@ func validInstanceStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+type TrafficSnapshot struct {
+	AccountID    int64
+	DateStr      string
+	StartTraffic float64
+	StopTraffic  float64
+	StartTime    string
+	StopTime     string
+}
+
+func (s *Store) RecordTrafficSnapshot(ctx context.Context, accountID int64, dateStr, action string, traffic float64, timeStr string) error {
+	if !validAccountID(accountID) {
+		return errors.New("account id is invalid")
+	}
+	if !validTrafficSample(traffic) {
+		return errors.New("traffic sample is invalid")
+	}
+	now := time.Now().Unix()
+	if action == "start" {
+		_, err := s.db.ExecContext(ctx, `INSERT INTO daily_traffic_snapshots(account_id, date_str, start_traffic, start_time, updated_at) VALUES(?,?,?,?,?) ON CONFLICT(account_id, date_str) DO UPDATE SET start_traffic=excluded.start_traffic, start_time=excluded.start_time, updated_at=excluded.updated_at`,
+			accountID, dateStr, traffic, timeStr, now)
+		return err
+	}
+	if action == "stop" {
+		_, err := s.db.ExecContext(ctx, `INSERT INTO daily_traffic_snapshots(account_id, date_str, stop_traffic, stop_time, updated_at) VALUES(?,?,?,?,?) ON CONFLICT(account_id, date_str) DO UPDATE SET stop_traffic=excluded.stop_traffic, stop_time=excluded.stop_time, updated_at=excluded.updated_at`,
+			accountID, dateStr, traffic, timeStr, now)
+		return err
+	}
+	return nil
+}
+
+func (s *Store) GetTrafficSnapshot(ctx context.Context, accountID int64, dateStr string) (TrafficSnapshot, error) {
+	var snap TrafficSnapshot
+	err := s.db.QueryRowContext(ctx, `SELECT account_id, date_str, start_traffic, stop_traffic, start_time, stop_time FROM daily_traffic_snapshots WHERE account_id=? AND date_str=?`, accountID, dateStr).
+		Scan(&snap.AccountID, &snap.DateStr, &snap.StartTraffic, &snap.StopTraffic, &snap.StartTime, &snap.StopTime)
+	return snap, err
+}
+
+func (s *Store) EarliestTrafficSince(ctx context.Context, accountID int64, since int64) (float64, bool) {
+	var traffic float64
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at>=? ORDER BY recorded_at ASC LIMIT 1`, accountID, since).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, since).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	return 0, false
+}
+
+func (s *Store) Traffic24HoursAgo(ctx context.Context, accountID int64, now time.Time) (float64, bool) {
+	target := now.Add(-24 * time.Hour).Unix()
+	var traffic float64
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at BETWEEN ? AND ? ORDER BY ABS(recorded_at-?) ASC LIMIT 1`, accountID, target-3600, target+3600, target).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_daily WHERE account_id=? AND recorded_at<=? ORDER BY recorded_at DESC LIMIT 1`, accountID, target).Scan(&traffic)
+	if err == nil {
+		return traffic, true
+	}
+	var earliestTraffic float64
+	var earliestTime int64
+	err = s.db.QueryRowContext(ctx, `SELECT traffic, recorded_at FROM traffic_hourly WHERE account_id=? ORDER BY recorded_at ASC LIMIT 1`, accountID).Scan(&earliestTraffic, &earliestTime)
+	if err == nil && now.Unix()-earliestTime >= 900 {
+		return earliestTraffic, true
+	}
+	return 0, false
+}
+
+func (s *Store) TrafficAroundTime(ctx context.Context, accountID int64, targetTime time.Time) (float64, bool) {
+	target := targetTime.Unix()
+	var traffic float64
+	err := s.db.QueryRowContext(ctx, `SELECT traffic FROM traffic_hourly WHERE account_id=? AND recorded_at BETWEEN ? AND ? ORDER BY ABS(recorded_at-?) ASC, recorded_at ASC LIMIT 1`,
+		accountID, target-3600, target+3600, target).Scan(&traffic)
+	return traffic, err == nil
 }
 
 func (s *Store) AddTrafficStats(ctx context.Context, accountID int64, traffic float64, now time.Time) error {
@@ -233,13 +312,13 @@ const (
 	maxJobPayloadRunes   = 4096
 	maxJobUniqueKeyRunes = 256
 	maxJobTypeRunes      = 64
-	maxJobAttempts       = 8
+	maxJobAttempts       = 12
 	maxJobIDBytes        = 64
 )
 
 func validJobType(jobType string) bool {
 	switch jobType {
-	case "monitor_account", "refresh_account", "control_instance", "test_notification":
+	case "monitor_account", "refresh_account", "control_instance", "test_notification", "daily_report":
 		return true
 	default:
 		return false
@@ -544,7 +623,7 @@ const (
 
 func validActionEventType(eventType string) bool {
 	switch eventType {
-	case "threshold", "threshold_stop", "keepalive", "schedule_start", "schedule_stop":
+	case "threshold", "threshold_stop", "keepalive", "schedule_start", "schedule_stop", "daily_report":
 		return true
 	default:
 		return false
@@ -616,18 +695,28 @@ func validOutboxChannel(channel string) bool {
 
 func validNotificationEventType(eventType string) bool {
 	switch eventType {
-	case "test", "threshold", "keepalive", "schedule":
+	case "test", "threshold", "keepalive", "schedule", "daily_report":
 		return true
 	default:
 		return false
 	}
 }
 
+
+func hasControlExceptNewline(value string) bool {
+	for _, r := range value {
+		if r == 0 || r == '\r' {
+			return true
+		}
+	}
+	return false
+}
+
 func validateNotificationEvent(event domain.NotificationEvent) error {
 	if !validNotificationEventType(event.Type) {
 		return errors.New("notification event type is invalid")
 	}
-	if hasTextBreak(event.Title) || hasTextBreak(event.Summary) {
+	if hasTextBreak(event.Title) || hasControlExceptNewline(event.Summary) {
 		return errors.New("notification event is invalid")
 	}
 	if len([]rune(event.Title)) > maxNotificationTitleRunes || len([]rune(event.Summary)) > maxNotificationSummaryRunes {

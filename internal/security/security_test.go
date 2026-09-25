@@ -163,10 +163,16 @@ func TestCipherRejectsTamperedValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tampered := encrypted[:len(encrypted)-1] + "A"
-	if tampered == encrypted {
-		tampered = encrypted[:len(encrypted)-1] + "B"
+	if !IsEncrypted(encrypted) {
+		t.Fatalf("expected encrypted payload, got %q", encrypted)
 	}
+	// Corrupt a middle ciphertext character so AEAD authentication must fail.
+	mid := len(encrypted)/2
+	replacement := byte('A')
+	if encrypted[mid] == replacement {
+		replacement = 'B'
+	}
+	tampered := encrypted[:mid] + string(replacement) + encrypted[mid+1:]
 	if _, err = cipher.Decrypt(tampered); err == nil {
 		t.Fatal("tampered ciphertext must not decrypt")
 	}

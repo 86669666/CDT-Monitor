@@ -80,3 +80,28 @@ func (p *fakeProvider) controlActions() []string {
 	defer p.mu.Unlock()
 	return append([]string(nil), p.controls...)
 }
+
+
+// billingTestProvider returns a fixed 1.25 GB reading so daily-report refresh
+// tests can assert consumption without contacting Aliyun.
+type billingTestProvider struct{}
+
+func (billingTestProvider) GetTraffic(context.Context, domain.Account, string) (float64, error) {
+	return 1.25, nil
+}
+
+func (billingTestProvider) GetInstanceStatus(context.Context, domain.Account, string) (string, error) {
+	return domain.StatusRunning, nil
+}
+
+func (billingTestProvider) ControlInstance(context.Context, domain.Account, string, string, string) error {
+	return nil
+}
+
+func (billingTestProvider) GetAccountBalance(context.Context, domain.Account, string) (aliyun.BillingBalance, error) {
+	return aliyun.BillingBalance{Amount: 123.45, Currency: "CNY"}, nil
+}
+
+func (billingTestProvider) GetInstanceBill(context.Context, domain.Account, string, string) (aliyun.BillingBill, error) {
+	return aliyun.BillingBill{TotalCost: 23.456}, nil
+}

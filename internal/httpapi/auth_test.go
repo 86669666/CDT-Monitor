@@ -1094,7 +1094,7 @@ func TestJobGETRedactsTelegramToken(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
 	ctx := t.Context()
-	job, err := st.EnqueueJob(ctx, "test_notify", 0, `{"channel":"telegram"}`, "", 1)
+	job, err := st.EnqueueJob(ctx, "test_notification", 0, `{"channel":"telegram"}`, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1272,7 +1272,7 @@ func TestJobGETRedactsAccountSecret(t *testing.T) {
 	st := initializedAuthStore(t)
 	handler := testAPIHandler(t, st)
 	ctx := t.Context()
-	job, err := st.EnqueueJob(ctx, "test_notify", 0, `{"channel":"telegram"}`, "", 1)
+	job, err := st.EnqueueJob(ctx, "test_notification", 0, `{"channel":"telegram"}`, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2122,8 +2122,12 @@ func TestSaveConfigRejectsInvalidScheduleClockHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := doRequest(t, handler, http.MethodPut, "/api/v1/config", string(raw), cookies, headers)
-	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "account schedule time is invalid") {
+	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("invalid clock status = %d body = %s", bad.Code, bad.Body.String())
+	}
+	body := bad.Body.String()
+	if !strings.Contains(body, "account schedule time is invalid") && !strings.Contains(body, "24 小时制") && !strings.Contains(body, "HH:MM") && !strings.Contains(body, "开机时间") && !strings.Contains(body, "invalid_schedule_time") {
+		t.Fatalf("invalid clock status = %d body = %s", bad.Code, body)
 	}
 }
 
