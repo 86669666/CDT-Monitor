@@ -647,14 +647,12 @@ func fetchLatestRelease(ctx context.Context, version, endpoint string) (string, 
 }
 
 func githubUserAgent(version string) string {
-	version = strings.TrimSpace(version)
-	if version == "" {
+	if strings.ContainsAny(version, "\r\n\x00") {
 		version = "dev"
-	}
-	for _, r := range version {
-		if r == '\r' || r == '\n' || r == 0 {
+	} else {
+		version = strings.TrimSpace(version)
+		if version == "" {
 			version = "dev"
-			break
 		}
 	}
 	if runes := []rune(version); len(runes) > maxGitHubTagRunes {

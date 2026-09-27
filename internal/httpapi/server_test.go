@@ -292,6 +292,14 @@ func TestGitHubUserAgentSanitizesVersion(t *testing.T) {
 	if got := githubUserAgent("1.2.3\r\nHost: evil.example"); got != "CDT-Monitor/dev" {
 		t.Fatalf("header break=%q", got)
 	}
+	for _, broken := range []string{"1.2.3\n", "1.2.3\r", "1.2.3\x00", "\n1.2.3", " 1.2.3\n "} {
+		if got := githubUserAgent(broken); got != "CDT-Monitor/dev" {
+			t.Fatalf("broken version %q agent=%q", broken, got)
+		}
+	}
+	if got := githubUserAgent(" 1.2.3 "); got != "CDT-Monitor/1.2.3" {
+		t.Fatalf("padded=%q", got)
+	}
 	got := githubUserAgent(strings.Repeat("v", maxGitHubTagRunes+8))
 	if got != "CDT-Monitor/"+strings.Repeat("v", maxGitHubTagRunes) {
 		t.Fatalf("oversized=%q", got)
