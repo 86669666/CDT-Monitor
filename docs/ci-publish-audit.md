@@ -981,3 +981,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 `permissions: read-all`。`write-all` 本来就禁止。不要用总读权限把 `packages` / `id-token` / `actions` 的 read 一次加回来
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T15:41Z` / 2026-09-27 23:41 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `2cecfad` 再加 Compose init 扫描：
+
+- Publish Guard 现只允许恰好一行 `init: true`。不要再写 `init: false` 或第二条 init。PID 1 仍要能回收子进程
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
