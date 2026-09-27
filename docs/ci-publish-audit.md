@@ -991,3 +991,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止 workflow YAML 里的任何 `secrets:` 键（含显式 map）。`secrets: inherit` 本来就禁止。`secrets.ANDROID_*` 表达式仍只允许小组件 keystore 四个名字
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T15:48Z` / 2026-09-27 23:48 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `ab05c6e` 再加 Compose read_only 扫描：
+
+- Publish Guard 现只允许恰好一行 `read_only: true`。不要再写 `read_only: false` 或第二条 read_only。根文件系统保持只读
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
