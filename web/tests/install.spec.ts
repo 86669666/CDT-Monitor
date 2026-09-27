@@ -13553,3 +13553,33 @@ test('settings billing enable keeps the console on live internal_error', async (
   await expect(page.locator('.toast-stack')).not.toContainText('服务暂时不可用')
   expect(statusCalls).toBeGreaterThan(0)
 })
+
+test('settings save opens login on live unauthorized status', async ({ page }) => {
+  let failStatus = false
+  let statusCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failStatus) return route.fulfill({ json: dashboardStatus })
+    statusCalls += 1
+    return route.fulfill({
+      status: 401,
+      json: { error: { code: 'unauthorized', message: '请登录或提供有效 API Key' } },
+    })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      failStatus = true
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  expect(statusCalls).toBeGreaterThan(0)
+})
