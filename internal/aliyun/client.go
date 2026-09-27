@@ -375,7 +375,10 @@ func validBillingCycle(cycle string) error {
 }
 
 func allowedAliyunEndpoint(host, version, action string) bool {
-	host = strings.ToLower(strings.TrimSpace(host))
+	if !allowedAliyunHost(host) {
+		return false
+	}
+	host = strings.ToLower(host)
 	switch action {
 	case "ListCdtInternetTraffic":
 		return host == "cdt.aliyuncs.com" && version == "2021-08-13"

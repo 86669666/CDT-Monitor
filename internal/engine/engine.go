@@ -248,6 +248,9 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 			return "", err
 		}
 		payload.Action = strings.ToLower(strings.TrimSpace(payload.Action))
+		if strings.ContainsAny(payload.Source, "\r\n\x00") {
+			return "", errors.New("control source is invalid")
+		}
 		payload.Source = strings.TrimSpace(payload.Source)
 		if payload.Action != "start" && payload.Action != "stop" {
 			return "", errors.New("action must be start or stop")
@@ -547,6 +550,9 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	action = strings.ToLower(strings.TrimSpace(action))
 	if action != "start" && action != "stop" {
 		return "", errors.New("action must be start or stop")
+	}
+	if strings.ContainsAny(source, "\r\n\x00") {
+		return "", errors.New("control source is invalid")
 	}
 	if inFlight(account.InstanceStatus) {
 		return "", fmt.Errorf("instance is currently %s", account.InstanceStatus)
@@ -926,7 +932,9 @@ func ParseControlPayload(action, source string) string {
 		action = ""
 	}
 	source = strings.TrimSpace(source)
-	if runes := []rune(source); len(runes) > maxControlSourceRunes {
+	if strings.ContainsAny(source, "\r\n\x00") {
+		source = "\n"
+	} else if runes := []rune(source); len(runes) > maxControlSourceRunes {
 		source = string(runes[:maxControlSourceRunes])
 	}
 	payload, _ := json.Marshal(map[string]string{"action": action, "source": source})

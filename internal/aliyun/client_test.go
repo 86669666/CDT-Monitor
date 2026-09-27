@@ -226,6 +226,11 @@ func TestCallRejectsMismatchedEndpoints(t *testing.T) {
 	if !allowedAliyunEndpoint("ecs.cn-hongkong.aliyuncs.com", "2014-05-26", "StartInstance") || allowedAliyunEndpoint("business.aliyuncs.com", "2017-12-14", "StartInstance") {
 		t.Fatal("endpoint pairing mismatch")
 	}
+	for _, host := range []string{" ecs.cn-hongkong.aliyuncs.com", "ecs.cn-hongkong\n.aliyuncs.com", "ecs.evil.com.aliyuncs.com"} {
+		if allowedAliyunEndpoint(host, "2014-05-26", "StartInstance") {
+			t.Fatalf("host %q was allowed", host)
+		}
+	}
 }
 
 func TestCallRejectsUnknownExtras(t *testing.T) {
