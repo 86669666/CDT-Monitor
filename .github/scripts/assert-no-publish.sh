@@ -549,7 +549,10 @@ scan_job_limits() {
       bad "$f: pages permission is forbidden on this fork"
     fi
     if grep -Eq 'repository-projects:[[:space:]]*write' <<<"$body"; then
-      bad "$f: extra GitHub write permissions are forbidden on this fork"
+      bad "$f: repository-projects: write is forbidden on this fork"
+    fi
+    if grep -Eq '^[[:space:]]+repository-projects:' <<<"$body"; then
+      bad "$f: repository-projects permission is forbidden on this fork"
     fi
     case "$base" in
       auto-release.yml|release.yml) ;;
