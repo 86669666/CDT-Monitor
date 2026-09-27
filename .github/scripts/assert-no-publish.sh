@@ -574,8 +574,8 @@ scan_job_limits() {
         fi
         ;;
     esac
-    runs="$(grep -c 'runs-on:' <<<"$body" || true)"
-    timeouts="$(grep -c 'timeout-minutes:' <<<"$body" || true)"
+    runs="$(grep -c -E '^[[:space:]]*runs-on:' <<<"$body" || true)"
+    timeouts="$(grep -c -E '^[[:space:]]*timeout-minutes:' <<<"$body" || true)"
     if [ "$runs" -gt "$timeouts" ]; then
       bad "$f: each runs-on job must set timeout-minutes (runs-on=$runs timeout-minutes=$timeouts)"
     fi
