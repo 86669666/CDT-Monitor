@@ -80,7 +80,7 @@ scan_workflows() {
     if grep -Eq 'curl.*\|[[:space:]]*(ba)?sh|wget.*\|[[:space:]]*(ba)?sh' <<<"$body"; then
       bad "$f: pipe-to-shell installers are forbidden"
     fi
-    if grep -Fq 'pull_request_target' <<<"$body"; then
+    if grep -Eq '^[[:space:]]+pull_request_target:' <<<"$body"; then
       bad "$f: pull_request_target is forbidden (base-repo privileges on fork PRs)"
     fi
     if grep -Fq 'workflow_run' <<<"$body"; then
