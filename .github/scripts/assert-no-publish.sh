@@ -89,6 +89,9 @@ scan_workflows() {
     if grep -Eq 'permissions:[[:space:]]*write-all' <<<"$body"; then
       bad "$f: permissions: write-all is forbidden on this fork"
     fi
+    if grep -Eq 'permissions:[[:space:]]*read-all' <<<"$body"; then
+      bad "$f: permissions: read-all is forbidden on this fork"
+    fi
     if grep -Eq 'continue-on-error:[[:space:]]*true' <<<"$body"; then
       bad "$f: continue-on-error: true is forbidden; do not mask publish/verify failures"
     fi
