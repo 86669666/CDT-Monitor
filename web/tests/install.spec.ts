@@ -13479,3 +13479,40 @@ test('settings billing enable keeps the console on live forbidden', async ({ pag
   await expect(page.locator('.toast-stack')).not.toContainText('API Key 权限不足')
   expect(statusCalls).toBeGreaterThan(0)
 })
+
+test('settings billing enable keeps the console on live not_found', async ({ page }) => {
+  const unloaded = { ...dashboardConfig, enable_billing: false }
+  let failStatus = false
+  let statusCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page, dashboardStatus, unloaded)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failStatus) return route.fulfill({ json: dashboardStatus })
+    statusCalls += 1
+    return route.fulfill({
+      status: 404,
+      json: { error: { code: 'not_found', message: '接口不存在' } },
+    })
+  })
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') return route.fulfill({ json: { success: true } })
+    return route.fulfill({ json: unloaded })
+  })
+  await page.route('**/api/v1/accounts/1/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    failStatus = true
+    return route.fulfill({ status: 202, json: jobFixture('billing-missing', 'queued', 1) })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByText('账单与余额', { exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.getByText('配置已保存，账单同步已开始')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  await expect(page.locator('.toast-stack')).not.toContainText('接口不存在')
+  expect(statusCalls).toBeGreaterThan(0)
+})
