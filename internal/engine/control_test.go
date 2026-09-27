@@ -28,6 +28,12 @@ func TestParseControlPayloadAllowlistsActions(t *testing.T) {
 	if got := []rune(payload.Source); len(got) != maxControlSourceRunes {
 		t.Fatalf("source len=%d", len(got))
 	}
+	if err := json.Unmarshal([]byte(ParseControlPayload("start", strings.Repeat("A", maxControlSourceRunes+5)+"\nB")), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Source != "\n" {
+		t.Fatalf("broken source was clipped to %q", payload.Source)
+	}
 }
 
 func TestParseControlPayloadUnknownActionDoesNotCallProvider(t *testing.T) {
@@ -77,6 +83,24 @@ func TestRunJobRejectsOversizedControlSource(t *testing.T) {
 	}
 	if got := provider.controlActions(); len(got) != 0 {
 		t.Fatalf("oversized source must not call Aliyun, controls=%#v", got)
+	}
+}
+
+func TestRunJobRejectsBrokenControlSource(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	payload, err := json.Marshal(map[string]string{"action": "start", "source": "man\nual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = eng.runJob(context.Background(), domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: string(payload)})
+	if err == nil || !strings.Contains(err.Error(), "control source is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("broken source must not call Aliyun, controls=%#v", got)
 	}
 }
 
