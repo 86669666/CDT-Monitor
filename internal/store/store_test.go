@@ -701,6 +701,55 @@ func TestAccountSecretRejectsEmptyAndDeleted(t *testing.T) {
 	}
 }
 
+func TestAccountSecretRejectsBrokenIdentifierAndSecret(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	for _, brokenID := range []string{"LTAItest\n", "LTAItest\r", "LTAItest\x00"} {
+		if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET access_key_id=? WHERE id=1`, brokenID); err != nil {
+			t.Fatal(err)
+		}
+		plain, err := st.AccountSecret(ctx, 1)
+		if err == nil || !strings.Contains(err.Error(), "account access_key_id is invalid") || strings.Contains(err.Error(), "secret") || plain != "" {
+			t.Fatalf("broken id %q plain=%q err=%v", brokenID, plain, err)
+		}
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET access_key_id='LTAItest' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	for _, broken := range []string{"sec\nret", "sec\rret", "sec\x00ret"} {
+		encrypted, err := st.EncryptAAD(broken, security.AccountBoundAAD("LTAItest"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET access_key_secret=? WHERE id=1`, encrypted); err != nil {
+			t.Fatal(err)
+		}
+		plain, err := st.AccountSecret(ctx, 1)
+		if err == nil || !strings.Contains(err.Error(), "account access_key_secret is invalid") || strings.Contains(err.Error(), broken) || plain != "" {
+			t.Fatalf("broken secret plain=%q err=%v", plain, err)
+		}
+	}
+	encrypted, err := st.EncryptAAD("sec ret", security.AccountBoundAAD("LTAItest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET access_key_secret=? WHERE id=1`, encrypted); err != nil {
+		t.Fatal(err)
+	}
+	plain, err := st.AccountSecret(ctx, 1)
+	if err != nil || plain != "sec ret" {
+		t.Fatalf("spaced secret = %q err=%v", plain, err)
+	}
+}
+
 func TestAccountWritesRejectNonPositiveID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

@@ -799,6 +799,9 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 	if strings.TrimSpace(encrypted) == "" {
 		return "", errors.New("account is missing access key secret")
 	}
+	if hasTextBreak(accessKeyID) {
+		return "", errors.New("account access_key_id is invalid")
+	}
 	accessKeyID = strings.TrimSpace(accessKeyID)
 	if !validAccountToken(accessKeyID, maxAccessKeyIDRunes, "-") {
 		return "", errors.New("account access_key_id is invalid")
@@ -806,6 +809,9 @@ func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
 	plain, err := s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID))
 	if err != nil {
 		return "", err
+	}
+	if hasTextBreak(plain) {
+		return "", errors.New("account access_key_secret is invalid")
 	}
 	if strings.TrimSpace(plain) == "" {
 		return "", errors.New("account is missing access key secret")
