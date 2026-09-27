@@ -5,6 +5,7 @@ name: Publish Guard
 # regains GHCR/Hub login, packages: permission, secrets: inherit, or
 # registry image names, or if Compose drops 127.0.0.1:43210.
 # Do not add pull_request_target, workflow_run, or repository_dispatch.
+# pull_request_target matches a trigger key, not a substring.
 # Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
 # shell: stays bash when set.
 # Do not set continue-on-error or dump toJSON(secrets).
