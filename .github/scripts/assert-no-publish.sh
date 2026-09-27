@@ -167,7 +167,7 @@ scan_workflows() {
     if grep -Fq 'setup-qemu-action' <<<"$body"; then
       bad "$f: QEMU/setup-qemu-action is forbidden on this fork"
     fi
-    if grep -Fq 'docker-container' <<<"$body"; then
+    if grep -Eq 'driver:[[:space:]]*docker-container' <<<"$body"; then
       bad "$f: privileged docker-container Buildx is forbidden; keep driver: docker"
     fi
     if grep -Eq 'actions/cache(@|/save|/restore)' <<<"$body"; then

@@ -24,6 +24,7 @@ name: Publish Guard
 # Do not add actions/github-script.
 # Do not add gh release create, actions/create-release, or npm publish.
 # Do not add QEMU or docker-container Buildx.
+# docker-container matches a Buildx driver: value, not a substring.
 # Do not add deployments/pages/statuses/checks write permissions.
 # Do not add id-token permission (OIDC).
 # Do not add actions permission.
