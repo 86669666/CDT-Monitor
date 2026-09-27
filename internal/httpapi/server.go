@@ -474,9 +474,14 @@ func requestOrigin(r *http.Request) string {
 		scheme = "https"
 	}
 	host := r.Host
-	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
-		if trustedProxy(remoteIP(r)) {
-			host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" && trustedProxy(remoteIP(r)) {
+		if i := strings.IndexByte(forwarded, ','); i >= 0 {
+			forwarded = forwarded[:i]
+		}
+		if !strings.ContainsAny(forwarded, "\r\n\x00") {
+			if trimmed := strings.TrimSpace(forwarded); trimmed != "" {
+				host = trimmed
+			}
 		}
 	}
 	return scheme + "://" + host

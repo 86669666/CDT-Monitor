@@ -129,6 +129,28 @@ func TestBeginPasskeyLoginIgnoresSpoofedForwardedHost(t *testing.T) {
 	}
 }
 
+func TestRequestOriginIgnoresBrokenForwardedHost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "https://monitor.example.com/", nil)
+	req.Host = "monitor.example.com"
+	req.RemoteAddr = "127.0.0.1:8080"
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("X-Forwarded-Host", " cdt.internal , evil.example")
+	if got := requestOrigin(req); got != "https://cdt.internal" {
+		t.Fatalf("padded host origin = %q", got)
+	}
+	for _, broken := range []string{"cdt.internal\n", "cdt.internal\r", "evil.example\x00", "\nevil.example"} {
+		req.Header["X-Forwarded-Host"] = []string{broken}
+		if got := requestOrigin(req); got != "https://monitor.example.com" {
+			t.Fatalf("broken host %q origin = %q", broken, got)
+		}
+	}
+	req.RemoteAddr = "203.0.113.10:443"
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
+	if got := requestOrigin(req); got != "https://monitor.example.com" {
+		t.Fatalf("untrusted origin = %q", got)
+	}
+}
+
 func passkeyRPID(t *testing.T, body []byte) string {
 	t.Helper()
 	var payload struct {
