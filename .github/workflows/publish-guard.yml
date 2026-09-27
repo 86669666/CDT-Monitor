@@ -90,6 +90,7 @@ name: Publish Guard
 # Compose privileged stays exactly one privileged: false.
 # Compose user stays exactly one user: "65532:65532".
 # Compose restart stays exactly one restart: on-failure:3.
+# Compose pull_policy stays exactly one pull_policy: build.
 # Dockerfile must not use RUN --mount ssh/secret or --network=host.
 # Dockerfile EXPOSE stays exactly one line: EXPOSE 8080.
 # Dockerfile USER stays exactly one line: USER 65532:65532.

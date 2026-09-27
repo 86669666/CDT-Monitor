@@ -1026,6 +1026,13 @@ scan_compose() {
   if ! grep -Eq '^[[:space:]]+pull_policy:[[:space:]]*build$' <<<"$body"; then
     bad "$f: pull_policy must stay build so Compose cannot pull/push a registry tag"
   fi
+  extra_pull="$(grep -E '^[[:space:]]+pull_policy:' <<<"$body" | grep -Ev '^[[:space:]]+pull_policy:[[:space:]]*build$' || true)"
+  if [ -n "$extra_pull" ]; then
+    bad "$f: extra pull_policy: lines are forbidden; keep only pull_policy: build"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+pull_policy:[[:space:]]*build$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: pull_policy must stay exactly one pull_policy: build"
+  fi
   if ! grep -Eq '^[[:space:]]+context:[[:space:]]*\.$' <<<"$body"; then
     bad "$f: build context must stay ."
   fi
