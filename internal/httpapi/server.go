@@ -797,7 +797,12 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	action := strings.ToLower(strings.TrimSpace(r.PathValue("action")))
+	rawAction := r.PathValue("action")
+	if strings.ContainsAny(rawAction, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "invalid_action", "action must be start or stop")
+		return
+	}
+	action := strings.ToLower(strings.TrimSpace(rawAction))
 	if action != "start" && action != "stop" {
 		writeError(w, http.StatusBadRequest, "invalid_action", "action must be start or stop")
 		return
@@ -854,7 +859,12 @@ func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
-	channel := strings.ToLower(strings.TrimSpace(r.PathValue("channel")))
+	rawChannel := r.PathValue("channel")
+	if strings.ContainsAny(rawChannel, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "invalid_channel", "invalid notification channel")
+		return
+	}
+	channel := strings.ToLower(strings.TrimSpace(rawChannel))
 	if channel != "email" && channel != "telegram" && channel != "webhook" {
 		writeError(w, http.StatusBadRequest, "invalid_channel", "invalid notification channel")
 		return
