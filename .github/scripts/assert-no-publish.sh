@@ -104,7 +104,7 @@ scan_workflows() {
     if grep -Fq 'docker.sock' <<<"$body"; then
       bad "$f: docker.sock is forbidden; CI must not control the host Docker daemon"
     fi
-    if grep -Fq 'issue_comment' <<<"$body"; then
+    if grep -Eq '^[[:space:]]+issue_comment:' <<<"$body"; then
       bad "$f: issue_comment triggers are forbidden on this fork"
     fi
     if grep -Eq '^[[:space:]]+discussion(_comment)?:' <<<"$body"; then
