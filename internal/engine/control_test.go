@@ -66,6 +66,17 @@ func TestRunJobTrimsControlAction(t *testing.T) {
 	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
 		t.Fatalf("controls=%#v", got)
 	}
+	_, err = eng.runJob(context.Background(), domain.Job{
+		Type:      JobControlInstance,
+		AccountID: account.ID,
+		Payload:   `{"action":"start\n","source":"手动"}`,
+	})
+	if err == nil || !strings.Contains(err.Error(), "action must be start or stop") {
+		t.Fatalf("broken action err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 1 {
+		t.Fatalf("broken action called provider controls=%#v", got)
+	}
 }
 
 func TestRunJobRejectsOversizedControlSource(t *testing.T) {
@@ -132,6 +143,20 @@ func TestParseNotifyPayloadAllowlistsChannels(t *testing.T) {
 	if err := json.Unmarshal([]byte(ParseNotifyPayload("sms")), &payload); err != nil || payload.Channel != "" {
 		t.Fatalf("sms payload=%#v err=%v", payload, err)
 	}
+	if err := json.Unmarshal([]byte(ParseNotifyPayload("email\n")), &payload); err != nil || payload.Channel != "" {
+		t.Fatalf("broken channel payload=%#v err=%v", payload, err)
+	}
+	if err := json.Unmarshal([]byte(ParseControlPayload("start\n", "手动")), &struct {
+		Action string `json:"action"`
+	}{}); err != nil {
+		t.Fatal(err)
+	}
+	var control struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal([]byte(ParseControlPayload("start\n", "手动")), &control); err != nil || control.Action != "" {
+		t.Fatalf("broken action payload=%#v err=%v", control, err)
+	}
 }
 
 func TestRunJobRejectsUnknownNotifyChannel(t *testing.T) {
@@ -144,6 +169,13 @@ func TestRunJobRejectsUnknownNotifyChannel(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "unsupported notification channel") {
 		t.Fatalf("err=%v", err)
+	}
+	_, err = eng.runJob(context.Background(), domain.Job{
+		Type:    JobTestNotify,
+		Payload: `{"channel":"email\n"}`,
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported notification channel") || strings.ContainsAny(err.Error(), "\r\n\x00") {
+		t.Fatalf("broken channel err=%v", err)
 	}
 }
 
