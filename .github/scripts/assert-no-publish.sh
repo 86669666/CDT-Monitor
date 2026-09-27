@@ -1094,7 +1094,7 @@ scan_compose() {
   if ! grep -Eq 'start_period:[[:space:]]*10s' <<<"$body"; then
     bad "$f: healthcheck start_period must stay 10s"
   fi
-  if grep -Eq 'disable:[[:space:]]*true' <<<"$body"; then
+  if grep -Eq '^[[:space:]]+disable:[[:space:]]*true' <<<"$body"; then
     bad "$f: healthcheck disable is forbidden"
   fi
   extra_hc="$(awk '
