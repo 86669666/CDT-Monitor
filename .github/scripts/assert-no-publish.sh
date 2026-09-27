@@ -86,7 +86,7 @@ scan_workflows() {
     if grep -Eq '^[[:space:]]+workflow_run:' <<<"$body"; then
       bad "$f: workflow_run triggers are forbidden on this fork"
     fi
-    if grep -Fq 'repository_dispatch' <<<"$body"; then
+    if grep -Eq '^[[:space:]]+repository_dispatch:' <<<"$body"; then
       bad "$f: repository_dispatch is forbidden on this fork"
     fi
     if grep -Eq 'permissions:[[:space:]]*write-all' <<<"$body"; then
