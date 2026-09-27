@@ -729,7 +729,10 @@ func jsonLimitError(value any) string {
 }
 
 func isSuccessCode(code string) bool {
-	switch strings.ToLower(strings.TrimSpace(code)) {
+	if code != strings.TrimSpace(code) || strings.ContainsAny(code, "\r\n\x00") {
+		return false
+	}
+	switch strings.ToLower(code) {
 	case "ok", "200", "success":
 		return true
 	default:

@@ -111,6 +111,32 @@ func TestGetAccountBalanceAcceptsAliyunBusinessCode200(t *testing.T) {
 	}
 }
 
+func TestAliyunRejectsPaddedSuccessCode(t *testing.T) {
+	account := domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}
+	for _, body := range []string{
+		`{"Code":"200\n","Data":{"AvailableAmount":"12.5","Currency":"CNY"}}`,
+		`{"Code":" 200","Data":{"AvailableAmount":"12.5","Currency":"CNY"}}`,
+		`{"Code":"OK\r","Data":{"AvailableAmount":"12.5","Currency":"CNY"}}`,
+	} {
+		client := NewClient()
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: request}, nil
+		})}
+		balance, err := client.GetAccountBalance(context.Background(), account, "secret")
+		if err == nil || balance.Amount != 0 || strings.Contains(err.Error(), "invalid response") || !strings.Contains(err.Error(), "QueryAccountBalance") {
+			t.Fatalf("body %q balance=%#v err=%v", body, balance, err)
+		}
+	}
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"Code":"OK","Data":{"AvailableAmount":"12.5","Currency":"CNY"}}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	balance, err := client.GetAccountBalance(context.Background(), account, "secret")
+	if err != nil || balance.Amount != 12.5 || balance.Currency != "CNY" {
+		t.Fatalf("ok balance=%#v err=%v", balance, err)
+	}
+}
+
 func TestGetAccountBalanceRejectsNonFiniteAmounts(t *testing.T) {
 	hits := 0
 	client := NewClient()
