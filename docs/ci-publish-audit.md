@@ -961,3 +961,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `pages:` permission（含 `read`）。`pages: write` 本来就在额外写权限组里。不要让 token 碰 GitHub Pages
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T15:24Z` / 2026-09-27 23:24 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `4e7356c` 再加 Compose tty 扫描：
+
+- Publish Guard 现禁止任何 Compose `tty:`（含 `false`）。`tty: true` 本来就禁止。本地 daemon 不要分配 TTY
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
