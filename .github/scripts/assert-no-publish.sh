@@ -1156,6 +1156,13 @@ scan_compose() {
   if ! grep -Eq 'init:[[:space:]]*true' <<<"$body"; then
     bad "$f: init: true is required so PID 1 can reap"
   fi
+  extra_init="$(grep -E '^[[:space:]]+init:' <<<"$body" | grep -Ev '^[[:space:]]+init:[[:space:]]*true$' || true)"
+  if [ -n "$extra_init" ]; then
+    bad "$f: extra init: lines are forbidden; keep only init: true"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+init:[[:space:]]*true$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: init must stay exactly one init: true"
+  fi
   if ! grep -Eq 'pids_limit:[[:space:]]*256' <<<"$body"; then
     bad "$f: pids_limit must stay 256"
   fi
