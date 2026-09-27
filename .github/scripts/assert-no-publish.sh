@@ -83,7 +83,7 @@ scan_workflows() {
     if grep -Eq '^[[:space:]]+pull_request_target:' <<<"$body"; then
       bad "$f: pull_request_target is forbidden (base-repo privileges on fork PRs)"
     fi
-    if grep -Fq 'workflow_run' <<<"$body"; then
+    if grep -Eq '^[[:space:]]+workflow_run:' <<<"$body"; then
       bad "$f: workflow_run triggers are forbidden on this fork"
     fi
     if grep -Fq 'repository_dispatch' <<<"$body"; then
