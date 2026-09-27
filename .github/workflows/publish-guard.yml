@@ -28,6 +28,7 @@ name: Publish Guard
 # Do not add deployments permission.
 # Do not add statuses permission.
 # Do not add checks permission.
+# Do not add pages permission.
 # SHA pin scan matches a uses: key, not the substring inside statuses:.
 # upload-artifact stays on widget CI and gated Release Binaries only.
 # download-artifact stays on gated Release Binaries only.
