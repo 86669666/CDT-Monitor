@@ -1383,6 +1383,10 @@ func TestLogsRequireAdminAndRejectUnknownControl(t *testing.T) {
 	if start.Code != http.StatusAccepted {
 		t.Fatalf("START action status = %d body = %s", start.Code, start.Body.String())
 	}
+	broken := doRequest(t, handler, http.MethodPost, "/api/v1/accounts/"+itoa(accounts[0].ID)+"/actions/start%0A", `{}`, nil, map[string]string{"X-API-Key": controlToken})
+	if broken.Code != http.StatusBadRequest || !strings.Contains(broken.Body.String(), "invalid_action") {
+		t.Fatalf("broken action status = %d body = %s", broken.Code, broken.Body.String())
+	}
 }
 
 func TestLogsRejectUnknownTabHTTP(t *testing.T) {
@@ -1686,6 +1690,10 @@ func TestTestNotificationRequiresAdminAndValidChannel(t *testing.T) {
 	invalid := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/sms", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid channel status = %d body = %s", invalid.Code, invalid.Body.String())
+	}
+	broken := doRequest(t, handler, http.MethodPost, "/api/v1/notifications/test/email%0A", "", []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+	if broken.Code != http.StatusBadRequest || !strings.Contains(broken.Body.String(), "invalid_channel") {
+		t.Fatalf("broken channel status = %d body = %s", broken.Code, broken.Body.String())
 	}
 	_, widgetToken, err := st.CreateAPIKey(t.Context(), "widget", []string{"widget:read"}, nil)
 	if err != nil {
