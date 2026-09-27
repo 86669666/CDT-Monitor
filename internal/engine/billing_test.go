@@ -96,6 +96,29 @@ func TestBillingErrorIsCachedThenCleared(t *testing.T) {
 	}
 }
 
+func TestSanitizeProviderErrorFlattensBreaks(t *testing.T) {
+	got := sanitizeProviderError(errors.New("line\none\x00two"), "LTAItest", "secret")
+	if strings.ContainsAny(got, "\r\n\x00") || !strings.Contains(got, "line one two") || strings.Contains(got, "secret") {
+		t.Fatalf("got=%q", got)
+	}
+}
+
+func TestSummaryFlattensStoredBillingError(t *testing.T) {
+	st, account := setupAccount(t, func(config *domain.Config) {
+		config.EnableBilling = true
+	})
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.SetBillingCache(ctx, account.ID, "error", "", map[string]string{"message": "line\none\x00two"}); err != nil {
+		t.Fatal(err)
+	}
+	eng := New(st, newFakeProvider(), notify.New(), quietLogger(), 1)
+	summaries, _, err := eng.Summary(ctx)
+	if err != nil || len(summaries) != 1 || summaries[0].BillingError != "line one two" {
+		t.Fatalf("summary=%#v err=%v", summaries, err)
+	}
+}
+
 func TestBillingErrorRedactsAccessKeyMaterial(t *testing.T) {
 	st, account := setupAccount(t, func(config *domain.Config) {
 		config.EnableBilling = true

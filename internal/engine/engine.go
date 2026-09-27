@@ -834,7 +834,11 @@ func sanitizeProviderError(err error, accessKeyID, secret string) string {
 	if accessKeyID != "" {
 		msg = strings.ReplaceAll(msg, accessKeyID, masked(accessKeyID))
 	}
-	return msg
+	return flattenProviderText(msg)
+}
+
+func flattenProviderText(message string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ", "\x00", " ").Replace(message))
 }
 
 func providerError(err error, accessKeyID, secret string) error {
@@ -873,7 +877,7 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 				Message string `json:"message"`
 			}
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "error", "", 7*24*time.Hour, &billingError); ok {
-				item.BillingError = e.persistRedacted(ctx, strings.TrimSpace(billingError.Message))
+				item.BillingError = e.persistRedacted(ctx, flattenProviderText(billingError.Message))
 			}
 			var balance aliyun.BillingBalance
 			if ok, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 7*24*time.Hour, &balance); ok {
