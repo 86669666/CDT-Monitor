@@ -221,6 +221,9 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
 		}
+		if strings.ContainsAny(payload.Action, "\r\n\x00") {
+			return "", errors.New("action must be start or stop")
+		}
 		payload.Action = strings.ToLower(strings.TrimSpace(payload.Action))
 		if strings.ContainsAny(payload.Source, "\r\n\x00") {
 			return "", errors.New("control source is invalid")
@@ -239,6 +242,9 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 		}
 		if err := decodeJobPayload(job.Payload, &payload); err != nil {
 			return "", err
+		}
+		if strings.ContainsAny(payload.Channel, "\r\n\x00") {
+			return "", errors.New("unsupported notification channel")
 		}
 		payload.Channel = strings.ToLower(strings.TrimSpace(payload.Channel))
 		if !allowedNotifyChannel(payload.Channel) {
@@ -484,6 +490,9 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	config, err := e.store.GetConfig(ctx)
 	if err != nil {
 		return "", err
+	}
+	if strings.ContainsAny(action, "\r\n\x00") {
+		return "", errors.New("action must be start or stop")
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	if action != "start" && action != "stop" {
@@ -785,9 +794,13 @@ func decodeJobPayload(raw string, target any) error {
 }
 
 func ParseControlPayload(action, source string) string {
-	action = strings.ToLower(strings.TrimSpace(action))
-	if action != "start" && action != "stop" {
+	if strings.ContainsAny(action, "\r\n\x00") {
 		action = ""
+	} else {
+		action = strings.ToLower(strings.TrimSpace(action))
+		if action != "start" && action != "stop" {
+			action = ""
+		}
 	}
 	source = strings.TrimSpace(source)
 	if strings.ContainsAny(source, "\r\n\x00") {
@@ -809,9 +822,13 @@ func allowedNotifyChannel(channel string) bool {
 }
 
 func ParseNotifyPayload(channel string) string {
-	channel = strings.ToLower(strings.TrimSpace(channel))
-	if !allowedNotifyChannel(channel) {
+	if strings.ContainsAny(channel, "\r\n\x00") {
 		channel = ""
+	} else {
+		channel = strings.ToLower(strings.TrimSpace(channel))
+		if !allowedNotifyChannel(channel) {
+			channel = ""
+		}
 	}
 	payload, _ := json.Marshal(map[string]string{"channel": channel})
 	return string(payload)
