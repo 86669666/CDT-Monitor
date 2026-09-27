@@ -34,6 +34,31 @@ func TestParseControlPayloadAllowlistsActions(t *testing.T) {
 	if payload.Source != "\n" {
 		t.Fatalf("broken source was clipped to %q", payload.Source)
 	}
+	for _, broken := range []string{"手动\n", "手动\r", "\n手动", "手动\x00", " 手动\n "} {
+		if err := json.Unmarshal([]byte(ParseControlPayload("start", broken)), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Action != "start" || payload.Source != "\n" {
+			t.Fatalf("trailing break payload=%#v source=%q", payload, broken)
+		}
+	}
+	if err := json.Unmarshal([]byte(ParseControlPayload("start", " 手动 ")), &payload); err != nil || payload.Action != "start" || payload.Source != "手动" {
+		t.Fatalf("padded source payload=%#v err=%v", payload, err)
+	}
+}
+
+func TestParseControlPayloadTrailingBreakDoesNotCallProvider(t *testing.T) {
+	st, account := setupAccount(t, nil)
+	defer st.Close()
+	provider := newFakeProvider()
+	eng := New(st, provider, notify.New(), quietLogger(), 1)
+	_, err := eng.runJob(context.Background(), domain.Job{Type: JobControlInstance, AccountID: account.ID, Payload: ParseControlPayload("start", "手动\n")})
+	if err == nil || !strings.Contains(err.Error(), "control source is invalid") || strings.ContainsAny(err.Error(), "\r\n\x00") {
+		t.Fatalf("err=%v", err)
+	}
+	if got := provider.controlActions(); len(got) != 0 {
+		t.Fatalf("controls=%#v", got)
+	}
 }
 
 func TestParseControlPayloadUnknownActionDoesNotCallProvider(t *testing.T) {

@@ -802,11 +802,13 @@ func ParseControlPayload(action, source string) string {
 			action = ""
 		}
 	}
-	source = strings.TrimSpace(source)
 	if strings.ContainsAny(source, "\r\n\x00") {
 		source = "\n"
-	} else if runes := []rune(source); len(runes) > maxControlSourceRunes {
-		source = string(runes[:maxControlSourceRunes])
+	} else {
+		source = strings.TrimSpace(source)
+		if runes := []rune(source); len(runes) > maxControlSourceRunes {
+			source = string(runes[:maxControlSourceRunes])
+		}
 	}
 	payload, _ := json.Marshal(map[string]string{"action": action, "source": source})
 	return string(payload)
