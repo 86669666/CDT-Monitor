@@ -532,6 +532,9 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	if strings.ContainsAny(secret, "\r\n\x00") {
 		return nil, errors.New("access key secret is invalid")
 	}
+	if !validECSRegion(region) {
+		return nil, errors.New("region_id is invalid")
+	}
 	if !allowedAliyunAction(action) {
 		return nil, errors.New("aliyun action is invalid")
 	}
