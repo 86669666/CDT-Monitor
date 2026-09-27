@@ -1061,3 +1061,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 统计 `runs-on` 和 `timeout-minutes` 时只数 YAML 键。普通文本里的 `runs-on:` 不再被当成多出来的 job。每个真正的 `runs-on` job 仍要有超时
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T17:03Z` / 2026-09-28 01:03 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `0821ce8` 再加 Compose memswap_limit 行数扫描：
+
+- Publish Guard 现只允许恰好一行 `memswap_limit: 512m`。不要再写第二条或把 swap 上限改掉
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

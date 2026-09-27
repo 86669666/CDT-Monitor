@@ -1284,6 +1284,13 @@ scan_compose() {
   if ! grep -Eq 'memswap_limit:[[:space:]]*512m' <<<"$body"; then
     bad "$f: memswap_limit must stay 512m"
   fi
+  extra_swap="$(grep -E '^[[:space:]]+memswap_limit:' <<<"$body" | grep -Ev '^[[:space:]]+memswap_limit:[[:space:]]*512m$' || true)"
+  if [ -n "$extra_swap" ]; then
+    bad "$f: extra memswap_limit: lines are forbidden; keep only memswap_limit: 512m"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+memswap_limit:[[:space:]]*512m$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: memswap_limit must stay exactly one memswap_limit: 512m"
+  fi
   if ! grep -Eq 'CDT_DATA_DIR:[[:space:]]*/data' <<<"$body"; then
     bad "$f: CDT_DATA_DIR must stay /data"
   fi
