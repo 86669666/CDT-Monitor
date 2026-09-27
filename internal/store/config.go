@@ -541,6 +541,15 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 	activeRows.Close()
 	kept := make(map[int64]bool)
 	for _, account := range accounts {
+		if hasTextBreak(account.AccessKeyID) {
+			return errors.New("account access_key_id is invalid")
+		}
+		if hasTextBreak(account.RegionID) {
+			return errors.New("account region_id is invalid")
+		}
+		if hasTextBreak(account.InstanceID) {
+			return errors.New("account instance_id is invalid")
+		}
 		account.AccessKeyID = strings.TrimSpace(account.AccessKeyID)
 		account.RegionID = strings.TrimSpace(account.RegionID)
 		account.InstanceID = strings.TrimSpace(account.InstanceID)
@@ -556,15 +565,18 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		if account.InstanceID != "" && !validAccountToken(account.InstanceID, maxInstanceIDRunes, "-_") {
 			return errors.New("account instance_id is invalid")
 		}
+		if hasTextBreak(account.StartTime) || hasTextBreak(account.StopTime) {
+			return errors.New("account schedule time is invalid")
+		}
 		account.StartTime = strings.TrimSpace(account.StartTime)
 		account.StopTime = strings.TrimSpace(account.StopTime)
 		if !validScheduleClock(account.StartTime) || !validScheduleClock(account.StopTime) {
 			return errors.New("account schedule time is invalid")
 		}
-		account.Remark = strings.TrimSpace(account.Remark)
 		if hasTextBreak(account.Remark) {
 			return errors.New("account remark is invalid")
 		}
+		account.Remark = strings.TrimSpace(account.Remark)
 		if len([]rune(account.Remark)) > maxAccountRemarkRunes {
 			return errors.New("account remark is too long")
 		}
