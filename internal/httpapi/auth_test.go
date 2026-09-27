@@ -1899,6 +1899,25 @@ func TestTrustedProxyAllowlistParsesCIDRsAndBareIPs(t *testing.T) {
 	}
 }
 
+func TestTrustedProxyAllowlistRejectsBrokenEntries(t *testing.T) {
+	for _, raw := range []string{"10.0.0.0/8\n", "10.0.0.0/8\r", "10.0.0.0/8\x00", "10.0.0.0/8\n,192.168.1.1"} {
+		if parseTrustedProxyNetworks(raw) != nil {
+			t.Fatalf("broken allowlist %q was parsed", raw)
+		}
+	}
+	t.Setenv("CDT_TRUSTED_PROXIES", "10.0.0.0/8\n")
+	if trustedProxy("10.1.2.3") {
+		t.Fatal("trailing break must not become a trusted proxy")
+	}
+	t.Setenv("CDT_TRUSTED_PROXIES", " 10.0.0.0/8 ")
+	if !trustedProxy("10.1.2.3") {
+		t.Fatal("surrounding spaces must still trim")
+	}
+	if !trustedProxy("127.0.0.1") {
+		t.Fatal("loopback must stay trusted")
+	}
+}
+
 func TestTrustedProxyAllowlistIgnoresOversizedEnv(t *testing.T) {
 	t.Setenv("CDT_TRUSTED_PROXIES", strings.Repeat("10.0.0.1,", (maxTrustedProxyEnvBytes/9)+2)+"10.0.0.0/8")
 	if trustedProxy("10.1.2.3") || trustedProxy("10.0.0.1") {

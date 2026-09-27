@@ -1227,7 +1227,14 @@ const (
 )
 
 func trustedProxyNetworks() []*net.IPNet {
-	raw := strings.TrimSpace(os.Getenv("CDT_TRUSTED_PROXIES"))
+	return parseTrustedProxyNetworks(os.Getenv("CDT_TRUSTED_PROXIES"))
+}
+
+func parseTrustedProxyNetworks(raw string) []*net.IPNet {
+	if strings.ContainsAny(raw, "\r\n\x00") {
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
 	if raw == "" || len(raw) > maxTrustedProxyEnvBytes {
 		return nil
 	}
