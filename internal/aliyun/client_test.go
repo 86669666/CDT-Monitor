@@ -60,6 +60,17 @@ func TestTrafficResponseRejectsNonFiniteValues(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "traffic is invalid") {
 		t.Fatalf("err=%v", err)
 	}
+	broken := map[string]any{"TrafficDetails": []any{
+		map[string]any{"BusinessRegionId": "cn-hangzhou", "Traffic": "\n"},
+	}}
+	_, err = trafficFromResponse(broken, "china")
+	if err == nil || !strings.Contains(err.Error(), "traffic is invalid") {
+		t.Fatalf("broken traffic err=%v", err)
+	}
+	blank, err := parseFiniteNumber("   ")
+	if err != nil || blank != 0 {
+		t.Fatalf("blank number=%v err=%v", blank, err)
+	}
 }
 
 func TestTrafficResponseIgnoresInvalidRegions(t *testing.T) {
@@ -190,6 +201,11 @@ func TestNormalizeAliyunCurrency(t *testing.T) {
 	}
 	if _, err = normalizeAliyunCurrency("US$"); err == nil {
 		t.Fatal("expected invalid currency")
+	}
+	for _, value := range []string{" CNY", "CNY\n", "USD\r"} {
+		if _, err = normalizeAliyunCurrency(value); err == nil || !strings.Contains(err.Error(), "currency is invalid") {
+			t.Fatalf("value %q err=%v", value, err)
+		}
 	}
 }
 

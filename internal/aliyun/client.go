@@ -340,7 +340,9 @@ func billingSite(siteType string) string {
 }
 
 func normalizeAliyunCurrency(value string) (string, error) {
-	value = strings.TrimSpace(value)
+	if strings.ContainsAny(value, "\r\n\x00") || value != strings.TrimSpace(value) {
+		return "", errors.New("aliyun currency is invalid")
+	}
 	if value == "" {
 		return "CNY", nil
 	}
@@ -881,6 +883,9 @@ func parseFiniteNumber(value any) (float64, error) {
 		}
 		result = parsed
 	case string:
+		if strings.ContainsAny(n, "\r\n\x00") {
+			return 0, errors.New("number is invalid")
+		}
 		if strings.TrimSpace(n) == "" {
 			return 0, nil
 		}
