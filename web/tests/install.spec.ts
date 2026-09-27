@@ -14044,3 +14044,26 @@ test('settings save surfaces the live notification header name invalid envelope'
   await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
   expect(saveCalls).toBe(1)
 })
+
+test('settings save surfaces the live notification host invalid envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'notification host is invalid' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'notification host is invalid' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
