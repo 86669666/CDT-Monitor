@@ -1001,3 +1001,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 `discussions:` permission（含 `read`）。`discussion` / `discussion_comment` 触发仍按键匹配，不再把权限键误判成触发器
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T16:07Z` / 2026-09-28 00:07 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `35b6edf` 再加 Compose privileged 行数扫描：
+
+- Publish Guard 现只允许恰好一行 `privileged: false`。`privileged: true` 本来就禁止。不要再写第二条 privileged
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

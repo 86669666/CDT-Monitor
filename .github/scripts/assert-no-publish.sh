@@ -1061,6 +1061,13 @@ scan_compose() {
   if ! grep -Eq 'privileged:[[:space:]]*false' <<<"$body"; then
     bad "$f: privileged must stay false"
   fi
+  extra_priv="$(grep -E '^[[:space:]]+privileged:' <<<"$body" | grep -Ev '^[[:space:]]+privileged:[[:space:]]*false$' || true)"
+  if [ -n "$extra_priv" ]; then
+    bad "$f: extra privileged: lines are forbidden; keep only privileged: false"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+privileged:[[:space:]]*false$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: privileged must stay exactly one privileged: false"
+  fi
   if ! grep -Eq 'no-new-privileges:true' <<<"$body"; then
     bad "$f: no-new-privileges:true is required"
   fi
