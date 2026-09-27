@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -864,6 +865,45 @@ func TestLegacyMonitorAcceptsBearerToken(t *testing.T) {
 	ok := doRequest(t, handler, http.MethodGet, "/monitor.php", "", nil, map[string]string{"Authorization": "Bearer " + token})
 	if ok.Code != http.StatusAccepted {
 		t.Fatalf("bearer cron status = %d body = %s", ok.Code, ok.Body.String())
+	}
+}
+
+func TestBrokenAPIKeyIsNotTrimmedIntoValid(t *testing.T) {
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+	_, token, err := st.CreateAPIKey(t.Context(), "cron", []string{"cron:run"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, _ := loginCookies(t, handler)
+	for _, broken := range []string{token + "\n", token + "\r", token + "\x00", "\n" + token} {
+		request := httptest.NewRequest(http.MethodGet, "https://monitor.example.com/api/v1/status", nil)
+		request.TLS = &tls.ConnectionState{}
+		request.Header.Set("X-Forwarded-Proto", "https")
+		request.AddCookie(session)
+		request.Header["X-Api-Key"] = []string{broken}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("broken key status = %d body = %s", response.Code, response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), token) {
+			t.Fatalf("response leaked token: %s", response.Body.String())
+		}
+	}
+	padded := doRequest(t, handler, http.MethodGet, "/monitor.php?key="+url.QueryEscape(" "+token+" "), "", nil, nil)
+	if padded.Code != http.StatusAccepted {
+		t.Fatalf("padded query status = %d body = %s", padded.Code, padded.Body.String())
+	}
+	for _, broken := range []string{token + "\n", token + "\r", "\n" + token, token + "\x00"} {
+		denied := doRequest(t, handler, http.MethodGet, "/monitor.php?key="+url.QueryEscape(broken), "", nil, nil)
+		if denied.Code != http.StatusUnauthorized || strings.Contains(denied.Body.String(), token) {
+			t.Fatalf("broken query status = %d body = %s", denied.Code, denied.Body.String())
+		}
+	}
+	ok := doRequest(t, handler, http.MethodGet, "/monitor.php?key="+url.QueryEscape(token), "", nil, nil)
+	if ok.Code != http.StatusAccepted {
+		t.Fatalf("query after reject status = %d body = %s", ok.Code, ok.Body.String())
 	}
 }
 

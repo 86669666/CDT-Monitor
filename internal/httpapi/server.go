@@ -950,7 +950,7 @@ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 func (s *Server) legacyMonitor(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r)
 	if token == "" {
-		token = strings.TrimSpace(r.URL.Query().Get("key"))
+		token = presentedAuthToken(r.URL.Query().Get("key"))
 	}
 	scopes, err := s.store.ValidateAPIKey(r.Context(), token)
 	if err != nil || !contains(scopes, "cron:run") {
@@ -1026,13 +1026,18 @@ func (s *Server) authenticate(r *http.Request) (principal, error) {
 
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
-	token := ""
 	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		token = strings.TrimSpace(header[7:])
-	} else {
-		token = strings.TrimSpace(r.Header.Get("X-API-Key"))
+		return presentedAuthToken(header[7:])
 	}
-	if len(token) > 128 {
+	return presentedAuthToken(r.Header.Get("X-API-Key"))
+}
+
+func presentedAuthToken(raw string) string {
+	if strings.ContainsAny(raw, "\r\n\x00") {
+		return raw
+	}
+	token := strings.TrimSpace(raw)
+	if token == "" || len(token) > 128 {
 		return ""
 	}
 	return token
