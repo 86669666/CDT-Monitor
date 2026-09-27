@@ -1051,3 +1051,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 的 `self-hosted` 扫描只看 `runs-on` 行。普通文本里的 `self-hosted` 不再被当成自托管 runner。`runs-on` 仍必须是 `ubuntu-latest`
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T16:50Z` / 2026-09-28 00:50 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `f0c93a6` 再加 Compose mem_limit 行数扫描：
+
+- Publish Guard 现只允许恰好一行 `mem_limit: 512m`。不要再写第二条或把内存上限改掉
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

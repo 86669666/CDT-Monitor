@@ -1220,6 +1220,13 @@ scan_compose() {
   if ! grep -Eq 'mem_limit:[[:space:]]*512m' <<<"$body"; then
     bad "$f: mem_limit must stay 512m"
   fi
+  extra_mem="$(grep -E '^[[:space:]]+mem_limit:' <<<"$body" | grep -Ev '^[[:space:]]+mem_limit:[[:space:]]*512m$' || true)"
+  if [ -n "$extra_mem" ]; then
+    bad "$f: extra mem_limit: lines are forbidden; keep only mem_limit: 512m"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+mem_limit:[[:space:]]*512m$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: mem_limit must stay exactly one mem_limit: 512m"
+  fi
   if grep -Eq '^[[:space:]]+(mem_reservation|memory_reservation):' <<<"$body"; then
     bad "$f: mem_reservation is forbidden; keep mem_limit 512m"
   fi
