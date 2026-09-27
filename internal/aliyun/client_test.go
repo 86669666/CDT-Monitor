@@ -812,8 +812,9 @@ func TestControlInstanceRejectsUnknownAction(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
 	})}
 	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}
-	for _, action := range []string{"", "reboot", "delete", "STOPINSTANCE"} {
-		if err := client.ControlInstance(context.Background(), account, "secret", action, "KeepCharging"); err == nil || !strings.Contains(err.Error(), "instance action is invalid") {
+	for _, action := range []string{"", "reboot", "delete", "STOPINSTANCE", "start\n", "start\r", "\nstart", "stop\x00", " start\n"} {
+		err := client.ControlInstance(context.Background(), account, "secret", action, "KeepCharging")
+		if err == nil || !strings.Contains(err.Error(), "instance action is invalid") || strings.ContainsAny(err.Error(), "\r\n\x00") {
 			t.Fatalf("action %q err=%v", action, err)
 		}
 	}
@@ -831,7 +832,7 @@ func TestControlInstanceStartSendsStartInstance(t *testing.T) {
 		action, mode = values.Get("Action"), values.Get("StoppedMode")
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
 	})}
-	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", "start", "KeepCharging"); err != nil {
+	if err := client.ControlInstance(context.Background(), domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hongkong", InstanceID: "i-test"}, "secret", " start ", "KeepCharging"); err != nil {
 		t.Fatal(err)
 	}
 	if action != "StartInstance" || mode != "" {

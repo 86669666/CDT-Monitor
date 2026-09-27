@@ -245,6 +245,9 @@ func (c *Client) ControlInstance(ctx context.Context, account domain.Account, se
 		return err
 	}
 	params := map[string]string{"RegionId": account.RegionID, "InstanceId": account.InstanceID}
+	if strings.ContainsAny(action, "\r\n\x00") {
+		return errors.New("instance action is invalid")
+	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	var apiAction string
 	switch action {
