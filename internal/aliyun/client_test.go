@@ -1037,6 +1037,22 @@ func TestGetTrafficInternationalExcludesChina(t *testing.T) {
 	}
 }
 
+func TestCallFlattensBrokenAliyunCode(t *testing.T) {
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"Code":"Invalid\nParameter","Message":"bad\nrequest"}`)),
+			Header:     make(http.Header),
+			Request:    request,
+		}, nil
+	})}
+	_, err := client.GetAccountBalance(context.Background(), domain.Account{AccessKeyID: "LTAItest", SiteType: "china"}, "secret")
+	if err == nil || strings.ContainsAny(err.Error(), "\r\n\x00") || !strings.Contains(err.Error(), "Invalid Parameter") || !strings.Contains(err.Error(), "bad request") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestCallRetriesThrottlingCodeThenSucceeds(t *testing.T) {
 	var hits int
 	client := NewClient()
