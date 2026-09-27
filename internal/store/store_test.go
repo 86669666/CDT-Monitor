@@ -379,6 +379,10 @@ func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "account remark is invalid") {
 		t.Fatalf("broken remark err=%v", err)
 	}
+	config.Accounts[0].Remark = "note\n"
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "account remark is invalid") {
+		t.Fatalf("trailing remark err=%v", err)
+	}
 	accounts, err = st.ListAccounts(ctx)
 	if err != nil || len(accounts) != 1 || accounts[0].Remark != strings.Repeat("备", maxAccountRemarkRunes) {
 		t.Fatalf("broken remark must not persist, accounts=%#v err=%v", accounts, err)
@@ -674,8 +678,35 @@ func TestSaveConfigRejectsMalformedAccountIdentifiers(t *testing.T) {
 		t.Fatalf("instance err=%v", err)
 	}
 	config.Accounts[0].InstanceID = "i-test"
+	for _, update := range []struct{ field, value, err string }{
+		{"key", "LTAItest\n", "access_key_id is invalid"},
+		{"region", "cn-hongkong\n", "region_id is invalid"},
+		{"instance", "i-test\n", "instance_id is invalid"},
+	} {
+		config.Accounts[0].AccessKeyID = "LTAItest"
+		config.Accounts[0].RegionID = "cn-hongkong"
+		config.Accounts[0].InstanceID = "i-test"
+		switch update.field {
+		case "key":
+			config.Accounts[0].AccessKeyID = update.value
+		case "region":
+			config.Accounts[0].RegionID = update.value
+		case "instance":
+			config.Accounts[0].InstanceID = update.value
+		}
+		if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), update.err) {
+			t.Fatalf("%s err=%v", update.field, err)
+		}
+	}
+	config.Accounts[0].AccessKeyID = " LTAItest "
+	config.Accounts[0].RegionID = " cn-hongkong "
+	config.Accounts[0].InstanceID = " i-test "
 	if err = st.SaveConfig(ctx, config); err != nil {
 		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 || accounts[0].AccessKeyID != "LTAItest" || accounts[0].RegionID != "cn-hongkong" || accounts[0].InstanceID != "i-test" {
+		t.Fatalf("trimmed accounts=%#v err=%v", accounts, err)
 	}
 }
 
@@ -692,7 +723,7 @@ func TestSaveConfigRejectsInvalidScheduleClock(t *testing.T) {
 	}
 	config.AdminPassword = ""
 	config.Accounts[0].AccessKeySecret = ""
-	for _, clock := range []string{"9:00", "24:00", "15:04:05", "noon"} {
+	for _, clock := range []string{"9:00", "24:00", "15:04:05", "noon", "08:30\n"} {
 		config.Accounts[0].StartTime = clock
 		config.Accounts[0].StopTime = "18:00"
 		if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "schedule time is invalid") {
