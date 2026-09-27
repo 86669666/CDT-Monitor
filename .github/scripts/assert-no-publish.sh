@@ -1106,6 +1106,13 @@ scan_compose() {
   if ! grep -Eq 'user:[[:space:]]*"65532:65532"' <<<"$body"; then
     bad "$f: container user must stay 65532:65532"
   fi
+  extra_user="$(grep -E '^[[:space:]]+user:' <<<"$body" | grep -Ev '^[[:space:]]+user:[[:space:]]*"65532:65532"$' || true)"
+  if [ -n "$extra_user" ]; then
+    bad "$f: extra user: lines are forbidden; keep only user 65532:65532"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+user:[[:space:]]*"65532:65532"$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: user must stay exactly one user 65532:65532 line"
+  fi
   if grep -Eq 'unless-stopped' <<<"$body"; then
     bad "$f: unless-stopped is forbidden on this local-only Compose"
   fi
