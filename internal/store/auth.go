@@ -234,6 +234,9 @@ func uniqueAPIKeyScopes(scopes []string) []string {
 }
 
 func (s *Store) CreateAPIKey(ctx context.Context, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
+	if hasTextBreak(name) {
+		return domain.APIKey{}, "", errors.New("api key name is invalid")
+	}
 	name = strings.TrimSpace(name)
 	if name == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("api key name and at least one scope are required")
@@ -469,6 +472,9 @@ func encodePasskeyCredential(credential webauthn.Credential) (string, error) {
 }
 
 func (s *Store) SavePasskey(ctx context.Context, name string, credential webauthn.Credential) error {
+	if hasTextBreak(name) {
+		return errors.New("passkey name is invalid")
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "管理员 Passkey"
