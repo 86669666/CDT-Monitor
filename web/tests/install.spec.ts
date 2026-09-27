@@ -13975,3 +13975,26 @@ test('wizard dashboard load surfaces live config internal_error and stays on ins
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toHaveCount(0)
 })
+
+test('settings save surfaces the live account remark invalid envelope', async ({ page }) => {
+  let saveCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      saveCalls += 1
+      return route.fulfill({
+        status: 400,
+        json: { error: { code: 'config_failed', message: 'account remark is invalid' } },
+      })
+    }
+    return route.fulfill({ json: dashboardConfig })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '保存更改' }).click()
+  await expect(page.locator('.toast--error').filter({ hasText: 'account remark is invalid' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制台设置' })).toBeVisible()
+  expect(saveCalls).toBe(1)
+})
