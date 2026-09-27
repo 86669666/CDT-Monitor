@@ -649,7 +649,7 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 			return nil, false, fmt.Errorf("aliyun %s invalid response: code is too long", action)
 		}
 		if !isSuccessCode(code) {
-			return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, code, clipAliyunErrorText(stringValue(result["Message"])))
+			return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, clipAliyunErrorText(code), clipAliyunErrorText(stringValue(result["Message"])))
 		}
 	}
 	return result, false, nil
