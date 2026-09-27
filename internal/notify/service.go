@@ -911,7 +911,7 @@ func readDotResponse(reader *bufio.Reader) ([]byte, error) {
 }
 
 func clipNotifyErrorText(text string) string {
-	text = strings.TrimSpace(text)
+	text = strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ", "\x00", " ").Replace(text))
 	runes := []rune(text)
 	if len(runes) > maxNotifyErrorRunes {
 		return string(runes[:maxNotifyErrorRunes]) + "..."

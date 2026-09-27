@@ -993,6 +993,9 @@ func TestCallClipsAliyunErrorMessages(t *testing.T) {
 	if got := []rune(err.Error()); len(got) > maxAliyunErrorRunes+80 {
 		t.Fatalf("error too long: %d", len(got))
 	}
+	if got := clipAliyunErrorText(" line\none\x00two "); got != "line one two" {
+		t.Fatalf("flattened=%q", got)
+	}
 }
 
 func TestCallTruncatesNonJSONErrorBodies(t *testing.T) {
