@@ -7,6 +7,7 @@ name: Publish Guard
 # Do not add pull_request_target, workflow_run, or repository_dispatch.
 # pull_request_target matches a trigger key, not a substring.
 # workflow_run matches a trigger key, not a substring.
+# repository_dispatch matches a trigger key, not a substring.
 # Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
 # shell: stays bash when set.
 # Do not set continue-on-error or dump toJSON(secrets).
@@ -90,6 +91,7 @@ name: Publish Guard
 # Compose privileged stays exactly one privileged: false.
 # Compose user stays exactly one user: "65532:65532".
 # Compose restart stays exactly one restart: on-failure:3.
+# Compose pull_policy stays exactly one pull_policy: build.
 # Dockerfile must not use RUN --mount ssh/secret or --network=host.
 # Dockerfile EXPOSE stays exactly one line: EXPOSE 8080.
 # Dockerfile USER stays exactly one line: USER 65532:65532.
