@@ -1041,3 +1041,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 的 `repository_dispatch` 扫描只匹配触发键。普通文本里的 `repository_dispatch` 不再被当成 `on:` 触发
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T16:40Z` / 2026-09-28 00:40 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `056c620` 再加 Compose pids_limit 行数扫描：
+
+- Publish Guard 现只允许恰好一行 `pids_limit: 256`。不要再写第二条或把进程数上限拿掉
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

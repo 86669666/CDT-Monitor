@@ -1210,6 +1210,13 @@ scan_compose() {
   if ! grep -Eq 'pids_limit:[[:space:]]*256' <<<"$body"; then
     bad "$f: pids_limit must stay 256"
   fi
+  extra_pids="$(grep -E '^[[:space:]]+pids_limit:' <<<"$body" | grep -Ev '^[[:space:]]+pids_limit:[[:space:]]*256$' || true)"
+  if [ -n "$extra_pids" ]; then
+    bad "$f: extra pids_limit: lines are forbidden; keep only pids_limit: 256"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+pids_limit:[[:space:]]*256$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: pids_limit must stay exactly one pids_limit: 256"
+  fi
   if ! grep -Eq 'mem_limit:[[:space:]]*512m' <<<"$body"; then
     bad "$f: mem_limit must stay 512m"
   fi
