@@ -844,6 +844,13 @@ scan_dockerfile() {
   if ! grep -Eq '^STOPSIGNAL SIGTERM$' <<<"$body"; then
     bad "$f: STOPSIGNAL must stay SIGTERM"
   fi
+  extra_stop="$(grep -E '^STOPSIGNAL ' <<<"$body" | grep -Ev '^STOPSIGNAL SIGTERM$' || true)"
+  if [ -n "$extra_stop" ]; then
+    bad "$f: extra STOPSIGNAL lines are forbidden; keep only STOPSIGNAL SIGTERM"
+  fi
+  if [ "$(grep -c -E '^STOPSIGNAL SIGTERM$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: STOPSIGNAL must stay exactly one STOPSIGNAL SIGTERM line"
+  fi
   if ! grep -Eq '^ENTRYPOINT \["/cdt-monitor"\]$' <<<"$body"; then
     bad "$f: ENTRYPOINT must stay /cdt-monitor"
   fi
