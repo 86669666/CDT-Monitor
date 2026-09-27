@@ -1170,7 +1170,12 @@ func clientIP(r *http.Request) string {
 		if i := strings.IndexByte(forwarded, ','); i >= 0 {
 			forwarded = forwarded[:i]
 		}
-		host = strings.TrimSpace(forwarded)
+		if strings.ContainsAny(forwarded, "\r\n\x00") {
+			return clipClientIP(host)
+		}
+		if trimmed := strings.TrimSpace(forwarded); trimmed != "" {
+			host = trimmed
+		}
 	}
 	return clipClientIP(host)
 }

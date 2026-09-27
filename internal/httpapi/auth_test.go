@@ -1940,6 +1940,17 @@ func TestClientIPTakesFirstForwardedHopAndClips(t *testing.T) {
 	if got := clientIP(req); got != "203.0.113.10" {
 		t.Fatalf("untrusted proxy hop = %q", got)
 	}
+	req.RemoteAddr = "127.0.0.1:8080"
+	req.Header.Set("X-Forwarded-For", " 198.51.100.20 ")
+	if got := clientIP(req); got != "198.51.100.20" {
+		t.Fatalf("padded hop = %q", got)
+	}
+	for _, broken := range []string{"198.51.100.20\n", "198.51.100.20\r", "198.51.100.20\x00", "\n198.51.100.20"} {
+		req.Header["X-Forwarded-For"] = []string{broken}
+		if got := clientIP(req); got != "127.0.0.1" {
+			t.Fatalf("broken hop %q became %q", broken, got)
+		}
+	}
 }
 
 func TestBeginPasskeyRegistrationRejectsWhenAtCapHTTP(t *testing.T) {
