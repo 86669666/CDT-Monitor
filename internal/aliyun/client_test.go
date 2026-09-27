@@ -546,6 +546,21 @@ func TestAliyunRejectsBrokenAccessKeyID(t *testing.T) {
 	}
 }
 
+func TestAliyunCallRejectsBrokenRegion(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	for _, region := range []string{" cn-hongkong", "cn-hongkong\n", ""} {
+		_, err := client.call(context.Background(), "LTAItest", "secret", region, "cdt.aliyuncs.com", "2021-08-13", "ListCdtInternetTraffic", nil)
+		if err == nil || hits != 0 || !strings.Contains(err.Error(), "region_id is invalid") {
+			t.Fatalf("region %q err=%v hits=%d", region, err, hits)
+		}
+	}
+}
+
 func TestAliyunHostRejectsBrokenRegion(t *testing.T) {
 	host := "ecs.cn-hongkong\n.aliyuncs.com"
 	if allowedAliyunHost(host) {
@@ -977,6 +992,9 @@ func TestCallClipsAliyunErrorMessages(t *testing.T) {
 	}
 	if got := []rune(err.Error()); len(got) > maxAliyunErrorRunes+80 {
 		t.Fatalf("error too long: %d", len(got))
+	}
+	if got := clipAliyunErrorText(" line\none\x00two "); got != "line one two" {
+		t.Fatalf("flattened=%q", got)
 	}
 }
 

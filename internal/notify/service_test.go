@@ -860,6 +860,9 @@ func TestClipNotifyErrorText(t *testing.T) {
 	if got := clipNotifyErrorText("  boom  "); got != "boom" {
 		t.Fatalf("trim=%q", got)
 	}
+	if got := clipNotifyErrorText(" line\none\x00two "); got != "line one two" {
+		t.Fatalf("flattened=%q", got)
+	}
 	long := strings.Repeat("m", maxNotifyErrorRunes+40)
 	got := clipNotifyErrorText(long)
 	if !strings.HasSuffix(got, "...") {
