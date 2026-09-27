@@ -1046,3 +1046,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许恰好一行 `pids_limit: 256`。不要再写第二条或把进程数上限拿掉
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T16:47Z` / 2026-09-28 00:47 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `c2e8da5` 再加 self-hosted 键锚点扫描：
+
+- Publish Guard 的 `self-hosted` 扫描只看 `runs-on` 行。普通文本里的 `self-hosted` 不再被当成自托管 runner。`runs-on` 仍必须是 `ubuntu-latest`
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

@@ -9,6 +9,7 @@ name: Publish Guard
 # workflow_run matches a trigger key, not a substring.
 # repository_dispatch matches a trigger key, not a substring.
 # Keep GitHub-hosted ubuntu-latest; do not add self-hosted runners.
+# self-hosted matches a runs-on value, not a substring.
 # shell: stays bash when set.
 # Do not set continue-on-error or dump toJSON(secrets).
 # Do not add issue_comment, schedule, discussion, watch, or other extra on: triggers.
