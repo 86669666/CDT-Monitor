@@ -13338,3 +13338,36 @@ test('refresh-all keeps the console on live not_found', async ({ page }) => {
   await expect(page.locator('.toast-stack')).not.toContainText('接口不存在')
   expect(statusCalls).toBeGreaterThan(0)
 })
+
+test('refresh-all keeps the console on live internal_error', async ({ page }) => {
+  let failStatus = false
+  let statusCalls = 0
+  await mockInitStatus(page, true)
+  await mockDashboardReads(page)
+  await page.route('**/api/v1/status', (route) => {
+    if (!failStatus) return route.fulfill({ json: dashboardStatus })
+    statusCalls += 1
+    return route.fulfill({
+      status: 500,
+      json: { error: { code: 'internal_error', message: '服务暂时不可用' } },
+    })
+  })
+  await page.route('**/api/v1/accounts/refresh', (route) => {
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({ status: 202, json: { jobs: [jobFixture('refresh-all-internal', 'queued')] } })
+  })
+  await page.route('**/api/v1/jobs/**', (route) => {
+    failStatus = true
+    return route.fulfill({ json: jobFixture('refresh-all-internal', 'completed') })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await page.getByRole('button', { name: '强制刷新全部实例' }).click()
+  await expect(page.getByText('已强制刷新 1 个实例')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  await expect(page.locator('.toast-stack')).not.toContainText('服务暂时不可用')
+  expect(statusCalls).toBeGreaterThan(0)
+})
