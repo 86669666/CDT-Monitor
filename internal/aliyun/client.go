@@ -526,6 +526,9 @@ func (c *Client) call(ctx context.Context, accessKeyID, secret, region, host, ve
 	if strings.TrimSpace(accessKeyID) == "" || secret == "" {
 		return nil, errors.New("access key is required")
 	}
+	if accessKeyID != strings.TrimSpace(accessKeyID) || strings.ContainsAny(accessKeyID, "\r\n\x00") {
+		return nil, errors.New("access key is invalid")
+	}
 	if !allowedAliyunAction(action) {
 		return nil, errors.New("aliyun action is invalid")
 	}

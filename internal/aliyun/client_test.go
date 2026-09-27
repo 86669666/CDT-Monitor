@@ -490,6 +490,30 @@ func TestGetInstanceBillRequiresBillingCycle(t *testing.T) {
 	}
 }
 
+func TestAliyunRejectsBrokenAccessKeyID(t *testing.T) {
+	var hits int
+	client := NewClient()
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"TrafficDetails":[]}`)), Header: make(http.Header), Request: request}, nil
+	})}
+	account := domain.Account{RegionID: "cn-hongkong"}
+	for _, id := range []string{"", "   "} {
+		account.AccessKeyID = id
+		_, err := client.GetTraffic(context.Background(), account, "secret")
+		if err == nil || hits != 0 || !strings.Contains(err.Error(), "access key is required") {
+			t.Fatalf("id %q err=%v hits=%d", id, err, hits)
+		}
+	}
+	for _, id := range []string{" LTAItest", "LTAItest\n"} {
+		account.AccessKeyID = id
+		_, err := client.GetTraffic(context.Background(), account, "secret")
+		if err == nil || hits != 0 || !strings.Contains(err.Error(), "access key is invalid") {
+			t.Fatalf("id %q err=%v hits=%d", id, err, hits)
+		}
+	}
+}
+
 func TestAliyunHostRejectsBrokenRegion(t *testing.T) {
 	host := "ecs.cn-hongkong\n.aliyuncs.com"
 	if allowedAliyunHost(host) {
