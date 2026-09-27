@@ -13897,3 +13897,29 @@ test('wizard dashboard load surfaces live config unauthorized and stays on insta
   await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '资源控制台' })).toHaveCount(0)
 })
+
+test('wizard dashboard load surfaces live config forbidden and stays on install', async ({ page }) => {
+  await mockInitStatus(page, false)
+  await page.route('**/api/v1/setup', (route) => route.fulfill({
+    status: 201,
+    json: { success: true, csrf_token: 'test-csrf' },
+  }))
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: dashboardStatus }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({
+    status: 403,
+    json: { error: { code: 'forbidden', message: 'API Key 权限不足' } },
+  }))
+
+  await page.goto('/')
+  const passwords = page.locator('input[type="password"]')
+  await passwords.nth(0).fill(TEST_PASSWORD)
+  await passwords.nth(1).fill(TEST_PASSWORD)
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+  await page.getByRole('button', { name: '完成安装' }).click()
+  await expect(page.getByText('API Key 权限不足')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '连接云端实例' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '控制台暂时不可用' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '资源控制台' })).toHaveCount(0)
+})
