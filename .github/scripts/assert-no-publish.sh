@@ -1363,6 +1363,9 @@ scan_compose() {
   if grep -Eq '^[[:space:]]+tty:[[:space:]]*true' <<<"$body"; then
     bad "$f: tty: true is forbidden on this local daemon Compose"
   fi
+  if grep -Eq '^[[:space:]]+tty:' <<<"$body"; then
+    bad "$f: tty is forbidden on this local daemon Compose"
+  fi
   if grep -Eq '^[[:space:]]+env_file:' <<<"$body"; then
     bad "$f: env_file is forbidden; do not load host .env secrets into the container"
   fi
