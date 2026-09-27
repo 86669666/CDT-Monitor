@@ -1083,6 +1083,13 @@ scan_compose() {
   if ! grep -Eq 'read_only:[[:space:]]*true' <<<"$body"; then
     bad "$f: read_only must stay true"
   fi
+  extra_ro="$(grep -E '^[[:space:]]+read_only:' <<<"$body" | grep -Ev '^[[:space:]]+read_only:[[:space:]]*true$' || true)"
+  if [ -n "$extra_ro" ]; then
+    bad "$f: extra read_only: lines are forbidden; keep only read_only: true"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+read_only:[[:space:]]*true$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: read_only must stay exactly one read_only: true"
+  fi
   if ! grep -Eq 'user:[[:space:]]*"65532:65532"' <<<"$body"; then
     bad "$f: container user must stay 65532:65532"
   fi
