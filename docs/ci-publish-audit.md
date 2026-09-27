@@ -1021,3 +1021,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 的 `pull_request_target` 扫描只匹配触发键。普通文本里的 `pull_request_target` 不再被当成 `on:` 触发。fork PR 仍不得拿到 base 仓库权限
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T16:24Z` / 2026-09-28 00:24 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `2fc6074` 再加 Compose restart 行数扫描：
+
+- Publish Guard 现只允许恰好一行 `restart: on-failure:3`。`restart: always` 和 `unless-stopped` 本来就禁止。不要再写第二条 restart
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

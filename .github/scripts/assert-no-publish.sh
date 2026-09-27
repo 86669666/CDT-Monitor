@@ -1122,6 +1122,13 @@ scan_compose() {
   if ! grep -Eq 'restart:[[:space:]]*on-failure:3$' <<<"$body"; then
     bad "$f: restart must stay on-failure:3"
   fi
+  extra_restart="$(grep -E '^[[:space:]]+restart:' <<<"$body" | grep -Ev '^[[:space:]]+restart:[[:space:]]*on-failure:3$' || true)"
+  if [ -n "$extra_restart" ]; then
+    bad "$f: extra restart: lines are forbidden; keep only restart: on-failure:3"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+restart:[[:space:]]*on-failure:3$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: restart must stay exactly one restart: on-failure:3"
+  fi
   if ! grep -Eq '/tmp:size=16m,mode=1777,noexec,nosuid,nodev' <<<"$body"; then
     bad "$f: /tmp tmpfs must stay noexec,nosuid,nodev"
   fi
