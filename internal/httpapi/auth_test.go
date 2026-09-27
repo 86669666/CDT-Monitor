@@ -823,6 +823,14 @@ func TestCreateAPIKeyRejectsBlankScopesHTTP(t *testing.T) {
 	if padded.Code != http.StatusCreated || !strings.Contains(padded.Body.String(), `"name":"widget"`) || !strings.Contains(padded.Body.String(), `"widget:read"`) {
 		t.Fatalf("padded key status = %d body = %s", padded.Code, padded.Body.String())
 	}
+	brokenScope := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget","scopes":["widget:read\n"]}`, cookies, headers)
+	if brokenScope.Code != http.StatusBadRequest || !strings.Contains(brokenScope.Body.String(), "invalid_scope") {
+		t.Fatalf("broken scope status = %d body = %s", brokenScope.Code, brokenScope.Body.String())
+	}
+	brokenName := doRequest(t, handler, http.MethodPost, "/api/v1/api-keys", `{"name":"widget\n","scopes":["widget:read"]}`, cookies, headers)
+	if brokenName.Code != http.StatusBadRequest || !strings.Contains(brokenName.Body.String(), "api_key_failed") {
+		t.Fatalf("trailing name status = %d body = %s", brokenName.Code, brokenName.Body.String())
+	}
 }
 
 func TestCreateAPIKeyDeduplicatesScopesHTTP(t *testing.T) {

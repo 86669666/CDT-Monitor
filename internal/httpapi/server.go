@@ -896,13 +896,13 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
+	if strings.ContainsAny(request.Name, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称无效")
+		return
+	}
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" || len(request.Scopes) == 0 {
 		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称和权限不能为空")
-		return
-	}
-	if strings.ContainsAny(request.Name, "\r\n\x00") {
-		writeError(w, http.StatusBadRequest, "api_key_failed", "API Key 名称无效")
 		return
 	}
 	if len(request.Scopes) > 8 {
@@ -911,6 +911,10 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	scopes := make([]string, 0, len(request.Scopes))
 	for _, scope := range request.Scopes {
+		if strings.ContainsAny(scope, "\r\n\x00") {
+			writeError(w, http.StatusBadRequest, "invalid_scope", "invalid API key scope")
+			return
+		}
 		scope = strings.TrimSpace(scope)
 		if scope != "widget:read" && scope != "instance:control" && scope != "cron:run" {
 			writeError(w, http.StatusBadRequest, "invalid_scope", "invalid API key scope")

@@ -3883,7 +3883,7 @@ func TestCreateAPIKeyRejectsEmptyNameAndScopes(t *testing.T) {
 	if _, _, err = st.CreateAPIKey(ctx, "widget", []string{}, nil); err == nil {
 		t.Fatal("expected empty scope list to be rejected")
 	}
-	for _, name := range []string{"bad\nname", "bad\rname", "bad\x00name"} {
+	for _, name := range []string{"bad\nname", "bad\rname", "bad\x00name", "name\n"} {
 		if _, _, err = st.CreateAPIKey(ctx, name, []string{"widget:read"}, nil); err == nil || !strings.Contains(err.Error(), "api key name is invalid") {
 			t.Fatalf("name=%q err=%v", name, err)
 		}
@@ -4554,6 +4554,9 @@ func TestSavePasskeyRejectsOversizedName(t *testing.T) {
 	}
 	if err = st.SavePasskey(ctx, "bad\nname", credential); err == nil || !strings.Contains(err.Error(), "passkey name is invalid") {
 		t.Fatalf("broken name err=%v", err)
+	}
+	if err = st.SavePasskey(ctx, "name\n", credential); err == nil || !strings.Contains(err.Error(), "passkey name is invalid") {
+		t.Fatalf("trailing name err=%v", err)
 	}
 	if err = st.SavePasskey(ctx, strings.Repeat("n", maxPasskeyNameRunes), credential); err != nil {
 		t.Fatal(err)
