@@ -996,3 +996,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现只允许恰好一行 `read_only: true`。不要再写 `read_only: false` 或第二条 read_only。根文件系统保持只读
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T15:57Z` / 2026-09-27 23:57 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `2eec45a` 再加 discussions permission 扫描：
+
+- Publish Guard 现禁止任何 `discussions:` permission（含 `read`）。`discussion` / `discussion_comment` 触发仍按键匹配，不再把权限键误判成触发器
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

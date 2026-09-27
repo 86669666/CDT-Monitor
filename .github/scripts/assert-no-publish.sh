@@ -107,7 +107,7 @@ scan_workflows() {
     if grep -Fq 'issue_comment' <<<"$body"; then
       bad "$f: issue_comment triggers are forbidden on this fork"
     fi
-    if grep -Fq 'discussion' <<<"$body"; then
+    if grep -Eq '^[[:space:]]+discussion(_comment)?:' <<<"$body"; then
       bad "$f: discussion triggers are forbidden on this fork"
     fi
     if grep -Eq '^[[:space:]]+schedule:' <<<"$body"; then
@@ -523,6 +523,12 @@ scan_job_limits() {
     fi
     if grep -Eq '^[[:space:]]+issues:' <<<"$body"; then
       bad "$f: issues permission is forbidden on this fork"
+    fi
+    if grep -Eq 'discussions:[[:space:]]*write' <<<"$body"; then
+      bad "$f: discussions: write is forbidden on this fork"
+    fi
+    if grep -Eq '^[[:space:]]+discussions:' <<<"$body"; then
+      bad "$f: discussions permission is forbidden on this fork"
     fi
     if grep -Eq 'models:[[:space:]]*write' <<<"$body"; then
       bad "$f: models: write is forbidden on this fork"
