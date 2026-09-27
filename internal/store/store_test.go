@@ -350,6 +350,82 @@ func TestSaveConfigRejectsOversizedAccessKeySecret(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsBrokenAccessKeySecret(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	config := domain.Config{AdminPassword: "Strong-Password-42!", TrafficThreshold: 95, ShutdownMode: "KeepCharging", ThresholdAction: "stop_and_notify", APIInterval: 600, Timezone: "Asia/Shanghai", Accounts: []domain.Account{{AccessKeyID: "LTAItest", AccessKeySecret: "secret", RegionID: "cn-hongkong", InstanceID: "i-test", MaxTraffic: 200, SiteType: "china", Remark: "kept"}}}
+	if err = st.Setup(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 {
+		t.Fatal(err)
+	}
+	id := accounts[0].ID
+	var stored string
+	if err = st.db.QueryRowContext(ctx, `SELECT access_key_secret FROM accounts WHERE id=?`, id).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	config.AdminPassword = ""
+	config.Accounts[0].ID = id
+	config.Accounts[0].Remark = "changed"
+	for _, secret := range []string{"sec\nret", "sec\rret", "sec\x00ret", "\n"} {
+		config.Accounts[0].AccessKeySecret = secret
+		if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "account access_key_secret is invalid") || strings.Contains(err.Error(), secret) {
+			t.Fatalf("broken secret err=%v", err)
+		}
+	}
+	plain, err := st.AccountSecret(ctx, id)
+	if err != nil || plain != "secret" {
+		t.Fatalf("secret persisted or changed: %q err=%v", plain, err)
+	}
+	accounts, err = st.ListAccounts(ctx)
+	if err != nil || accounts[0].Remark != "kept" {
+		t.Fatalf("remark changed on rejected save: %#v err=%v", accounts, err)
+	}
+	var after string
+	if err = st.db.QueryRowContext(ctx, `SELECT access_key_secret FROM accounts WHERE id=?`, id).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != stored {
+		t.Fatal("rejected secret was written")
+	}
+	broken, err := st.EncryptAAD("sec\nret", security.AccountBoundAAD("LTAItest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `UPDATE accounts SET access_key_secret=? WHERE id=?`, broken, id); err != nil {
+		t.Fatal(err)
+	}
+	config.Accounts[0].AccessKeySecret = ""
+	if err = st.SaveConfig(ctx, config); err == nil || !strings.Contains(err.Error(), "account access_key_secret is invalid") {
+		t.Fatalf("stored broken secret err=%v", err)
+	}
+	var kept string
+	if err = st.db.QueryRowContext(ctx, `SELECT access_key_secret FROM accounts WHERE id=?`, id).Scan(&kept); err != nil {
+		t.Fatal(err)
+	}
+	if kept != broken {
+		t.Fatal("stored broken secret was rewritten")
+	}
+	config.Accounts[0].AccessKeySecret = "sec ret"
+	if err = st.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	plain, err = st.AccountSecret(ctx, id)
+	if err != nil || plain != "sec ret" {
+		t.Fatalf("spaced secret = %q err=%v", plain, err)
+	}
+	accounts, err = st.ListAccounts(ctx)
+	if err != nil || accounts[0].Remark != "changed" {
+		t.Fatalf("remark after valid save: %#v err=%v", accounts, err)
+	}
+}
+
 func TestSaveConfigRejectsOversizedAccountRemark(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

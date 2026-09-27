@@ -635,6 +635,9 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 			}
 		}
 		secret := account.AccessKeySecret
+		if hasTextBreak(secret) {
+			return errors.New("account access_key_secret is invalid")
+		}
 		if secret != "" && len([]rune(secret)) > maxAccessKeySecretRunes {
 			return errors.New("account access_key_secret is too long")
 		}
@@ -651,6 +654,9 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 				if err != nil {
 					return err
 				}
+			}
+			if hasTextBreak(secret) {
+				return errors.New("account access_key_secret is invalid")
 			}
 		}
 		if secret == "" {
