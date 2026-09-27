@@ -56,6 +56,9 @@ scan_workflows() {
     if grep -Eq 'secrets:[[:space:]]*inherit' <<<"$body"; then
       bad "$f: secrets: inherit is forbidden on this fork"
     fi
+    if grep -Eq '^[[:space:]]+secrets:' <<<"$body"; then
+      bad "$f: workflow secrets: is forbidden on this fork"
+    fi
     if grep -Eq 'ghcr\.io' <<<"$body"; then
       bad "$f: ghcr.io must not appear in workflow YAML (comments excluded)"
     fi
