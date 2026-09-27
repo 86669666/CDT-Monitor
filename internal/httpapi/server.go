@@ -300,11 +300,11 @@ func (s *Server) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
 		return
 	}
-	name := strings.TrimSpace(request.Name)
-	if strings.ContainsAny(name, "\r\n\x00") {
+	if strings.ContainsAny(request.Name, "\r\n\x00") {
 		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称无效")
 		return
 	}
+	name := strings.TrimSpace(request.Name)
 	if len([]rune(name)) > 64 {
 		writeError(w, http.StatusBadRequest, "passkey_failed", "Passkey 名称过长")
 		return

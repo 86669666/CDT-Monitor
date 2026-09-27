@@ -1927,6 +1927,12 @@ func TestCreatePasskeyRejectsOversizedNameHTTP(t *testing.T) {
 	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), "session_id") {
 		t.Fatalf("max-length passkey name status = %d body = %s", ok.Code, ok.Body.String())
 	}
+	for _, body := range []string{`{"name":"laptop\n"}`, `{"name":"bad\nname"}`} {
+		broken := doRequest(t, handler, http.MethodPost, "/api/v1/admin/passkeys/register/begin", body, []*http.Cookie{session, csrf}, map[string]string{"X-CDT-CSRF": csrf.Value})
+		if broken.Code != http.StatusBadRequest || !strings.Contains(broken.Body.String(), "passkey_failed") || !strings.Contains(broken.Body.String(), "名称无效") {
+			t.Fatalf("body %s status = %d response = %s", body, broken.Code, broken.Body.String())
+		}
+	}
 }
 
 func TestPasskeyLoginBeginIsRateLimited(t *testing.T) {
