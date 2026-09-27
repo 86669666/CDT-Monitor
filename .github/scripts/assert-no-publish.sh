@@ -1236,6 +1236,13 @@ scan_compose() {
   if ! grep -Eq 'cpus:[[:space:]]*1\.0' <<<"$body"; then
     bad "$f: cpus must stay 1.0"
   fi
+  extra_cpus="$(grep -E '^[[:space:]]+cpus:' <<<"$body" | grep -Ev '^[[:space:]]+cpus:[[:space:]]*1\.0$' || true)"
+  if [ -n "$extra_cpus" ]; then
+    bad "$f: extra cpus: lines are forbidden; keep only cpus: 1.0"
+  fi
+  if [ "$(grep -c -E '^[[:space:]]+cpus:[[:space:]]*1\.0$' <<<"$body" || true)" -ne 1 ]; then
+    bad "$f: cpus must stay exactly one cpus: 1.0"
+  fi
   if grep -Eq '^[[:space:]]+cpu_shares:' <<<"$body"; then
     bad "$f: cpu_shares is forbidden; keep cpus 1.0"
   fi

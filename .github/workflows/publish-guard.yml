@@ -98,6 +98,7 @@ name: Publish Guard
 # Compose pids_limit stays exactly one pids_limit: 256.
 # Compose mem_limit stays exactly one mem_limit: 512m.
 # Compose memswap_limit stays exactly one memswap_limit: 512m.
+# Compose cpus stays exactly one cpus: 1.0.
 # Dockerfile must not use RUN --mount ssh/secret or --network=host.
 # Dockerfile EXPOSE stays exactly one line: EXPOSE 8080.
 # Dockerfile USER stays exactly one line: USER 65532:65532.
