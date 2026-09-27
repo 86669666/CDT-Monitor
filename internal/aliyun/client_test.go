@@ -538,6 +538,12 @@ func TestAliyunRejectsBrokenAccessKeyID(t *testing.T) {
 			t.Fatalf("id %q err=%v hits=%d", id, err, hits)
 		}
 	}
+	account.AccessKeyID = "LTAItest"
+	secret := "secret\nvalue"
+	_, err := client.GetTraffic(context.Background(), account, secret)
+	if err == nil || hits != 0 || !strings.Contains(err.Error(), "access key secret is invalid") || strings.Contains(err.Error(), secret) {
+		t.Fatalf("secret err=%v hits=%d", err, hits)
+	}
 }
 
 func TestAliyunHostRejectsBrokenRegion(t *testing.T) {
