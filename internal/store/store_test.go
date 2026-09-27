@@ -1867,7 +1867,18 @@ func TestGetConfigRejectsInvalidNotifyPayloads(t *testing.T) {
 	if _, err = st.db.ExecContext(ctx, `UPDATE settings SET value='' WHERE key='notify_tg_proxy_user'`); err != nil {
 		t.Fatal(err)
 	}
-	headers, err := st.EncryptAAD("{\" X-Token\":\"v\"}", "notify_wh_headers")
+	headers, err := st.EncryptAAD("\n", "notify_wh_headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('notify_wh_headers',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, headers); err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.GetConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "notification header fields must not contain line breaks") {
+		t.Fatalf("blank headers err=%v", err)
+	}
+	headers, err = st.EncryptAAD("{\" X-Token\":\"v\"}", "notify_wh_headers")
 	if err != nil {
 		t.Fatal(err)
 	}
