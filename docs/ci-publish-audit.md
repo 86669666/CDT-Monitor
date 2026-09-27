@@ -946,3 +946,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 现禁止任何 Compose `oom_kill_disable:`（含 `false`）。`oom_kill_disable: true` 本来就禁止。保持默认 OOM killer
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T15:05Z` / 2026-09-27 23:05 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `f0687dd` 再加 healthcheck disable 键锚点扫描：
+
+- Publish Guard 的 healthcheck `disable: true` 扫描只匹配行首的 `disable:` 键。`oom_kill_disable: true` 不再被误判成关掉健康检查
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
