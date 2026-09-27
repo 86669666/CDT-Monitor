@@ -146,8 +146,7 @@ func forbiddenAliyunIP(ip net.IP) bool {
 }
 
 func validECSRegion(region string) bool {
-	region = strings.TrimSpace(region)
-	if region == "" || len(region) > 32 {
+	if region == "" || region != strings.TrimSpace(region) || strings.ContainsAny(region, "\r\n\x00") || len(region) > 32 {
 		return false
 	}
 	for i := 0; i < len(region); i++ {
@@ -363,7 +362,9 @@ func normalizeAliyunCurrency(value string) (string, error) {
 }
 
 func validBillingCycle(cycle string) error {
-	cycle = strings.TrimSpace(cycle)
+	if cycle != strings.TrimSpace(cycle) || strings.ContainsAny(cycle, "\r\n\x00") {
+		return errors.New("billing cycle is required")
+	}
 	parsed, err := time.Parse("2006-01", cycle)
 	if err != nil || parsed.Format("2006-01") != cycle {
 		return errors.New("billing cycle is required")
@@ -498,8 +499,11 @@ func aliyunRequestURL(host string) (string, error) {
 }
 
 func allowedAliyunHost(host string) bool {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || strings.ContainsAny(host, "/:@") {
+	if host == "" || host != strings.TrimSpace(host) || strings.ContainsAny(host, "\r\n\x00") {
+		return false
+	}
+	host = strings.ToLower(host)
+	if strings.ContainsAny(host, "/:@") {
 		return false
 	}
 	switch host {
