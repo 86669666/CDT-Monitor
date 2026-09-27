@@ -371,10 +371,14 @@ func ValidateNotifyCredentials(config domain.NotificationConfig) error {
 }
 
 func ValidateWebhookHeaders(raw string) error {
-	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == domain.ClearSecretSentinel {
 		return nil
 	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return errInvalidNotifyHeader
+	}
+	raw = trimmed
 	if len([]rune(raw)) > maxWebhookHeadersRunes {
 		return errInvalidNotifyPayload
 	}
