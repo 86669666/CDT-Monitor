@@ -74,7 +74,7 @@ func TestFlushOutboxRejectsUnknownEventFields(t *testing.T) {
 	if err := st.DB().QueryRowContext(ctx, `SELECT status,last_error FROM notification_outbox WHERE event_id='evt-extra'`).Scan(&status, &lastError); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || !strings.Contains(lastError, "unknown field") {
+	if status != "failed" || !strings.Contains(lastError, "notification payload is invalid") || strings.Contains(lastError, "inject") {
 		t.Fatalf("status=%q last_error=%q", status, lastError)
 	}
 }

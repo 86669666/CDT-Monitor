@@ -701,6 +701,16 @@ type OutboxItem struct {
 	Attempts, MaxAttempts int
 }
 
+func decodeOutboxEvent(payload string) (domain.NotificationEvent, error) {
+	decoder := json.NewDecoder(strings.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var event domain.NotificationEvent
+	if err := decoder.Decode(&event); err != nil || decoder.More() {
+		return domain.NotificationEvent{}, errors.New("notification payload is invalid")
+	}
+	return event, nil
+}
+
 func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 	var item OutboxItem
 	var claimErr error
@@ -715,9 +725,9 @@ func (s *Store) ClaimOutbox(ctx context.Context) (OutboxItem, error) {
 		} else if err := validRetryBudget(item.Attempts, item.MaxAttempts); err != nil {
 			claimErr = errors.New("outbox attempts are invalid")
 		} else {
-			var event domain.NotificationEvent
-			if err := json.Unmarshal([]byte(item.Payload), &event); err != nil {
-				claimErr = errors.New("notification payload is invalid")
+			event, err := decodeOutboxEvent(item.Payload)
+			if err != nil {
+				claimErr = err
 			} else {
 				claimErr = ValidateOutboxItem(item.Channel, event)
 			}
