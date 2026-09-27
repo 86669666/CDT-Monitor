@@ -951,3 +951,8 @@ Dependabot 只跟踪 `github-actions`、根目录 `docker` 和 `/android-widget`
 
 - Publish Guard 的 healthcheck `disable: true` 扫描只匹配行首的 `disable:` 键。`oom_kill_disable: true` 不再被误判成关掉健康检查
 - 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`
+
+续推证据（`2026-09-27T15:15Z` / 2026-09-27 23:15 Asia/Taipei），对象 `86669666/CDT-Monitor`，当时 HEAD `de8f244` 再加 Compose stdin_open 扫描：
+
+- Publish Guard 现禁止任何 Compose `stdin_open:`（含 `false`）。`stdin_open: true` 本来就禁止。本地 daemon 不要开标准输入
+- 这仍不是已经发布，也不是 PR#2 可以合进未加开关 `main`

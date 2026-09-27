@@ -1351,6 +1351,9 @@ scan_compose() {
   if grep -Eq 'stdin_open:[[:space:]]*true' <<<"$body"; then
     bad "$f: stdin_open: true is forbidden on this local daemon Compose"
   fi
+  if grep -Eq '^[[:space:]]+stdin_open:' <<<"$body"; then
+    bad "$f: stdin_open is forbidden on this local daemon Compose"
+  fi
   if grep -Eq '^[[:space:]]+tty:[[:space:]]*true' <<<"$body"; then
     bad "$f: tty: true is forbidden on this local daemon Compose"
   fi
