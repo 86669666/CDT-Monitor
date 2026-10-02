@@ -103,6 +103,7 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("GET /api/v1/config", s.require("admin", http.HandlerFunc(s.getConfig)))
 	mux.Handle("PUT /api/v1/config", s.require("admin", http.HandlerFunc(s.saveConfig)))
 	mux.Handle("GET /api/v1/accounts/{id}/history", s.require("widget:read", http.HandlerFunc(s.history)))
+	mux.Handle("POST /api/v1/accounts/discover", s.require("admin", http.HandlerFunc(s.discoverInstances)))
 	mux.Handle("POST /api/v1/accounts/refresh", s.require("instance:control", http.HandlerFunc(s.refreshAll)))
 	mux.Handle("POST /api/v1/accounts/{id}/refresh", s.require("instance:control", http.HandlerFunc(s.refresh)))
 	mux.Handle("POST /api/v1/accounts/{id}/actions/{action}", s.require("instance:control", http.HandlerFunc(s.control)))
@@ -1328,6 +1329,7 @@ func safeStoreValidationMessage(msg string) bool {
 		"notification host is invalid",
 		"notification option is invalid",
 		"account max traffic is invalid",
+		"accounts in the same traffic pool must share one quota",
 		"too many accounts",
 		"too many api keys",
 		"too many passkeys",

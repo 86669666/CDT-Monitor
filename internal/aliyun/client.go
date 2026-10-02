@@ -166,7 +166,7 @@ func (c *Client) GetTraffic(ctx context.Context, account domain.Account, secret 
 	if !validECSRegion(account.RegionID) {
 		return 0, errors.New("region_id is invalid")
 	}
-	key := account.AccessKeyID + ":" + trafficClass(account.RegionID)
+	key := trafficCacheKey(account, time.Now())
 	c.trafficMu.Lock()
 	if cached, ok := c.traffic[key]; ok && time.Since(cached.createdAt) < 45*time.Second {
 		c.trafficMu.Unlock()
@@ -187,11 +187,10 @@ func (c *Client) GetTraffic(ctx context.Context, account domain.Account, secret 
 	return value, nil
 }
 
-func trafficClass(region string) string {
-	if strings.HasPrefix(region, "cn-") && region != "cn-hongkong" {
-		return "china"
-	}
-	return "international"
+func trafficClass(region string) string { return domain.TrafficClass(region) }
+
+func trafficCacheKey(account domain.Account, at time.Time) string {
+	return domain.TrafficPoolID(account) + ":" + domain.TrafficMonth(at)
 }
 
 func ecsTargetError(account domain.Account) error {
@@ -382,7 +381,7 @@ func allowedAliyunEndpoint(host, version, action string) bool {
 	switch action {
 	case "ListCdtInternetTraffic":
 		return host == "cdt.aliyuncs.com" && version == "2021-08-13"
-	case "DescribeInstanceStatus", "StartInstance", "StopInstance":
+	case "DescribeInstances", "DescribeInstanceStatus", "StartInstance", "StopInstance":
 		return strings.HasPrefix(host, "ecs.") && strings.HasSuffix(host, ".aliyuncs.com") && version == "2014-05-26"
 	case "QueryAccountBalance", "DescribeInstanceBill":
 		return (host == "business.aliyuncs.com" || host == "business.ap-southeast-1.aliyuncs.com") && version == "2017-12-14"
@@ -393,7 +392,7 @@ func allowedAliyunEndpoint(host, version, action string) bool {
 
 func allowedAliyunAction(action string) bool {
 	switch action {
-	case "ListCdtInternetTraffic", "DescribeInstanceStatus", "StartInstance", "StopInstance", "QueryAccountBalance", "DescribeInstanceBill":
+	case "ListCdtInternetTraffic", "DescribeInstances", "DescribeInstanceStatus", "StartInstance", "StopInstance", "QueryAccountBalance", "DescribeInstanceBill":
 		return true
 	default:
 		return false
@@ -402,7 +401,7 @@ func allowedAliyunAction(action string) bool {
 
 func allowedAliyunExtra(key string) bool {
 	switch key {
-	case "RegionId", "InstanceId", "InstanceID", "StoppedMode", "BillingCycle", "Granularity":
+	case "MaxResults", "NextToken", "RegionId", "InstanceIds", "InstanceId", "InstanceID", "StoppedMode", "BillingCycle", "Granularity":
 		return true
 	default:
 		return false
@@ -425,8 +424,15 @@ func validAliyunInstanceID(id string) bool {
 
 func allowedAliyunExtraValue(key, value string) bool {
 	switch key {
+	case "MaxResults":
+		return value == "50"
+	case "NextToken":
+		return value != "" && validDiscoveryToken(value)
 	case "RegionId":
 		return validECSRegion(value)
+	case "InstanceIds":
+		var ids []string
+		return json.Unmarshal([]byte(value), &ids) == nil && len(ids) == 1 && validAliyunInstanceID(ids[0])
 	case "InstanceId", "InstanceID":
 		return validAliyunInstanceID(value)
 	case "StoppedMode":
@@ -442,6 +448,8 @@ func allowedAliyunExtraValue(key, value string) bool {
 
 func allowedAliyunExtraForAction(action, key string) bool {
 	switch action {
+	case "DescribeInstances":
+		return key == "RegionId" || key == "InstanceIds" || key == "MaxResults" || key == "NextToken"
 	case "DescribeInstanceStatus", "StartInstance":
 		return key == "RegionId" || key == "InstanceId"
 	case "StopInstance":
@@ -455,6 +463,8 @@ func allowedAliyunExtraForAction(action, key string) bool {
 
 func requiredAliyunExtras(action string) []string {
 	switch action {
+	case "DescribeInstances":
+		return []string{"RegionId"}
 	case "DescribeInstanceStatus", "StartInstance":
 		return []string{"RegionId", "InstanceId"}
 	case "StopInstance":
@@ -467,6 +477,14 @@ func requiredAliyunExtras(action string) []string {
 }
 
 func validateAliyunExtras(action string, extras map[string]string) error {
+	if action == "DescribeInstances" {
+		_, single := extras["InstanceIds"]
+		_, page := extras["MaxResults"]
+		_, token := extras["NextToken"]
+		if single == page || (single && token) {
+			return errors.New("aliyun extras are invalid")
+		}
+	}
 	if len(extras) > 8 {
 		return errors.New("aliyun extras are invalid")
 	}

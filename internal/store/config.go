@@ -172,6 +172,10 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if err != nil {
 		return domain.Config{}, err
 	}
+	confirmInstanceActions, err := boolSetting(settings, "confirm_instance_actions", true)
+	if err != nil {
+		return domain.Config{}, err
+	}
 	enableBilling, err := boolSetting(settings, "enable_billing", false)
 	if err != nil {
 		return domain.Config{}, err
@@ -200,17 +204,18 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 		return domain.Config{}, errors.New("invalid daily report time")
 	}
 	config := domain.Config{
-		TrafficThreshold:   trafficThreshold,
-		EnableScheduleMail: enableScheduleMail,
-		ShutdownMode:       shutdownMode,
-		ThresholdAction:    thresholdAction,
-		KeepAlive:          keepAlive,
-		APIInterval:        apiInterval,
-		EnableBilling:      enableBilling,
-		Timezone:           timezone,
-		EnableDailyReport:  enableDailyReport,
-		DailyReportTime:    dailyReportTime,
-		Accounts:           accounts,
+		ConfirmInstanceActions: &confirmInstanceActions,
+		TrafficThreshold:       trafficThreshold,
+		EnableScheduleMail:     enableScheduleMail,
+		ShutdownMode:           shutdownMode,
+		ThresholdAction:        thresholdAction,
+		KeepAlive:              keepAlive,
+		APIInterval:            apiInterval,
+		EnableBilling:          enableBilling,
+		Timezone:               timezone,
+		EnableDailyReport:      enableDailyReport,
+		DailyReportTime:        dailyReportTime,
+		Accounts:               accounts,
 		Notifications: domain.NotificationConfig{
 			Email: domain.EmailConfig{
 				Enabled:            notifyEmailEnabled,
@@ -425,6 +430,9 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 			"notify_wh_request_type": config.Notifications.Webhook.Type,
 			"notify_wh_provider":     config.Notifications.Webhook.Provider,
 		}
+		if config.ConfirmInstanceActions != nil {
+			values["confirm_instance_actions"] = strconv.FormatBool(*config.ConfirmInstanceActions)
+		}
 		for key, value := range values {
 			if err := putSettingTx(ctx, tx, key, value); err != nil {
 				return err
@@ -580,6 +588,7 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 	}
 
 	kept := make(map[int64]bool)
+	poolQuotas := make(map[string]float64)
 	for _, account := range accounts {
 		if hasTextBreak(account.AccessKeyID) {
 			return errors.New("account access_key_id is invalid")
@@ -623,6 +632,11 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 		if math.IsNaN(account.MaxTraffic) || math.IsInf(account.MaxTraffic, 0) || account.MaxTraffic <= 0 || account.MaxTraffic > maxAccountTrafficGB {
 			return errors.New("account max traffic is invalid")
 		}
+		poolID := domain.TrafficPoolID(account)
+		if quota, exists := poolQuotas[poolID]; exists && quota != account.MaxTraffic {
+			return errors.New("accounts in the same traffic pool must share one quota")
+		}
+		poolQuotas[poolID] = account.MaxTraffic
 		row, found := byID[account.ID]
 		if !found && account.ID == 0 {
 			compRow, compFound := byComposite[account.AccessKeyID+"|"+account.RegionID+"|"+account.InstanceID]
@@ -680,6 +694,11 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 				account.AccessKeyID, encryptedSecret, account.RegionID, account.InstanceID, account.MaxTraffic, boolInt(account.ScheduleEnabled), account.StartTime, account.StopTime, account.Remark, siteType, nullBoolInt(account.KeepAlive), account.ShutdownMode, nullBoolInt(account.DailyReport), dailyReportTime, id)
 			if err != nil {
 				return err
+			}
+			if row.key != account.AccessKeyID || domain.TrafficClass(row.region) != domain.TrafficClass(account.RegionID) {
+				if _, err = tx.ExecContext(ctx, `UPDATE accounts SET traffic_used=0, updated_at=0 WHERE id=?`, id); err != nil {
+					return err
+				}
 			}
 			kept[id] = true
 		} else {
@@ -843,7 +862,6 @@ func (s *Store) UpdateAccountSettings(ctx context.Context, id int64, keepAlive *
 	return err
 }
 
-
 func (s *Store) GetAccount(ctx context.Context, id int64) (domain.Account, error) {
 	if !validAccountID(id) {
 		return domain.Account{}, sql.ErrNoRows
@@ -886,11 +904,23 @@ func (s *Store) AccountSecrets(ctx context.Context) ([]string, error) {
 }
 
 func (s *Store) AccountSecret(ctx context.Context, id int64) (string, error) {
+	return s.accountSecretForKey(ctx, id, "")
+}
+
+// Bind the lookup and decryption to the same stored credential identity.
+func (s *Store) AccountSecretForKey(ctx context.Context, id int64, expectedKey string) (string, error) {
+	if !validAccountToken(expectedKey, maxAccessKeyIDRunes, "-") {
+		return "", sql.ErrNoRows
+	}
+	return s.accountSecretForKey(ctx, id, expectedKey)
+}
+
+func (s *Store) accountSecretForKey(ctx context.Context, id int64, expectedKey string) (string, error) {
 	if !validAccountID(id) {
 		return "", sql.ErrNoRows
 	}
 	var encrypted, accessKeyID string
-	err := s.db.QueryRowContext(ctx, `SELECT access_key_secret, access_key_id FROM accounts WHERE id=? AND deleted_at=0`, id).Scan(&encrypted, &accessKeyID)
+	err := s.db.QueryRowContext(ctx, `SELECT access_key_secret, access_key_id FROM accounts WHERE id=? AND deleted_at=0 AND (?='' OR access_key_id=?)`, id, expectedKey, expectedKey).Scan(&encrypted, &accessKeyID)
 	if err != nil {
 		return "", err
 	}
@@ -933,6 +963,57 @@ func (s *Store) updateRuntime(ctx context.Context, id int64, traffic float64, st
 
 func (s *Store) UpdateRuntime(ctx context.Context, id int64, traffic float64, status string, updatedAt time.Time) error {
 	return s.updateRuntime(ctx, id, traffic, status, updatedAt)
+}
+
+// UpdateRuntimeForAccount discards a response that was fetched before the
+// configured credential or target changed. Identity checks and write are atomic.
+func (s *Store) UpdateRuntimeForAccount(ctx context.Context, account domain.Account, traffic float64, status string, updatedAt time.Time) error {
+	if !validAccountID(account.ID) {
+		return sql.ErrNoRows
+	}
+	if !validTrafficSample(traffic) {
+		return errors.New("traffic sample is invalid")
+	}
+	if !validInstanceStatus(status) {
+		return errors.New("instance status is invalid")
+	}
+	if !validUnixTime(updatedAt) {
+		return errors.New("runtime timestamp is invalid")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE accounts SET traffic_used=?,instance_status=?,updated_at=? WHERE id=? AND access_key_id=? AND region_id=? AND instance_id=? AND deleted_at=0`, traffic, status, updatedAt.Unix(), account.ID, account.AccessKeyID, account.RegionID, account.InstanceID)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
+}
+
+func (s *Store) UpdateInstanceStatusForAccount(ctx context.Context, account domain.Account, status string) error {
+	if !validAccountID(account.ID) {
+		return sql.ErrNoRows
+	}
+	if !validInstanceStatus(status) {
+		return errors.New("instance status is invalid")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE accounts SET instance_status=? WHERE id=? AND access_key_id=? AND region_id=? AND instance_id=? AND deleted_at=0`, status, account.ID, account.AccessKeyID, account.RegionID, account.InstanceID)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
+}
+
+// UpdateInstanceStatus never overwrites the latest successful traffic sample.
+func (s *Store) UpdateInstanceStatus(ctx context.Context, id int64, status string) error {
+	if !validAccountID(id) {
+		return sql.ErrNoRows
+	}
+	if !validInstanceStatus(status) {
+		return errors.New("instance status is invalid")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE accounts SET instance_status=? WHERE id=? AND deleted_at=0`, status, id)
+	if err != nil {
+		return err
+	}
+	return rowsAffectedOne(res)
 }
 
 func (s *Store) UpdateKeepAliveAt(ctx context.Context, id int64, at time.Time) error {

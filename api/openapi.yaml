@@ -1,0 +1,5073 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CDT Monitor implemented HTTP API",
+    "version": "0.1.0",
+    "description": "Implementation-derived contract at baseline 81fed54472db3b70a09a8fcc399baadc70aaa147. JSON syntax is used deliberately (a YAML 1.2 subset) so Go standard-library tests can read this .yaml without a product dependency. Covers explicit API, health and legacy registrations; static assets excluded. Go GET routes also serve HEAD with the same authentication and status, without a response body. No CORS/OPTIONS API is registered. Normal responses use application/json; charset=utf-8. Strict JSON handlers reject unknown fields and use a 1 MiB reader; not all handlers read the body. Authentication alternatives and CSRF requirements are operation-specific. API Key scopes are described by x-api-key-scopes (not OAuth). Runtime dates are RFC3339; unset Go time values may be year 0001. Global panic recovery returns Error/internal_error with 500. Unknown /api/* paths return JSON 404; unsupported methods on these paths can hit the same static fallback (no general 405 guarantee).",
+    "x-source-files": [
+      "internal/httpapi/server.go",
+      "internal/domain/models.go",
+      "internal/store/config.go",
+      "internal/store/auth.go",
+      "internal/store/runtime.go",
+      "internal/engine/engine.go",
+      "web/src/api.ts",
+      "web/src/App.tsx",
+      "android-widget/app/src/main/java/com/wang4386/cdtmonitor/widget/CdtApi.java"
+    ]
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same deployment origin; no deployment hostname assumed."
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "health",
+        "summary": "Health",
+        "description": "Process liveness only; does not check database or provider readiness.",
+        "x-handler": "Server.health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "ready",
+        "summary": "Ready",
+        "description": "Checks SQLite readiness only; does not prove cloud credentials or workers are healthy.",
+        "x-handler": "Server.ready",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ready"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: database_not_ready.",
+            "x-error-codes": [
+              "database_not_ready"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/init-status": {
+      "get": {
+        "operationId": "initStatus",
+        "summary": "Init status",
+        "description": "Administrator operation; authentication and scope checks precede handler validation.",
+        "x-handler": "Server.initStatus",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "initialized": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "initialized"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: init_status_failed, internal_error.",
+            "x-error-codes": [
+              "init_status_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/info": {
+      "get": {
+        "operationId": "systemInfo",
+        "summary": "System info",
+        "description": "Build metadata. check=1 attempts a bounded GitHub Release lookup; failure remains HTTP 200 with check_error, success adds latest_version.",
+        "x-handler": "Server.systemInfo",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "check",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only exact value 1 triggers upstream release lookup; other values are ignored."
+          }
+        ]
+      }
+    },
+    "/api/v1/setup": {
+      "post": {
+        "operationId": "setup",
+        "summary": "Setup",
+        "description": "One-time initialization. Applies config defaults and creates an exclusive administrator session. Already initialized returns 400 setup_failed. Limit 5 attempts per client IP per minute. Uses store schedule validation rather than PUT clock normalization.",
+        "x-handler": "Server.setup",
+        "security": [],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSuccess"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "Two Set-Cookie headers for cdt_session and cdt_csrf; see security scheme descriptions. Logout expires both.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_request, setup_failed.",
+            "x-error-codes": [
+              "invalid_request",
+              "setup_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error codes: rate_limited.",
+            "x-error-codes": [
+              "rate_limited"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, session_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "session_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Login",
+        "description": "Password login. 8 attempts per IP per 15-minute rate window; 5 persisted failures in 15 minutes lock login. A successful login clears failures and invalidates previous sessions.",
+        "x-handler": "Server.login",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSuccess"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "Two Set-Cookie headers for cdt_session and cdt_csrf; see security scheme descriptions. Logout expires both.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_request.",
+            "x-error-codes": [
+              "invalid_request"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: invalid_credentials.",
+            "x-error-codes": [
+              "invalid_credentials"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error codes: login_locked, rate_limited.",
+            "x-error-codes": [
+              "login_locked",
+              "rate_limited"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, login_failed, session_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "login_failed",
+              "session_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passkeys/begin": {
+      "post": {
+        "operationId": "beginPasskeyLogin",
+        "summary": "Begin passkey login",
+        "description": "HTTPS required (direct TLS or trusted proxy). Body ignored. Limit 8 attempts per client IP per 15 minutes. Returns 404 if no credential configured. Challenge is single-use, five minutes, at most eight outstanding ceremonies.",
+        "x-handler": "Server.beginPasskeyLogin",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginCeremony"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: https_required.",
+            "x-error-codes": [
+              "https_required"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: passkey_not_configured.",
+            "x-error-codes": [
+              "passkey_not_configured"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error codes: rate_limited.",
+            "x-error-codes": [
+              "rate_limited"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, passkey_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "passkey_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passkeys/complete": {
+      "post": {
+        "operationId": "completePasskeyLogin",
+        "summary": "Complete passkey login",
+        "description": "HTTPS required. session_id is a query parameter. Challenge is consumed before parsing/validation. Success creates an exclusive 24-hour session, invalidating earlier sessions.",
+        "x-handler": "Server.completePasskeyLogin",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSuccess"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "Two Set-Cookie headers for cdt_session and cdt_csrf; see security scheme descriptions. Logout expires both.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: https_required, passkey_session_expired.",
+            "x-error-codes": [
+              "https_required",
+              "passkey_session_expired"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: passkey_invalid.",
+            "x-error-codes": [
+              "passkey_invalid"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, passkey_failed, session_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "passkey_failed",
+              "session_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "description": "Single-use ID from matching begin ceremony."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginCredential"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Logout",
+        "description": "Deletes current session and expires cdt_session/cdt_csrf cookies.",
+        "x-handler": "Server.logout",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "Two Set-Cookie headers for cdt_session and cdt_csrf; see security scheme descriptions. Logout expires both.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true
+      }
+    },
+    "/api/v1/admin/password": {
+      "put": {
+        "operationId": "updateAdminPassword",
+        "summary": "Update admin password",
+        "description": "Requires current password. Retains current session and revokes other sessions. API Keys cannot access this admin operation.",
+        "x-handler": "Server.updateAdminPassword",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_password, invalid_request.",
+            "x-error-codes": [
+              "invalid_password",
+              "invalid_request"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: invalid_credentials, unauthorized.",
+            "x-error-codes": [
+              "invalid_credentials",
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, password_update_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "password_update_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/passkeys": {
+      "get": {
+        "operationId": "listPasskeys",
+        "summary": "List passkeys",
+        "description": "Administrator operation; authentication and scope checks precede handler validation.",
+        "x-handler": "Server.listPasskeys",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "passkeys": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Passkey"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "passkeys"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, passkeys_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "passkeys_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true
+      }
+    },
+    "/api/v1/admin/passkeys/{id}": {
+      "delete": {
+        "operationId": "deletePasskey",
+        "summary": "Delete passkey",
+        "description": "Administrator operation; authentication and scope checks precede handler validation.",
+        "x-handler": "Server.deletePasskey",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_id.",
+            "x-error-codes": [
+              "invalid_id"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: not_found.",
+            "x-error-codes": [
+              "not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, passkey_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "passkey_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Positive signed 64-bit identifier."
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/passkeys/register/begin": {
+      "post": {
+        "operationId": "beginPasskeyRegistration",
+        "summary": "Begin passkey registration",
+        "description": "Administrator session and CSRF required plus HTTPS. At most eight stored passkeys and eight outstanding ceremonies. Empty name allowed. Response public_key contains another publicKey object, matching browser usage.",
+        "x-handler": "Server.beginPasskeyRegistration",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationCeremony"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: https_required, invalid_request, passkey_failed.",
+            "x-error-codes": [
+              "https_required",
+              "invalid_request",
+              "passkey_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error codes: rate_limited.",
+            "x-error-codes": [
+              "rate_limited"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, passkey_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "passkey_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyNameInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/passkeys/register/complete": {
+      "post": {
+        "operationId": "completePasskeyRegistration",
+        "summary": "Complete passkey registration",
+        "description": "HTTPS, administrator session and CSRF required. session_id is a query parameter. Challenge is consumed before credential parsing/validation; retry requires a new challenge.",
+        "x-handler": "Server.completePasskeyRegistration",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: https_required, passkey_failed, passkey_invalid, passkey_session_expired.",
+            "x-error-codes": [
+              "https_required",
+              "passkey_failed",
+              "passkey_invalid",
+              "passkey_session_expired"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, passkey_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "passkey_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "description": "Single-use ID from matching begin ceremony."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationCredential"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "operationId": "status",
+        "summary": "Status",
+        "description": "Reads database snapshots. Exact If-None-Match match returns 304 with no body. ETag uses last monitor run Unix seconds and account count, not all response fields; manual changes may not alter it.",
+        "x-handler": "Server.status",
+        "security": [
+          {
+            "Session": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, max-age=15"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Weak validator derived from last monitor run and account count."
+              }
+            }
+          },
+          "304": {
+            "description": "Exact ETag match, no response body. Current code does not repeat ETag on this response."
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, status_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "status_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "widget:read"
+        ],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact weak ETag returned by a previous response."
+          }
+        ]
+      }
+    },
+    "/api/v1/widget/summary": {
+      "get": {
+        "operationId": "widgetSummary",
+        "summary": "Widget summary",
+        "description": "Compact snapshot consumed by Android. name chooses remark, then masked AccessKey identifier, then CDT. used/total are GB.",
+        "x-handler": "Server.widgetSummary",
+        "security": [
+          {
+            "Session": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetSummary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, max-age=30"
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, status_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "status_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "widget:read"
+        ],
+        "x-session-admin": true
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "operationId": "getConfig",
+        "summary": "Get config",
+        "description": "Returns configuration with sensitive fields omitted and *_configured indicators. API Keys cannot access configuration.",
+        "x-handler": "Server.getConfig",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: config_failed, internal_error.",
+            "x-error-codes": [
+              "config_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true
+      },
+      "put": {
+        "operationId": "saveConfig",
+        "summary": "Save config",
+        "description": "Full configuration replacement with defaults applied, not a merge/PATCH. Omitted accounts removes all active accounts. Omitted non-secret settings reset to defaults/zero values. Empty sensitive notification values preserve stored values; __clear__ clears them. Empty account secrets are resolved from existing/submitted keys. Current full-config path does not validate global/account daily_report_time or per-account shutdown_mode; this contract does not invent validation. All store errors are currently mapped to 400 config_failed.",
+        "x-handler": "Server.saveConfig",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: config_failed, invalid_request, invalid_schedule_time.",
+            "x-error-codes": [
+              "config_failed",
+              "invalid_request",
+              "invalid_schedule_time"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{id}/history": {
+      "get": {
+        "operationId": "history",
+        "summary": "History",
+        "description": "Active account history; up to 25 hourly and 31 daily samples in ascending timestamp order.",
+        "x-handler": "Server.history",
+        "security": [
+          {
+            "Session": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_id.",
+            "x-error-codes": [
+              "invalid_id"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: not_found.",
+            "x-error-codes": [
+              "not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: history_failed, internal_error.",
+            "x-error-codes": [
+              "history_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "widget:read"
+        ],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Positive signed 64-bit identifier."
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/refresh": {
+      "post": {
+        "operationId": "refreshAll",
+        "summary": "Refresh all",
+        "description": "Enqueues one refresh_account job per active account using account ID and the UTC minute captured for this call. Equal keys deduplicate while the existing refresh job is queued/running, including queued retry backoff. Completion or terminal failure releases the key, allowing a new job for that account in the same UTC minute. This is not a once-per-minute execution limit; a different minute uses a different key even if an older job is still active. Empty list returns jobs:[]. Partial enqueue is possible before a later error. Body ignored.",
+        "x-handler": "Server.refreshAll",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued/deduplicated job; poll its id for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Job"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "jobs"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: enqueue_failed, internal_error.",
+            "x-error-codes": [
+              "enqueue_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "instance:control"
+        ],
+        "x-session-admin": true
+      }
+    },
+    "/api/v1/accounts/{id}/refresh": {
+      "post": {
+        "operationId": "refresh",
+        "summary": "Refresh",
+        "description": "Enqueues refresh_account using a key composed of account ID and UTC minute. Equal keys deduplicate only while the existing refresh job retains the key in queued/running state, including queued retry backoff. Completion or terminal failure releases the key, so another request in the same UTC minute can enqueue a new job. This is not a once-per-minute execution limit; a different minute uses a different key even if an older job is still active. The body is ignored. A positive nonexistent account currently produces 500 enqueue_failed.",
+        "x-handler": "Server.refresh",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued/deduplicated job; poll its id for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_id.",
+            "x-error-codes": [
+              "invalid_id"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: enqueue_failed, internal_error.",
+            "x-error-codes": [
+              "enqueue_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "instance:control"
+        ],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Positive signed 64-bit identifier."
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/{id}/actions/{action}": {
+      "post": {
+        "operationId": "control",
+        "summary": "Control",
+        "description": "Enqueues control_instance using account ID and normalized action as the key. Equal keys deduplicate while the existing job is queued/running, including queued retry backoff; completion or terminal failure releases the key and permits a new job. Body ignored. Accepts start/stop after trimming and case folding; CR/LF/NUL rejected. Positive nonexistent account currently produces 500 enqueue_failed.",
+        "x-handler": "Server.control",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued/deduplicated job; poll its id for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_action, invalid_id.",
+            "x-error-codes": [
+              "invalid_action",
+              "invalid_id"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: enqueue_failed, internal_error.",
+            "x-error-codes": [
+              "enqueue_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "instance:control"
+        ],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Positive signed 64-bit identifier."
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "start or stop; server trims and lowercases before validation."
+          }
+        ]
+      }
+    },
+    "/api/v1/accounts/{id}/settings": {
+      "patch": {
+        "operationId": "updateAccountSettings",
+        "summary": "Update account settings",
+        "description": "Partial update for an active account. Omitted fields unchanged; null/default keep_alive and daily_report inherit global. String/bool pointer fields treat null as unchanged. Clocks normalize to HH:MM. Returns Account with access_key_secret omitted. Lookup errors map to 404; some decode/store errors return raw error text.",
+        "x-handler": "Server.updateAccountSettings",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_daily_report_time, invalid_id, invalid_request, invalid_schedule_time.",
+            "x-error-codes": [
+              "invalid_daily_report_time",
+              "invalid_id",
+              "invalid_request",
+              "invalid_schedule_time"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: not_found.",
+            "x-error-codes": [
+              "not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: get_failed, internal_error, update_failed.",
+            "x-error-codes": [
+              "get_failed",
+              "internal_error",
+              "update_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Positive signed 64-bit identifier."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountSettingsInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/daily-report": {
+      "post": {
+        "operationId": "triggerDailyReport",
+        "summary": "Trigger daily report",
+        "description": "Enqueues a forced daily_report job, with no deduplication. 0/omitted account_id selects global report. Current handler ignores JSON decode errors and may enqueue from an empty, malformed or partially decoded body. 202 is enqueue acknowledgment, not delivery. This documents the current implementation defect (OAPI-OBS-2), not a compatibility guarantee; an independently authorized validation fix should update this description and the associated characterization assertion.",
+        "x-handler": "Server.triggerDailyReport",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "New job enqueued; poll its id for completion. No deduplication key is used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: enqueue_failed, internal_error.",
+            "x-error-codes": [
+              "enqueue_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyReportInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{id}": {
+      "get": {
+        "operationId": "job",
+        "summary": "Job",
+        "description": "Read a persisted job by string ID with either widget:read OR instance:control (or administrator session). Errors/result strings are redacted against configured secrets. Missing or overlong IDs return 404 job_not_found.",
+        "x-handler": "Server.job",
+        "security": [
+          {
+            "Session": []
+          },
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: job_not_found.",
+            "x-error-codes": [
+              "job_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, job_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "job_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "widget:read",
+          "instance:control"
+        ],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Opaque job ID; IDs longer than 64 bytes are treated as missing."
+          }
+        ]
+      }
+    },
+    "/api/v1/logs": {
+      "get": {
+        "operationId": "logs",
+        "summary": "Logs",
+        "description": "At most 100 newest logs, descending ID. Empty/action tab excludes heartbeat; heartbeat includes only heartbeat. Messages are redacted.",
+        "x-handler": "Server.logs",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "logs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LogEntry"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "logs"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_request.",
+            "x-error-codes": [
+              "invalid_request"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, logs_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "logs_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "tab",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "action",
+                "heartbeat"
+              ],
+              "default": ""
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "clearLogs",
+        "summary": "Clear logs",
+        "description": "Deletes all logs in selected category; empty/action excludes heartbeat.",
+        "x-handler": "Server.clearLogs",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_request.",
+            "x-error-codes": [
+              "invalid_request"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error, logs_failed.",
+            "x-error-codes": [
+              "internal_error",
+              "logs_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "tab",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "action",
+                "heartbeat"
+              ],
+              "default": ""
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/test/{channel}": {
+      "post": {
+        "operationId": "testNotification",
+        "summary": "Test notification",
+        "description": "Enqueues test_notification; body ignored. Channel is trimmed and case folded; CR/LF/NUL rejected. 202 does not prove delivery.",
+        "x-handler": "Server.testNotification",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "New job enqueued; poll its id for completion. No deduplication key is used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_channel.",
+            "x-error-codes": [
+              "invalid_channel"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: enqueue_failed, internal_error.",
+            "x-error-codes": [
+              "enqueue_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "email, telegram or webhook; server trims and lowercases before validation."
+          }
+        ]
+      }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "operationId": "apiKeys",
+        "summary": "Api keys",
+        "description": "Lists non-revoked API Key metadata, newest first; never returns token.",
+        "x-handler": "Server.apiKeys",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/APIKey"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "keys"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: api_keys_failed, internal_error.",
+            "x-error-codes": [
+              "api_keys_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true
+      },
+      "post": {
+        "operationId": "createAPIKey",
+        "summary": "Create apikey",
+        "description": "Returns opaque token once. Name and scopes required. At most 16 non-revoked keys; scopes deduplicated. All store validation/storage errors map to 400 api_key_failed.",
+        "x-handler": "Server.createAPIKey",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: api_key_failed, invalid_request, invalid_scope.",
+            "x-error-codes": [
+              "api_key_failed",
+              "invalid_request",
+              "invalid_scope"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIKeyInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys/{id}": {
+      "delete": {
+        "operationId": "revokeAPIKey",
+        "summary": "Revoke apikey",
+        "description": "Marks an existing key revoked. Already revoked/nonexistent returns 404.",
+        "x-handler": "Server.revokeAPIKey",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_id.",
+            "x-error-codes": [
+              "invalid_id"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: not_found.",
+            "x-error-codes": [
+              "not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: api_key_failed, internal_error.",
+            "x-error-codes": [
+              "api_key_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "Positive signed 64-bit identifier."
+          }
+        ]
+      }
+    },
+    "/monitor.php": {
+      "get": {
+        "operationId": "legacyMonitor",
+        "summary": "Legacy monitor",
+        "description": "Legacy GET with side effects. Requires API Key cron:run; session cookies alone are NOT accepted. Header credentials take precedence over query key. Runs the monitor scheduling pass synchronously, which queues jobs, then returns 202 accepted:true (no job ID). Lease conflict and all RunOnce failures map to 409 monitor_busy. No CSRF check.",
+        "x-handler": "Server.legacyMonitor",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          },
+          {
+            "LegacyQueryKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "accepted"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: invalid_key.",
+            "x-error-codes": [
+              "invalid_key"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error codes: monitor_busy.",
+            "x-error-codes": [
+              "monitor_busy"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [
+          "cron:run"
+        ],
+        "x-session-admin": false
+      }
+    },
+    "/api/v1/accounts/discover": {
+      "post": {
+        "operationId": "discoverInstances",
+        "summary": "Discover ECS instances for the import wizard",
+        "description": "Admin session and CSRF only. Fixed ECS DescribeInstances with MaxResults=50 and optional bounded NextToken. 25 second timeout, 30 requests per minute per client IP. Returns projected metadata, never secrets or raw provider errors. Import into a settings draft and PUT config are separate frontend actions.",
+        "x-handler": "Server.discoverInstances",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverInstancesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One page of projected ECS metadata. Nonempty next_token can load more from the same credential and region.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_request, credential_unavailable.",
+            "x-error-codes": [
+              "invalid_request",
+              "credential_unavailable"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: csrf_failed, forbidden.",
+            "x-error-codes": [
+              "csrf_failed",
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error codes: rate_limited.",
+            "x-error-codes": [
+              "rate_limited"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: discovery_failed.",
+            "x-error-codes": [
+              "discovery_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "Session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "cdt_session",
+        "description": "Administrator session. Login/setup/passkey login creates a 24-hour exclusive session and invalidates earlier sessions. HttpOnly, SameSite=Strict, Path=/; Secure on HTTPS (including trusted proxy HTTPS)."
+      },
+      "CSRFCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "cdt_csrf",
+        "description": "Session-bound CSRF token, readable by JavaScript, SameSite=Strict, Path=/, lifetime 24h. Required together with CSRFHeader for session mutations."
+      },
+      "CSRFHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CDT-CSRF",
+        "description": "Must match the session-derived token and cdt_csrf cookie; header/cookie/session lengths <=128 bytes."
+      },
+      "BearerKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Opaque API Key (not JWT), with required operation scope. Nonempty presented Bearer takes precedence over X-API-Key and session; invalid key does not fall back to a valid session."
+      },
+      "HeaderKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Alternative to Bearer; opaque API Key with required operation scope. API Key authentication bypasses CSRF."
+      },
+      "LegacyQueryKey": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "key",
+        "description": "Legacy alternative for cron:run key, used only if no nonempty header key. Prefer headers to avoid URL credential exposure."
+      }
+    },
+    "schemas": {
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "access_key_id": {
+            "type": "string"
+          },
+          "access_key_secret": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Empty reuses a matching saved or submitted AccessKey secret; a usable secret is required after resolution. __clear__ is NOT a clearing sentinel here."
+          },
+          "secret_configured": {
+            "type": "boolean"
+          },
+          "region_id": {
+            "type": "string"
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "max_traffic": {
+            "type": "number",
+            "format": "double",
+            "description": "Shared pool quota; all configured instances using the same AccessKey and traffic class must use the same value. UI defaults: mainland China 20 GB, non-mainland 200 GB."
+          },
+          "schedule_enabled": {
+            "type": "boolean"
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "stop_time": {
+            "type": "string"
+          },
+          "remark": {
+            "type": "string"
+          },
+          "site_type": {
+            "type": "string"
+          },
+          "traffic_used": {
+            "type": "number",
+            "format": "double",
+            "description": "Stored traffic in GB."
+          },
+          "instance_status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_keep_alive_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "monthly_cost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "balance": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "billing_error": {
+            "type": "string"
+          },
+          "billing_updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "keep_alive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "null inherits the global setting."
+          },
+          "shutdown_mode": {
+            "type": "string",
+            "description": "Empty string inherits the global setting."
+          },
+          "daily_report": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "null inherits the global setting."
+          },
+          "daily_report_time": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "access_key_id",
+          "secret_configured",
+          "region_id",
+          "instance_id",
+          "max_traffic",
+          "schedule_enabled",
+          "start_time",
+          "stop_time",
+          "remark",
+          "site_type",
+          "traffic_used",
+          "instance_status",
+          "updated_at",
+          "keep_alive",
+          "shutdown_mode",
+          "daily_report",
+          "daily_report_time"
+        ],
+        "x-go-type": "domain.Account"
+      },
+      "EmailConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "to": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "password_configured": {
+            "type": "boolean"
+          },
+          "security": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "to",
+          "host",
+          "port",
+          "username",
+          "password_configured",
+          "security"
+        ],
+        "x-go-type": "domain.EmailConfig"
+      },
+      "TelegramConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "token": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "token_configured": {
+            "type": "boolean"
+          },
+          "chat_id": {
+            "type": "string"
+          },
+          "proxy_type": {
+            "type": "string"
+          },
+          "proxy_url": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "proxy_url_configured": {
+            "type": "boolean"
+          },
+          "proxy_ip": {
+            "type": "string"
+          },
+          "proxy_port": {
+            "type": "string"
+          },
+          "proxy_user": {
+            "type": "string"
+          },
+          "proxy_pass": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "proxy_password_configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "token_configured",
+          "chat_id",
+          "proxy_type",
+          "proxy_url_configured",
+          "proxy_ip",
+          "proxy_port",
+          "proxy_user",
+          "proxy_password_configured"
+        ],
+        "x-go-type": "domain.TelegramConfig"
+      },
+      "WebhookConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "method": {
+            "type": "string"
+          },
+          "request_type": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "body": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "provider": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "secret_configured": {
+            "type": "boolean"
+          },
+          "headers_configured": {
+            "type": "boolean"
+          },
+          "url_configured": {
+            "type": "boolean"
+          },
+          "body_configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "method",
+          "request_type",
+          "secret_configured",
+          "headers_configured",
+          "url_configured",
+          "body_configured"
+        ],
+        "x-go-type": "domain.WebhookConfig"
+      },
+      "NotificationConfig": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/EmailConfig"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramConfig"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/WebhookConfig"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "email",
+          "telegram",
+          "webhook"
+        ],
+        "x-go-type": "domain.NotificationConfig"
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "admin_password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Required at setup (at least 10 UTF-8 bytes; at most 128 Unicode characters); empty on config save preserves the existing password.",
+            "maxLength": 128
+          },
+          "traffic_threshold": {
+            "type": "integer"
+          },
+          "enable_schedule_notification": {
+            "type": "boolean"
+          },
+          "shutdown_mode": {
+            "type": "string"
+          },
+          "threshold_action": {
+            "type": "string"
+          },
+          "keep_alive": {
+            "type": "boolean"
+          },
+          "api_interval": {
+            "type": "integer"
+          },
+          "enable_billing": {
+            "type": "boolean"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "enable_daily_report": {
+            "type": "boolean"
+          },
+          "daily_report_time": {
+            "type": "string"
+          },
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationConfig"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            }
+          },
+          "confirm_instance_actions": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": true,
+            "description": "Dashboard start/stop confirmation preference. Defaults to true when never configured. Omitted or null on save preserves the stored preference. Does not change API or scheduled actions."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "traffic_threshold",
+          "enable_schedule_notification",
+          "shutdown_mode",
+          "threshold_action",
+          "keep_alive",
+          "api_interval",
+          "enable_billing",
+          "timezone",
+          "enable_daily_report",
+          "daily_report_time",
+          "notifications",
+          "accounts"
+        ],
+        "x-go-type": "domain.Config"
+      },
+      "AccountSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "account": {
+            "type": "string",
+            "description": "Masked AccessKey ID: first at most seven bytes plus ***; never the AccessKey secret."
+          },
+          "remark": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "region_name": {
+            "type": "string"
+          },
+          "flow_total": {
+            "type": "number",
+            "format": "double",
+            "description": "Shared-pool quota in GB, not an allocation per instance."
+          },
+          "flow_used": {
+            "type": "number",
+            "format": "double",
+            "description": "Latest observed shared-pool GB, repeated on each pool member; do not sum members."
+          },
+          "percentage": {
+            "type": "number",
+            "format": "double",
+            "description": "Used / allowance * 100; may exceed 100."
+          },
+          "threshold": {
+            "type": "integer"
+          },
+          "over_threshold": {
+            "type": "boolean"
+          },
+          "instance_status": {
+            "type": "string"
+          },
+          "last_updated": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "monthly_cost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "balance": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "billing_error": {
+            "type": "string"
+          },
+          "keep_alive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "null inherits the global setting."
+          },
+          "shutdown_mode": {
+            "type": "string",
+            "description": "Empty string inherits the global setting."
+          },
+          "schedule_enabled": {
+            "type": "boolean"
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "stop_time": {
+            "type": "string"
+          },
+          "daily_report": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "null inherits the global setting."
+          },
+          "daily_report_time": {
+            "type": "string"
+          },
+          "traffic_pool_id": {
+            "type": "string",
+            "description": "Opaque ID for exact AccessKey plus CDT traffic class. Deduplicate pool totals by this field. Different AccessKeys are not automatically merged."
+          },
+          "traffic_pool_class": {
+            "type": "string",
+            "enum": [
+              "china",
+              "international"
+            ],
+            "description": "CDT billing area, not BSS account site."
+          },
+          "traffic_pool_instance_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of configured instances in this pool."
+          },
+          "traffic_pool_quota_conflict": {
+            "type": "boolean",
+            "description": "Legacy pool quotas disagree; automatic monitoring for this pool is blocked until configuration is corrected."
+          },
+          "traffic_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Most recent successful pool observation, separate from this instance last_updated."
+          },
+          "traffic_stale": {
+            "type": "boolean",
+            "description": "No current billing-month sample or pool sample exceeds freshness limit."
+          },
+          "instance_charge_type": {
+            "type": "string",
+            "enum": [
+              "subscription",
+              "spot",
+              "pay_as_you_go",
+              "unknown"
+            ],
+            "description": "ECS purchase type from DescribeInstances, independently of billing display."
+          },
+          "instance_type_updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "instance_type_stale": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "account",
+          "remark",
+          "region",
+          "region_name",
+          "flow_total",
+          "flow_used",
+          "percentage",
+          "threshold",
+          "over_threshold",
+          "instance_status",
+          "last_updated",
+          "stale",
+          "keep_alive",
+          "shutdown_mode",
+          "schedule_enabled",
+          "daily_report",
+          "traffic_pool_id",
+          "traffic_pool_class",
+          "traffic_pool_instance_count",
+          "traffic_pool_quota_conflict",
+          "traffic_updated_at",
+          "traffic_stale",
+          "instance_charge_type",
+          "instance_type_updated_at",
+          "instance_type_stale"
+        ],
+        "x-go-type": "domain.AccountSummary"
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "monitor_account",
+              "refresh_account",
+              "control_instance",
+              "test_notification",
+              "daily_report"
+            ]
+          },
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "max_attempts": {
+            "type": "integer"
+          },
+          "available_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "status",
+          "attempts",
+          "max_attempts",
+          "available_at",
+          "created_at",
+          "updated_at"
+        ],
+        "x-go-type": "domain.Job",
+        "description": "Persisted asynchronous job. The identifier is id (not job_id). A 202 response acknowledges enqueue/deduplication, not completion. Poll GET /api/v1/jobs/{id}; result is a string, not a decoded JSON object. Payload is never serialized. For refresh_account and control_instance, equal keys deduplicate while queued/running, including queued retry backoff; completion or terminal failure releases the key. A released refresh key can be reused even in the same UTC minute. Completed monitor_account jobs instead retain their key; do not generalize refresh release behavior to every job type. Job status may advance before an enqueue response is read."
+      },
+      "APIKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "widget:read",
+                "instance:control",
+                "cron:run"
+              ]
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "created_at"
+        ],
+        "x-go-type": "domain.APIKey"
+      },
+      "Passkey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "created_at"
+        ],
+        "x-go-type": "domain.Passkey"
+      },
+      "LogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "type": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "message",
+          "created_at"
+        ],
+        "x-go-type": "domain.LogEntry"
+      },
+      "TrafficPoint": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "traffic": {
+            "type": "number",
+            "format": "double",
+            "description": "Traffic sample in GB."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "at",
+          "traffic"
+        ],
+        "x-go-type": "domain.TrafficPoint"
+      },
+      "History": {
+        "type": "object",
+        "properties": {
+          "hourly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficPoint"
+            },
+            "maxItems": 25,
+            "description": "Most recent at most 25 points, oldest first."
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrafficPoint"
+            },
+            "maxItems": 31,
+            "description": "Most recent at most 31 points, oldest first."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "hourly",
+          "daily"
+        ],
+        "x-go-type": "domain.History"
+      },
+      "ConfigInput": {
+        "type": "object",
+        "properties": {
+          "admin_password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Required at setup (at least 10 UTF-8 bytes; at most 128 Unicode characters); empty on config save preserves the existing password.",
+            "maxLength": 128
+          },
+          "traffic_threshold": {
+            "type": "integer",
+            "description": "0 or omitted defaults to 95; otherwise 1..100."
+          },
+          "enable_schedule_notification": {
+            "type": "boolean"
+          },
+          "shutdown_mode": {
+            "type": "string",
+            "description": "Empty defaults to KeepCharging; accepted KeepCharging or StopCharging."
+          },
+          "threshold_action": {
+            "type": "string",
+            "description": "Empty defaults to stop_and_notify; accepted stop_and_notify or notify_only."
+          },
+          "keep_alive": {
+            "type": "boolean"
+          },
+          "api_interval": {
+            "type": "integer",
+            "description": "Seconds. 0 or omitted defaults to 600; otherwise 30..86400."
+          },
+          "enable_billing": {
+            "type": "boolean"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone; empty defaults to Asia/Shanghai, at most 64 characters."
+          },
+          "enable_daily_report": {
+            "type": "boolean"
+          },
+          "daily_report_time": {
+            "type": "string",
+            "description": "Empty defaults to 22:00. Current save path does not validate this global clock; subsequent reads can reject it."
+          },
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationConfigInput",
+            "description": "Full replacement of non-sensitive notification settings. Empty secret fields preserve saved values; __clear__ clears supported notification secrets."
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountInput"
+            },
+            "description": "Full replacement of active accounts, maximum 32. Omitting/empty removes all active accounts (soft delete). IDs match existing records; id=0 can match AccessKey/region/instance composite.",
+            "maxItems": 32
+          }
+        },
+        "additionalProperties": false,
+        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics."
+      },
+      "AccountInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Use an existing account ID to update; 0 permits composite matching or insertion."
+          },
+          "access_key_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "ASCII letters/digits/hyphen after trimming; required."
+          },
+          "access_key_secret": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Empty reuses a matching saved or submitted AccessKey secret; a usable secret is required after resolution. __clear__ is NOT a clearing sentinel here."
+          },
+          "secret_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "region_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "ASCII letters/digits/hyphen after trimming; required."
+          },
+          "instance_id": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Optional ASCII letters/digits/hyphen/underscore after trimming."
+          },
+          "max_traffic": {
+            "type": "number",
+            "format": "double",
+            "description": "Shared pool quota; all configured instances using the same AccessKey and traffic class must use the same value. UI defaults: mainland China 20 GB, non-mainland 200 GB.",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          },
+          "schedule_enabled": {
+            "type": "boolean"
+          },
+          "start_time": {
+            "type": "string",
+            "description": "HH:MM or empty; PUT config normalizes clocks and requires start/stop when schedule_enabled=true. Setup uses store validation and accepts empty schedule clocks."
+          },
+          "stop_time": {
+            "type": "string"
+          },
+          "remark": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Trimmed; rejects CR, LF and NUL."
+          },
+          "site_type": {
+            "type": "string",
+            "description": "international is preserved; every other value becomes china."
+          },
+          "traffic_used": {
+            "type": "number",
+            "format": "double",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "instance_status": {
+            "type": "string",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "last_keep_alive_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "monthly_cost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "balance": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "billing_error": {
+            "type": "string",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "billing_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "keep_alive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "null inherits the global setting."
+          },
+          "shutdown_mode": {
+            "type": "string",
+            "description": "Empty inherits global mode. Full config save does not validate this per-account field; PATCH settings restricts it."
+          },
+          "daily_report": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "null inherits the global setting."
+          },
+          "daily_report_time": {
+            "type": "string",
+            "description": "Empty becomes 00:00. Full config save does not validate this account clock. PATCH settings does validate it."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics.",
+        "required": [
+          "access_key_id",
+          "region_id",
+          "max_traffic"
+        ]
+      },
+      "NotificationConfigInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/EmailConfigInput"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramConfigInput"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/WebhookConfigInput"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics."
+      },
+      "EmailConfigInput": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "to": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "description": "0 defaults to 465; otherwise 1..65535."
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "password_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "security": {
+            "type": "string",
+            "description": "Empty defaults to ssl; accepts ssl, tls, starttls case-insensitively."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics."
+      },
+      "TelegramConfigInput": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "token": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "token_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "chat_id": {
+            "type": "string"
+          },
+          "proxy_type": {
+            "type": "string",
+            "description": "Empty defaults to none; accepts none, socks5, custom case-insensitively."
+          },
+          "proxy_url": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "proxy_url_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "proxy_ip": {
+            "type": "string"
+          },
+          "proxy_port": {
+            "type": "string"
+          },
+          "proxy_user": {
+            "type": "string"
+          },
+          "proxy_pass": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "proxy_password_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics."
+      },
+      "WebhookConfigInput": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "method": {
+            "type": "string",
+            "description": "Empty defaults to GET; accepts GET or POST case-insensitively."
+          },
+          "request_type": {
+            "type": "string",
+            "description": "Empty defaults to JSON; accepts JSON or FORM case-insensitively."
+          },
+          "headers": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "body": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Empty defaults to generic; accepts generic or dingtalk case-insensitively."
+          },
+          "secret": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. On configuration save, omitted or empty preserves the existing value; __clear__ clears it."
+          },
+          "secret_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "headers_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "url_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          },
+          "body_configured": {
+            "type": "boolean",
+            "description": "Accepted for config round trips; not used to set runtime state or the stored secret-presence indicator."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics."
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "success"
+        ]
+      },
+      "AuthSuccess": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "csrf_token": {
+            "type": "string",
+            "description": "Copy to X-CDT-CSRF with the matching cdt_csrf cookie on session-authenticated mutations."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "success",
+          "csrf_token"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable message; do not parse for application decisions."
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ]
+      },
+      "SystemInfo": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "built_at": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "release_url": {
+            "type": "string"
+          },
+          "latest_version": {
+            "type": "string"
+          },
+          "check_error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "commit",
+          "built_at",
+          "repository",
+          "release_url"
+        ]
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSummary"
+            }
+          },
+          "system_last_run": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "accounts",
+          "system_last_run"
+        ]
+      },
+      "WidgetAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "used": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "status",
+          "used",
+          "total",
+          "percentage",
+          "updated_at"
+        ]
+      },
+      "WidgetSummary": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WidgetAccount"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "accounts",
+          "updated_at"
+        ]
+      },
+      "LoginInput": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "maxLength": 128
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "password"
+        ]
+      },
+      "PasswordInput": {
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "new_password": {
+            "type": "string",
+            "writeOnly": true,
+            "maxLength": 128,
+            "description": "At least 10 UTF-8 bytes (not 10 Unicode characters)."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "current_password",
+          "new_password"
+        ]
+      },
+      "PasskeyNameInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Trimmed; CR, LF and NUL rejected. Empty is allowed."
+          }
+        },
+        "additionalProperties": false
+      },
+      "APIKeyInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Trimmed; CR, LF and NUL rejected."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "widget:read",
+                "instance:control",
+                "cron:run"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "description": "Duplicates accepted and deduplicated; at most 16 non-revoked API keys may exist."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Optional; must be in the future at second precision."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "scopes"
+        ]
+      },
+      "APIKeyCreated": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/APIKey"
+          },
+          "token": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Sensitive API Key returned only at creation. Store securely; never log. This is an output credential, not a writeOnly request field."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "token"
+        ]
+      },
+      "AccountSettingsInput": {
+        "type": "object",
+        "properties": {
+          "keep_alive": {
+            "type": [
+              "boolean",
+              "string",
+              "null"
+            ],
+            "enum": [
+              true,
+              false,
+              null,
+              "default"
+            ],
+            "description": "Omitted leaves unchanged; null/default inherits global."
+          },
+          "daily_report": {
+            "type": [
+              "boolean",
+              "string",
+              "null"
+            ],
+            "enum": [
+              true,
+              false,
+              null,
+              "default"
+            ],
+            "description": "Omitted leaves unchanged; null/default inherits global."
+          },
+          "shutdown_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "",
+              "default",
+              "KeepCharging",
+              "StopCharging",
+              null
+            ],
+            "description": "Omitted/null leaves unchanged; empty/default inherits global."
+          },
+          "schedule_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Omitted/null leaves unchanged."
+          },
+          "start_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted/null leaves unchanged. Normalize to HH:MM; 24:00 invalid. Start/stop required when schedule enabled; daily report time may be empty."
+          },
+          "stop_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted/null leaves unchanged. Normalize to HH:MM; 24:00 invalid. Start/stop required when schedule enabled; daily report time may be empty."
+          },
+          "daily_report_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted/null leaves unchanged. Normalize to HH:MM; 24:00 invalid. Start/stop required when schedule enabled; daily report time may be empty."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DailyReportInput": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "0/omitted selects the global report; positive ID selects an account."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Intended request shape. Current handler ignores decode errors (including empty, malformed or unknown-field bodies) and enqueues using the partially decoded/default account_id. No positivity or existence validation is applied to daily-report account IDs before enqueue. This documents the current implementation defect (OAPI-OBS-2), not a compatibility guarantee; an independently authorized validation fix should update this description and the associated characterization assertion."
+      },
+      "CredentialDescriptor": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "public-key"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Base64url credential ID."
+          },
+          "transports": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      "CreationOptions": {
+        "type": "object",
+        "properties": {
+          "rp": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "name"
+            ]
+          },
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Base64url user handle."
+              },
+              "name": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "displayName"
+            ]
+          },
+          "challenge": {
+            "type": "string"
+          },
+          "pubKeyCredParams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "alg": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "alg"
+              ]
+            }
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "excludeCredentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialDescriptor"
+            }
+          },
+          "authenticatorSelection": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "attestation": {
+            "type": "string"
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attestationFormats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "rp",
+          "user",
+          "challenge",
+          "pubKeyCredParams"
+        ]
+      },
+      "RequestOptions": {
+        "type": "object",
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "rpId": {
+            "type": "string"
+          },
+          "allowCredentials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialDescriptor"
+            }
+          },
+          "userVerification": {
+            "type": "string"
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "challenge"
+        ]
+      },
+      "RegistrationCeremony": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Opaque single-use server challenge ID, expires after five minutes; maximum eight outstanding ceremonies shared across login/registration."
+          },
+          "public_key": {
+            "type": "object",
+            "properties": {
+              "publicKey": {
+                "$ref": "#/components/schemas/CreationOptions"
+              },
+              "mediation": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "publicKey"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "session_id",
+          "public_key"
+        ]
+      },
+      "LoginCeremony": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Opaque single-use server challenge ID, expires after five minutes; maximum eight outstanding ceremonies shared across login/registration."
+          },
+          "public_key": {
+            "type": "object",
+            "properties": {
+              "publicKey": {
+                "$ref": "#/components/schemas/RequestOptions"
+              },
+              "mediation": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "publicKey"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "session_id",
+          "public_key"
+        ]
+      },
+      "RegistrationCredential": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rawId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "public-key"
+            ]
+          },
+          "authenticatorAttachment": {
+            "type": "string"
+          },
+          "clientExtensionResults": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "clientDataJSON": {
+                "type": "string"
+              },
+              "attestationObject": {
+                "type": "string"
+              },
+              "transports": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "clientDataJSON",
+              "attestationObject"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response"
+        ],
+        "description": "WebAuthn browser credential; binary fields serialized as base64url. Protocol-library validation applies; this is not decoded by the strict config JSON decoder."
+      },
+      "LoginCredential": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rawId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "public-key"
+            ]
+          },
+          "authenticatorAttachment": {
+            "type": "string"
+          },
+          "clientExtensionResults": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "clientDataJSON": {
+                "type": "string"
+              },
+              "authenticatorData": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              },
+              "userHandle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "clientDataJSON",
+              "authenticatorData",
+              "signature"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response"
+        ],
+        "description": "WebAuthn browser credential; binary fields serialized as base64url. Protocol-library validation applies; this is not decoded by the strict config JSON decoder."
+      },
+      "SetupInput": {
+        "type": "object",
+        "properties": {
+          "admin_password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Required at setup (at least 10 UTF-8 bytes; at most 128 Unicode characters); empty on config save preserves the existing password.",
+            "maxLength": 128
+          },
+          "traffic_threshold": {
+            "type": "integer",
+            "description": "0 or omitted defaults to 95; otherwise 1..100."
+          },
+          "enable_schedule_notification": {
+            "type": "boolean"
+          },
+          "shutdown_mode": {
+            "type": "string",
+            "description": "Empty defaults to KeepCharging; accepted KeepCharging or StopCharging."
+          },
+          "threshold_action": {
+            "type": "string",
+            "description": "Empty defaults to stop_and_notify; accepted stop_and_notify or notify_only."
+          },
+          "keep_alive": {
+            "type": "boolean"
+          },
+          "api_interval": {
+            "type": "integer",
+            "description": "Seconds. 0 or omitted defaults to 600; otherwise 30..86400."
+          },
+          "enable_billing": {
+            "type": "boolean"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone; empty defaults to Asia/Shanghai, at most 64 characters."
+          },
+          "enable_daily_report": {
+            "type": "boolean"
+          },
+          "daily_report_time": {
+            "type": "string",
+            "description": "Empty defaults to 22:00. Current save path does not validate this global clock; subsequent reads can reject it."
+          },
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationConfigInput",
+            "description": "Full replacement of non-sensitive notification settings. Empty secret fields preserve saved values; __clear__ clears supported notification secrets."
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountInput"
+            },
+            "description": "Full replacement of active accounts, maximum 32. Omitting/empty removes all active accounts (soft delete). IDs match existing records; id=0 can match AccessKey/region/instance composite.",
+            "maxItems": 32
+          }
+        },
+        "additionalProperties": false,
+        "description": "Initial configuration. admin_password is required and must contain at least 10 UTF-8 bytes, at most 128 Unicode characters. Other fields have the same defaults as configuration save; account schedule clocks are store-validated without PUT normalization.",
+        "required": [
+          "admin_password"
+        ]
+      },
+      "DiscoveredInstance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "instance_name",
+          "region_id",
+          "status",
+          "charge_type"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "instance_name": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "region_id": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "status": {
+            "type": "string"
+          },
+          "charge_type": {
+            "type": "string",
+            "enum": [
+              "subscription",
+              "spot",
+              "pay_as_you_go",
+              "unknown"
+            ]
+          }
+        }
+      },
+      "DiscoveryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instances",
+          "next_token"
+        ],
+        "properties": {
+          "instances": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredInstance"
+            }
+          },
+          "next_token": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        }
+      },
+      "DiscoverInstancesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "access_key_id",
+          "region_id"
+        ],
+        "properties": {
+          "source_account_id": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "access_key_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "access_key_secret": {
+            "type": "string",
+            "maxLength": 128,
+            "writeOnly": true
+          },
+          "region_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "next_token": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        },
+        "description": "Use source_account_id > 0 plus exact expected access_key_id with empty/absent secret, or source_account_id=0 plus new key and secret. Saved credential identity is matched atomically. Query is read-only and never persists credentials or adds instances."
+      }
+    }
+  }
+}

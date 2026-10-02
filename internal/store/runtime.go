@@ -702,7 +702,6 @@ func validNotificationEventType(eventType string) bool {
 	}
 }
 
-
 func hasControlExceptNewline(value string) bool {
 	for _, r := range value {
 		if r == 0 || r == '\r' {
@@ -878,7 +877,7 @@ const maxBillingCacheBytes = 8192
 
 func validBillingCacheType(cacheType string) bool {
 	switch cacheType {
-	case "balance", "instance_bill", "error":
+	case "balance", "instance_bill", "error", "instance_metadata":
 		return true
 	default:
 		return false

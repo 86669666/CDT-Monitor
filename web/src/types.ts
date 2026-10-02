@@ -85,6 +85,7 @@ export type Account = {
 }
 
 export type Config = {
+  confirm_instance_actions?: boolean
   admin_password?: string
   traffic_threshold: number
   enable_schedule_notification: boolean
@@ -105,6 +106,15 @@ export type Config = {
 }
 
 export type AccountSummary = {
+  instance_charge_type?: 'subscription' | 'spot' | 'pay_as_you_go' | 'unknown'
+  instance_type_updated_at?: string
+  instance_type_stale?: boolean
+  traffic_pool_id?: string
+  traffic_pool_class?: 'china' | 'international'
+  traffic_pool_instance_count?: number
+  traffic_pool_quota_conflict?: boolean
+  traffic_updated_at?: string
+  traffic_stale?: boolean
   id: number
   account: string
   remark: string
@@ -181,6 +191,7 @@ export const emptyAccount = (): Account => ({
 })
 
 export const defaultConfig = (): Config => ({
+  confirm_instance_actions: true,
   traffic_threshold: 95,
   enable_schedule_notification: false,
   shutdown_mode: 'KeepCharging',
@@ -198,3 +209,7 @@ export const defaultConfig = (): Config => ({
   },
   accounts: [],
 })
+
+export type DiscoveredInstance = { instance_id: string; instance_name: string; region_id: string; status: string; charge_type: AccountSummary['instance_charge_type'] }
+export type DiscoveryPage = { instances: DiscoveredInstance[]; next_token: string }
+export type ImportCredential = { access_key_id: string; access_key_secret: string; source_account_id?: number; site_type: SiteType }

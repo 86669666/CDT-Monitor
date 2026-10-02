@@ -311,6 +311,9 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	if err != nil {
 		return "", err
 	}
+	if domain.ConflictingTrafficPools(config.Accounts)[domain.TrafficPoolID(account)] {
+		return "", errors.New("traffic pool quota conflict; update instance settings")
+	}
 	secret, err := e.store.AccountSecret(ctx, accountID)
 	if err != nil {
 		return "", err
@@ -352,12 +355,16 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	if transient(account.InstanceStatus) {
 		interval = time.Minute
 	}
-	due := force || account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) >= interval || now.Minute() == 0 || statusChangedBySchedule
+	due := force || domain.TrafficMonth(account.UpdatedAt) != domain.TrafficMonth(time.Now()) || account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) >= interval || now.Minute() == 0 || statusChangedBySchedule
 	traffic, status := account.TrafficUsed, account.InstanceStatus
 	var trafficErr, statusErr error
 	if due {
 		var wait sync.WaitGroup
-		wait.Add(2)
+		wait.Add(3)
+		go func() {
+			defer wait.Done()
+			e.refreshInstanceMetadata(ctx, account, secret)
+		}()
 		go func() {
 			defer wait.Done()
 			defer func() {
@@ -401,7 +408,12 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 				status = domain.StatusStopping
 			}
 		}
-		if err = e.store.UpdateRuntime(ctx, account.ID, traffic, status, updatedAt); err != nil {
+		if trafficErr != nil {
+			err = e.store.UpdateInstanceStatusForAccount(ctx, account, status)
+		} else {
+			err = e.store.UpdateRuntimeForAccount(ctx, account, traffic, status, updatedAt)
+		}
+		if err != nil {
 			return "", err
 		}
 		if trafficErr == nil {
@@ -450,7 +462,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 					return "", providerError(err, account.AccessKeyID, secret)
 				}
 				status = domain.StatusStopping
-				_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
+				_ = e.store.UpdateInstanceStatusForAccount(ctx, account, status)
 				actions = append(actions, "threshold_stop")
 			}
 		}
@@ -468,7 +480,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	}
 
 	effectiveKeepAlive := resolveKeepAlive(account, config)
-	if effectiveKeepAlive && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && statusErr == nil && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
+	if effectiveKeepAlive && trafficErr == nil && (due || domain.TrafficMonth(account.UpdatedAt) == domain.TrafficMonth(time.Now())) && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && statusErr == nil && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
 		key := fmt.Sprintf("keepalive:%d:%s", account.ID, now.Format("200601021504"))
 		fresh, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "keepalive", "attempting", "")
 		if recordErr != nil {
@@ -481,7 +493,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 				return "", providerError(err, account.AccessKeyID, secret)
 			}
 			status = domain.StatusStarting
-			_ = e.store.UpdateRuntime(ctx, account.ID, traffic, status, time.Now().UTC())
+			_ = e.store.UpdateInstanceStatusForAccount(ctx, account, status)
 			_ = e.store.UpdateKeepAliveAt(ctx, account.ID, time.Now().UTC())
 			actions = append(actions, "keepalive_start")
 			event := newEvent("keepalive", "实例保活启动", "检测到实例在允许运行时段意外停止，已发送启动指令。", account.ID, map[string]string{"账号": masked(account.AccessKeyID), "实例": account.InstanceID})
@@ -532,7 +544,7 @@ func (e *Engine) executeScheduledAction(ctx context.Context, config domain.Confi
 	if action == "stop" {
 		status = domain.StatusStopping
 	}
-	_ = e.store.UpdateRuntime(ctx, account.ID, account.TrafficUsed, status, time.Now().UTC())
+	_ = e.store.UpdateInstanceStatusForAccount(ctx, account, status)
 	_ = e.addLog(ctx, "info", fmt.Sprintf("执行定时%s [%s]", map[string]string{"start": "开机", "stop": "关机"}[action], masked(account.AccessKeyID)))
 	if config.EnableScheduleMail {
 		event := newEvent("schedule", "定时任务已执行", fmt.Sprintf("实例定时%s指令已发送。", map[string]string{"start": "开机", "stop": "关机"}[action]), account.ID, map[string]string{"账号": masked(account.AccessKeyID), "实例": account.InstanceID})
@@ -584,7 +596,7 @@ func (e *Engine) control(ctx context.Context, accountID int64, action, source st
 	if action == "stop" {
 		status = domain.StatusStopping
 	}
-	if err = e.store.UpdateRuntime(ctx, account.ID, account.TrafficUsed, status, time.Now().UTC()); err != nil {
+	if err = e.store.UpdateInstanceStatusForAccount(ctx, account, status); err != nil {
 		return "", err
 	}
 	message := fmt.Sprintf("%s控制实例 [%s]：%s", source, masked(account.AccessKeyID), action)
@@ -878,15 +890,27 @@ func (e *Engine) Summary(ctx context.Context) ([]domain.AccountSummary, time.Tim
 		return nil, time.Time{}, err
 	}
 	result := make([]domain.AccountSummary, 0, len(config.Accounts))
+	samples := domain.LatestTrafficSamples(config.Accounts)
+	conflicts := domain.ConflictingTrafficPools(config.Accounts)
+	counts := make(map[string]int)
 	for _, account := range config.Accounts {
-		percentage := usagePercent(account.TrafficUsed, account.MaxTraffic)
+		counts[domain.TrafficPoolID(account)]++
+	}
+	for _, account := range config.Accounts {
+		poolID := domain.TrafficPoolID(account)
+		sample := samples[poolID]
+		trafficStale := sample.UpdatedAt.IsZero() || domain.TrafficMonth(sample.UpdatedAt) != domain.TrafficMonth(time.Now()) || time.Since(sample.UpdatedAt) > time.Duration(max(config.APIInterval*2, 180))*time.Second
+		percentage := usagePercent(sample.TrafficUsed, account.MaxTraffic)
 		item := domain.AccountSummary{
+			TrafficPoolID: poolID, TrafficPoolClass: domain.TrafficClass(account.RegionID), TrafficPoolInstanceCount: counts[poolID],
+			TrafficPoolQuotaConflict: conflicts[poolID], TrafficUpdatedAt: sample.UpdatedAt, TrafficStale: trafficStale,
 			ID: account.ID, Account: masked(account.AccessKeyID), Remark: account.Remark, Region: account.RegionID, RegionName: RegionName(account.RegionID),
-			FlowTotal: account.MaxTraffic, FlowUsed: math.Round(account.TrafficUsed*100) / 100, Percentage: percentage, Threshold: config.TrafficThreshold,
+			FlowTotal: account.MaxTraffic, FlowUsed: math.Round(sample.TrafficUsed*100) / 100, Percentage: percentage, Threshold: config.TrafficThreshold,
 			OverThreshold: percentage >= float64(config.TrafficThreshold), InstanceStatus: account.InstanceStatus, LastUpdated: account.UpdatedAt,
 			Stale:     account.UpdatedAt.IsZero() || time.Since(account.UpdatedAt) > time.Duration(max(config.APIInterval*2, 180))*time.Second,
 			KeepAlive: account.KeepAlive, ShutdownMode: account.ShutdownMode, ScheduleEnabled: account.ScheduleEnabled, StartTime: account.StartTime, StopTime: account.StopTime, DailyReport: account.DailyReport, DailyReportTime: account.DailyReportTime,
 		}
+		e.applyInstanceMetadata(ctx, account, config.APIInterval, &item)
 		if config.EnableBilling {
 			var billingError struct {
 				Message string `json:"message"`
@@ -1197,7 +1221,7 @@ func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Acc
 	if maxAge < 0 {
 		maxAge = 10 * time.Minute
 	}
-	if account.TrafficUsed > 0 && !account.UpdatedAt.IsZero() {
+	if account.TrafficUsed >= 0 && !account.UpdatedAt.IsZero() && domain.TrafficMonth(account.UpdatedAt) == domain.TrafficMonth(now) {
 		age := time.Since(account.UpdatedAt)
 		if age >= 0 && age < maxAge {
 			return account, nil
@@ -1209,7 +1233,7 @@ func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Acc
 	// A monitor job may have refreshed the account while this report waited
 	// for its per-account lock.
 	latest, err := e.store.GetAccount(ctx, account.ID)
-	if err == nil && latest.TrafficUsed > 0 && !latest.UpdatedAt.IsZero() && time.Since(latest.UpdatedAt) < maxAge {
+	if err == nil && latest.AccessKeyID == account.AccessKeyID && latest.RegionID == account.RegionID && latest.TrafficUsed >= 0 && !latest.UpdatedAt.IsZero() && domain.TrafficMonth(latest.UpdatedAt) == domain.TrafficMonth(now) && time.Since(latest.UpdatedAt) < maxAge {
 		return latest, nil
 	}
 
@@ -1223,7 +1247,7 @@ func (e *Engine) refreshTrafficForReport(ctx context.Context, account domain.Acc
 		return account, err
 	}
 	updatedAt := time.Now().UTC()
-	if err = e.store.UpdateRuntime(ctx, account.ID, traffic, account.InstanceStatus, updatedAt); err != nil {
+	if err = e.store.UpdateRuntimeForAccount(ctx, account, traffic, account.InstanceStatus, updatedAt); err != nil {
 		return account, err
 	}
 	_ = e.store.AddTrafficStats(ctx, account.ID, traffic, now)
@@ -1362,7 +1386,7 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 		sb.WriteString(fmt.Sprintf("🖥️ 实例名称：%s (%s / %s)\n", instName, RegionName(targetAcc.RegionID), masked(targetAcc.AccessKeyID)))
 		sb.WriteString(fmt.Sprintf("⏱️ 运行模式：%s\n", periodDesc))
 		sb.WriteString(fmt.Sprintf("📊 消耗流量：%s\n", formatTrafficGB(consumed)))
-		sb.WriteString(fmt.Sprintf("📈 当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(targetAcc.TrafficUsed), targetAcc.MaxTraffic, usagePercent(targetAcc.TrafficUsed, targetAcc.MaxTraffic)))
+		sb.WriteString(fmt.Sprintf("📈 共享池当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(targetAcc.TrafficUsed), targetAcc.MaxTraffic, usagePercent(targetAcc.TrafficUsed, targetAcc.MaxTraffic)))
 		if config.EnableBilling {
 			costText := "待同步"
 			if monthlyCost != nil {
@@ -1481,10 +1505,17 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 	hasCost := false
 	hasBalance := false
 
+	reportAccounts := make([]domain.Account, 0, len(items))
+	for _, it := range items {
+		reportAccounts = append(reportAccounts, it.account)
+	}
+	reportPools := domain.LatestTrafficSamples(reportAccounts)
+	for _, account := range reportPools {
+		totalMonthTraffic += account.TrafficUsed
+		totalMaxTraffic += account.MaxTraffic
+	}
 	for _, it := range items {
 		totalConsumed += it.consumed
-		totalMonthTraffic += it.account.TrafficUsed
-		totalMaxTraffic += it.account.MaxTraffic
 		if it.monthlyCost != nil {
 			hasCost = true
 			if it.currency == "$" {
@@ -1502,10 +1533,13 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 			}
 		}
 	}
-	totalConsumed = math.Round(totalConsumed*100) / 100
 	totalMonthTraffic = math.Round(totalMonthTraffic*100) / 100
 	totalMaxTraffic = math.Round(totalMaxTraffic*100) / 100
 
+	consumedSummary := formatTrafficGB(math.Round(totalConsumed*100) / 100)
+	if len(reportPools) < len(items) {
+		consumedSummary = "见逐项时段观察（共享池时段可能重叠，不相加）"
+	}
 	var sb strings.Builder
 	sb.WriteString("【CDT Monitor 每日消费与流量日报】\n")
 	sb.WriteString(fmt.Sprintf("📅 统计日期：%s (%s)\n", dateStr, config.Timezone))
@@ -1514,8 +1548,8 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 		sb.WriteString(fmt.Sprintf("（已排除 %d 台未开启日报实例）", excludedCount))
 	}
 	sb.WriteString("\n\n📊 汇总统计：\n")
-	sb.WriteString(fmt.Sprintf("• 今日/时段消耗流量总和：%s\n", formatTrafficGB(totalConsumed)))
-	sb.WriteString(fmt.Sprintf("• 当月累计使用流量总和：%s / %.0f GB", formatTrafficGB(totalMonthTraffic), totalMaxTraffic))
+	sb.WriteString(fmt.Sprintf("• 今日/时段消耗流量：%s\n", consumedSummary))
+	sb.WriteString(fmt.Sprintf("• 当月共享池流量（去重）：%s / %.0f GB", formatTrafficGB(totalMonthTraffic), totalMaxTraffic))
 	if totalMaxTraffic > 0 {
 		sb.WriteString(fmt.Sprintf(" (%.2f%%)", (totalMonthTraffic/totalMaxTraffic)*100))
 	}
@@ -1556,8 +1590,8 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 		}
 		sb.WriteString(fmt.Sprintf("%d. %s (%s / %s)\n", idx+1, instName, RegionName(it.account.RegionID), masked(it.account.AccessKeyID)))
 		sb.WriteString(fmt.Sprintf("   • 运行模式：%s\n", it.periodDesc))
-		sb.WriteString(fmt.Sprintf("   • 消耗流量：%s\n", formatTrafficGB(it.consumed)))
-		sb.WriteString(fmt.Sprintf("   • 当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(it.account.TrafficUsed), it.account.MaxTraffic, usagePercent(it.account.TrafficUsed, it.account.MaxTraffic)))
+		sb.WriteString(fmt.Sprintf("   • 该时段共享池用量变化：%s\n", formatTrafficGB(it.consumed)))
+		sb.WriteString(fmt.Sprintf("   • 共享池当月累计：%s / %.0f GB (%.2f%%)\n", formatTrafficGB(it.account.TrafficUsed), it.account.MaxTraffic, usagePercent(it.account.TrafficUsed, it.account.MaxTraffic)))
 		if config.EnableBilling {
 			costText := "待同步"
 			if it.monthlyCost != nil {
@@ -1573,7 +1607,7 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 	fields := map[string]string{
 		"统计日期":   dateStr,
 		"纳入实例":   fmt.Sprintf("%d 台", len(items)),
-		"流量消耗总和": formatTrafficGB(totalConsumed),
+		"流量消耗总和": consumedSummary,
 		"当月累计流量": fmt.Sprintf("%s / %.0f GB", formatTrafficGB(totalMonthTraffic), totalMaxTraffic),
 	}
 	if excludedCount > 0 {
@@ -1622,14 +1656,14 @@ func (e *Engine) generateAndSendDailyReportSelected(ctx context.Context, force b
 	}
 	channels := notify.EnabledChannels(config)
 	if len(channels) == 0 {
-		msg := fmt.Sprintf("日报已生成，但未启用任何通知通道 (消耗总和: %s)", formatTrafficGB(totalConsumed))
+		msg := fmt.Sprintf("日报已生成，但未启用任何通知通道 (消耗总和: %s)", consumedSummary)
 		_ = e.store.AddLog(ctx, "info", msg)
 		return msg, nil
 	}
 	if err = e.store.AddOutbox(ctx, event, channels); err != nil {
 		return "", err
 	}
-	msg := fmt.Sprintf("每日流量与账单日报已发送 (纳入 %d 台实例，消耗总和: %s)", len(items), formatTrafficGB(totalConsumed))
+	msg := fmt.Sprintf("每日流量与账单日报已发送 (纳入 %d 台实例，消耗总和: %s)", len(items), consumedSummary)
 	_ = e.store.AddLog(ctx, "info", msg)
 	return msg, nil
 }
