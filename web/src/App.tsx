@@ -3,14 +3,17 @@ import type { ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, Bell, Check, ChevronDown, ChevronRight, CircleDollarSign,
-  Clock3, Cloud, Copy, Database, ExternalLink, Eye, EyeOff, FileClock, FileText, Fingerprint, Gauge,
-  Globe2, History as HistoryIcon, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut,
+  Clock3, Cloud, Copy, Database, Eye, EyeOff, FileClock, FileText, Fingerprint, Gauge,
+  History as HistoryIcon, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut,
   Mail, Menu, Play, Plus, Power, RefreshCw, Save, Search, Server, Settings, ShieldCheck,
   Trash2, UserCog, Webhook, X, Zap,
 } from 'lucide-react'
 import { APIError, api, fetchLatestReleaseFromGitHub, waitForJob } from './api'
 import { DEFAULT_TIME_ZONE, resolveTimeZone } from './timezone'
 import TimePicker from './TimePicker'
+import InstanceImportWizard from './InstanceImportWizard'
+import InstanceActionConfirmation from './InstanceActionConfirmation'
+import { defaultTrafficQuota, trafficClass, trafficClassLabel, updateTrafficAccount, totalPoolTraffic, trafficOverviews, instanceChargeLabel } from './traffic'
 import {
   APIKeyRecord, APIKeysResponse, APIKeyScope, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyRequest, CreateAPIKeyResponse,
   History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
@@ -220,7 +223,7 @@ function SetupWizard({ onComplete, notify }: { onComplete: () => Promise<void>; 
           </div>
         )}
         {step === 2 && (
-          <AccountFields account={config.accounts[0]} onChange={(account) => setConfig({ ...config, accounts: [account] })} compact />
+          <AccountFields account={config.accounts[0]} onChange={(account) => setConfig({ ...config, accounts: updateTrafficAccount(config.accounts, 0, account) })} compact />
         )}
 
         {error && <div className="inline-error"><AlertTriangle size={16} />{error}</div>}
@@ -279,12 +282,15 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
   status: StatusResponse; config: Config; onRefresh: (fresh?: boolean) => Promise<void>; onSettings: () => void; onAdmin: () => void; onHistory: (account: AccountSummary) => void; onConfigChange?: (config: Config) => void; notify: (message: string, tone?: Toast['tone']) => void; onLogout: () => void
 }) {
   const [configuringAccount, setConfiguringAccount] = useState<Account | null>(null)
+  const [pendingAction, setPendingAction] = useState<{ account: AccountSummary; action: 'start' | 'stop'; instanceId: string } | null>(null)
+  const activeActions = useRef(new Set<number>())
   const [busy, setBusy] = useState<Record<number, string>>({})
   const [mobileMenu, setMobileMenu] = useState(false)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const running = status.accounts.filter((account) => account.instance_status === 'Running').length
   const warning = status.accounts.filter((account) => account.over_threshold).length
-  const used = status.accounts.reduce((sum, account) => sum + account.flow_used, 0)
+  const used = totalPoolTraffic(status.accounts)
+  const pools = trafficOverviews(status.accounts)
   const heartbeatAge = status.system_last_run ? Math.floor((Date.now() - new Date(status.system_last_run).getTime()) / 1000) : Infinity
 
   const openInstanceSettings = (accountSummary: AccountSummary) => {
@@ -321,9 +327,28 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
     }
   }
 
+  const requestAction = (account: AccountSummary, action: 'start' | 'stop' | 'refresh') => {
+    if (refreshingAll || activeActions.current.has(account.id)) return
+    if (action !== 'refresh' && config.confirm_instance_actions !== false) {
+      setPendingAction({ account, action, instanceId: config.accounts.find(a=>a.id===account.id)?.instance_id || '' })
+    } else void runAction(account, action)
+  }
+  const confirmAction = () => {
+    if (!pendingAction) return
+    const { account, action, instanceId } = pendingAction
+    setPendingAction(null)
+    const current = status.accounts.find(a=>a.id===account.id)
+    const target = config.accounts.find(a=>a.id===account.id)
+    if (!current || current.region !== account.region || current.instance_status !== account.instance_status || (target?.instance_id || '') !== instanceId) {
+      notify('实例信息或状态已变化，请重新选择操作', 'error'); return
+    }
+    void runAction(current, action)
+  }
   const runAction = async (account: AccountSummary, action: 'start' | 'stop' | 'refresh') => {
     const effectiveKeepAlive = account.keep_alive != null ? account.keep_alive : config.keep_alive
     if (action === 'stop' && effectiveKeepAlive) { notify('保活启用时不能手动关机', 'error'); return }
+    if (activeActions.current.has(account.id)) return
+    activeActions.current.add(account.id)
     setBusy((value) => ({ ...value, [account.id]: action }))
     try {
       const path = action === 'refresh' ? `/api/v1/accounts/${account.id}/refresh` : `/api/v1/accounts/${account.id}/actions/${action}`
@@ -332,7 +357,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
       await onRefresh(true)
       notify(action === 'refresh' ? '实例状态已刷新' : `已发送${action === 'start' ? '开机' : '关机'}指令`, 'success')
     } catch (error) { notify(error instanceof Error ? error.message : '任务提交失败', 'error') }
-    finally { setBusy((value) => { const next = { ...value }; delete next[account.id]; return next }) }
+    finally { activeActions.current.delete(account.id); setBusy((value) => { const next = { ...value }; delete next[account.id]; return next }) }
   }
   const logout = async () => {
     await api('/api/v1/auth/logout', { method: 'POST', body: '{}' }).catch(() => undefined)
@@ -383,8 +408,18 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
       <section className="metric-strip">
         <Metric icon={<Server />} label="实例总数" value={`${status.accounts.length}`} suffix="台" tone="blue" />
         <Metric icon={<Activity />} label="运行中" value={`${running}`} suffix="台" tone="green" />
-        <Metric icon={<Gauge />} label="累计流量" value={used.toFixed(1)} suffix="GB" tone="cyan" />
+        <Metric icon={<Gauge />} label="共享池累计流量" value={used.toFixed(1)} suffix="GB" tone="cyan" />
         <Metric icon={<AlertTriangle />} label="阈值告警" value={`${warning}`} suffix="项" tone="amber" />
+      </section>
+
+      <section className="cdt-overview" aria-label="CDT 国内国际流量额度">
+        {pools.map(pool => <article key={pool.kind} className={`glass-card cdt-quota cdt-quota--${pool.kind}`}>
+          <div className="cdt-quota__head"><h2>{pool.kind === 'china' ? '国内 CDT' : '国际 CDT'}</h2><span>{pool.kind === 'china' ? '中国内地' : '非中国内地'}</span></div>
+          <p className="cdt-quota__label">本月剩余 / 总量</p>
+          <div className="cdt-quota__value"><strong>{!pool.pools || pool.stale || pool.conflict ? '—' : pool.remaining.toFixed(2)}</strong><span> / {pool.pools && !pool.conflict ? pool.total.toFixed(0) : '—'} <small>GB</small></span></div>
+          <div className="progress-track"><i style={{ width: `${pool.total && !pool.conflict ? Math.min(100, pool.used / pool.total * 100) : 0}%` }} /></div>
+          <p className="cdt-quota__note">{pool.conflict ? '共享池额度冲突，请先统一设置' : !pool.pools ? '尚未配置此类流量池' : pool.stale ? '用量待刷新，剩余额度暂不可用' : `已用 ${pool.used.toFixed(2)} GB · ${pool.pools} 个共享池（已去重）`}</p>
+        </article>)}
       </section>
 
       <div className="section-heading"><div><p className="eyebrow">MANAGED INSTANCES</p><h2>实例与流量</h2></div><span>{status.accounts.length} 个配置</span></div>
@@ -392,9 +427,10 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         <button className="empty-state" onClick={onSettings}><Cloud /><h3>添加第一个云端实例</h3><p>进入设置完成 AccessKey 与实例信息配置</p><span>打开设置<ChevronRight size={16} /></span></button>
       ) : (
         <section className="account-grid">
-          {status.accounts.map((account) => <AccountCard key={account.id} account={account} busy={refreshingAll ? 'refresh' : busy[account.id]} keepAlive={config.keep_alive} billingEnabled={config.enable_billing} timeZone={config.timezone} onAction={(action) => void runAction(account, action)} onConfigure={() => openInstanceSettings(account)} onHistory={() => onHistory(account)} />)}
+          {status.accounts.map((account) => <AccountCard key={account.id} account={account} busy={refreshingAll ? 'refresh' : busy[account.id]} keepAlive={config.keep_alive} billingEnabled={config.enable_billing} timeZone={config.timezone} onAction={(action) => requestAction(account, action)} onConfigure={() => openInstanceSettings(account)} onHistory={() => onHistory(account)} />)}
         </section>
       )}
+      {pendingAction && <InstanceActionConfirmation account={pendingAction.account} instanceId={pendingAction.instanceId} action={pendingAction.action} onCancel={()=>setPendingAction(null)} onConfirm={confirmAction} />}
       {configuringAccount && (
         <InstanceSettingsModal
           account={configuringAccount}
@@ -421,13 +457,14 @@ function AccountCard({ account, busy, keepAlive, billingEnabled, timeZone, onAct
     <article className={`glass-card account-card ${account.over_threshold ? 'account-card--alert' : ''}`}>
       <header className="account-card__header">
         <div className={`status-icon ${statusTone}`}><Server size={20} /></div>
-        <div className="account-title"><h3>{account.remark || account.account}</h3><span>{account.region_name}</span></div>
+        <div className="account-title"><h3>{account.remark || account.account}</h3><span>{account.region_name}</span><div className={`purchase-badge purchase-badge--${account.instance_charge_type || 'unknown'}`}>{instanceChargeLabel(account.instance_charge_type)}{account.instance_type_stale && account.instance_charge_type && account.instance_charge_type !== 'unknown' ? ' · 待刷新' : ''}</div></div>
         <div className="account-card__side">
           <div className={`status-pill ${statusTone}`}><i />{statusLabel(account.instance_status)}</div>
           {billingEnabled && <div className="account-billing" aria-label="账单与余额"><div><span>本月费用</span><b>{account.monthly_cost === undefined ? '待同步' : `${currency}${account.monthly_cost.toFixed(2)}`}</b></div><div><span>账户余额</span><b>{account.balance === undefined ? '待同步' : `${currency}${account.balance.toFixed(2)}`}</b></div><small className={account.billing_error ? 'billing-error' : ''}>{account.billing_error || (hasBilling ? '已同步' : '待同步')}</small></div>}
         </div>
       </header>
-      <div className="traffic-value"><div><span>本月 CDT 流量</span><strong>{account.flow_used.toFixed(2)}</strong><small> / {account.flow_total.toFixed(0)} GB</small></div><button className="mini-icon" onClick={onHistory} aria-label="查看历史流量"><HistoryIcon size={17} /></button></div>
+      <div className="traffic-value"><div><span>{trafficClassLabel(account.region)}共享池本月用量</span><strong>{account.flow_used.toFixed(2)}</strong><small> / {account.flow_total.toFixed(0)} GB</small></div><button className="mini-icon" onClick={onHistory} aria-label="查看历史流量"><HistoryIcon size={17} /></button></div>
+      <p className="inline-hint">本系统 {account.traffic_pool_instance_count || 1} 台实例共用此池（含账号下其他 CDT 产品用量，不按实例累加）{account.traffic_pool_quota_conflict ? ' · 额度冲突，请在设置→云端实例中统一额度；自动监控已暂停' : ''}{account.traffic_stale ? ' · 池用量待刷新' : ''}</p>
       <div className="progress-track"><i style={{ width: `${Math.min(100, account.percentage)}%` }} className={account.over_threshold ? 'danger' : account.percentage >= account.threshold * .8 ? 'warning' : ''} /></div>
       <div className="progress-meta"><span>{account.percentage.toFixed(2)}% 已使用</span><span>阈值 {account.threshold}%</span></div>
       <footer className="account-card__footer">
@@ -640,16 +677,20 @@ function GeneralSettings({ config, onChange }: { config: Config; onChange: (conf
       <div className="field field--wide"><label>停机模式</label><Segmented value={config.shutdown_mode} options={[['KeepCharging', '普通停机'], ['StopCharging', '节省停机']]} onChange={(value) => onChange({ ...config, shutdown_mode: value as Config['shutdown_mode'] })} /></div>
     </div>
     <div className="toggle-list">
+      <ToggleRow title="开关机操作二次确认" icon={<ShieldCheck />} checked={config.confirm_instance_actions !== false} onChange={(checked) => onChange({ ...config, confirm_instance_actions: checked })} />
       <ToggleRow title="抢占式实例保活" icon={<Activity />} checked={config.keep_alive} onChange={(checked) => onChange({ ...config, keep_alive: checked })} />
       <ToggleRow title="定时任务通知" icon={<Bell />} checked={config.enable_schedule_notification} onChange={(checked) => onChange({ ...config, enable_schedule_notification: checked })} />
       <ToggleRow title="每日消费与流量日报" icon={<FileText />} checked={config.enable_daily_report} onChange={(checked) => onChange({ ...config, enable_daily_report: checked })} />
       <ToggleRow title="账单与余额" icon={<CircleDollarSign />} checked={config.enable_billing} onChange={(checked) => onChange({ ...config, enable_billing: checked })} />
     </div>
+    <p className="inline-hint">开关机操作二次确认默认开启，仅影响首页手动开关机；刷新和自动监控规则不受影响。</p>
   </div>
 }
 
 function AccountSettings({ config, onChange }: { config: Config; onChange: (config: Config) => void }) {
-  const update = (index: number, account: Account) => { const accounts = [...config.accounts]; accounts[index] = account; onChange({ ...config, accounts }) }
+  const [importOpen, setImportOpen] = useState(false)
+  const [importNotice, setImportNotice] = useState('')
+  const update = (index: number, account: Account) => onChange({ ...config, accounts: updateTrafficAccount(config.accounts, index, account) })
   const remove = (index: number) => onChange({ ...config, accounts: config.accounts.filter((_, current) => current !== index) })
   const clone = (index: number) => {
     if (config.accounts.length >= MAX_ACCOUNTS) return
@@ -667,7 +708,10 @@ function AccountSettings({ config, onChange }: { config: Config; onChange: (conf
     accounts.splice(index + 1, 0, copy)
     onChange({ ...config, accounts })
   }
-  return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<Server />} title="云端实例" subtitle="ALIYUN ACCOUNTS" /><button className="button button--secondary button--small" disabled={config.accounts.length >= MAX_ACCOUNTS} onClick={() => onChange({ ...config, accounts: config.accounts.length >= MAX_ACCOUNTS ? config.accounts : [...config.accounts, emptyAccount()] })}><Plus />添加实例</button></div>
+  return <div className="settings-section"><div className="section-title-row"><SectionTitle icon={<Server />} title="云端实例" subtitle="ALIYUN ACCOUNTS" /><div className="account-import-actions"><button className="button button--primary button--small" disabled={config.accounts.length >= MAX_ACCOUNTS} onClick={()=>setImportOpen(true)}><Cloud/>从阿里云导入</button><button className="button button--secondary button--small" disabled={config.accounts.length >= MAX_ACCOUNTS} onClick={() => onChange({ ...config, accounts: config.accounts.length >= MAX_ACCOUNTS ? config.accounts : [...config.accounts, emptyAccount()] })}><Plus />添加实例</button></div></div>
+    {importNotice && <p className="import-notice" role="status">{importNotice}</p>}
+    {importOpen && <InstanceImportWizard config={config} regions={regions} onClose={()=>setImportOpen(false)} onImport={accounts=>{onChange({...config,accounts:[...config.accounts,...accounts]});setImportOpen(false);setImportNotice(`已加入 ${accounts.length} 台实例，点击“保存更改”后生效。`)}}/>}
+    <p className="inline-hint">CDT 按账号共享：中国内地默认 20 GB/月，非中国内地（含香港）默认 200 GB/月。同一 AccessKey、同一流量类别的实例共享额度和用量，修改额度会同步同池实例。同一账号请统一使用同一 AccessKey；不同 AccessKey 暂不自动合并。站点类型仅用于账单，不决定流量归属。</p>
     <div className="account-settings-list">{config.accounts.length === 0 && <div className="subtle-empty"><Database />尚未配置实例</div>}{config.accounts.map((account, index) => <div className="account-editor" key={account.id || `new-${index}`}><div className="account-editor__head"><span>{account.remark || `实例 ${index + 1}`}</span><div className="account-editor__actions"><IconButton label="复制" onClick={() => clone(index)}><Copy /></IconButton><IconButton label="删除" tone="danger" onClick={() => remove(index)}><Trash2 /></IconButton></div></div><AccountFields account={account} onChange={(next) => update(index, next)} /></div>)}</div>
   </div>
 }
@@ -677,8 +721,8 @@ function AccountFields({ account, onChange, compact = false }: { account: Accoun
     <Field label="AccessKey ID"><input autoComplete="off" value={account.access_key_id} maxLength={MAX_ACCESS_KEY_ID_CHARS} onChange={(event) => onChange({ ...account, access_key_id: event.target.value.replace(/[^A-Za-z0-9-]/g, '').slice(0, MAX_ACCESS_KEY_ID_CHARS) })} placeholder="LTAI5t…" /></Field>
     <Field label={`AccessKey Secret${account.secret_configured ? ' · 已配置' : ''}`}><input type="password" autoComplete="new-password" value={account.access_key_secret || ''} onChange={(event) => onChange({ ...account, access_key_secret: Array.from(event.target.value).slice(0, MAX_ACCESS_KEY_SECRET_RUNES).join('') })} placeholder={account.secret_configured ? '留空保持不变' : '输入 Secret'} /></Field>
     <Field label="实例 ID"><input value={account.instance_id} maxLength={MAX_INSTANCE_ID_CHARS} onChange={(event) => onChange({ ...account, instance_id: event.target.value.replace(/[^A-Za-z0-9-_]/g, '').slice(0, MAX_INSTANCE_ID_CHARS) })} placeholder="i-bp…" /></Field>
-    <SelectField label="地域" value={account.region_id} options={regions} searchable searchPlaceholder="搜索地域名称或代码" onChange={(value) => onChange({ ...account, region_id: value })} />
-    <Field label="流量额度"><input type="number" min={1} max={MAX_ACCOUNT_TRAFFIC_GB} value={account.max_traffic} onChange={(event) => { const next = Number(event.target.value); onChange({ ...account, max_traffic: !Number.isFinite(next) || next <= 0 ? 1 : Math.min(MAX_ACCOUNT_TRAFFIC_GB, next) }) }} /><span className="suffix">GB</span></Field>
+    <SelectField label="地域" value={account.region_id} options={regions} searchable searchPlaceholder="搜索地域名称或代码" onChange={(value) => onChange({ ...account, region_id: value, max_traffic: trafficClass(value) === trafficClass(account.region_id) ? account.max_traffic : defaultTrafficQuota(value) })} />
+    <Field label={`${trafficClassLabel(account.region_id)}共享池额度`}><input type="number" min={1} max={MAX_ACCOUNT_TRAFFIC_GB} value={account.max_traffic} onChange={(event) => { const next = Number(event.target.value); onChange({ ...account, max_traffic: !Number.isFinite(next) || next <= 0 ? 1 : Math.min(MAX_ACCOUNT_TRAFFIC_GB, next) }) }} /><span className="suffix">GB</span></Field>
     <SelectField label="站点类型" value={account.site_type} options={[{ value: 'china', label: '中国站', meta: 'CNY' }, { value: 'international', label: '国际站', meta: 'USD' }]} onChange={(value) => onChange({ ...account, site_type: value as Account['site_type'] })} />
     <Field label="备注"><input value={account.remark} maxLength={MAX_ACCOUNT_REMARK_RUNES} onChange={(event) => onChange({ ...account, remark: Array.from(event.target.value).slice(0, MAX_ACCOUNT_REMARK_RUNES).join('') })} placeholder="香港主节点" /></Field>
     <ToggleRow title="每日定时开关机" icon={<Clock3 />} checked={account.schedule_enabled} onChange={(checked) => onChange({ ...account, schedule_enabled: checked })} />
@@ -946,12 +990,7 @@ function AboutSettings({ notify, timeZone }: { notify: (message: string, tone?: 
       setChecking(false)
     }
   }
-  return <div className="settings-section about-section"><SectionTitle icon={<Info />} title="关于 CDT Monitor" subtitle="PROJECT INFORMATION" /><div className="about-version"><div><span>当前版本</span><b>{info?.version || '加载中...'}</b><small>{info?.commit && info.commit !== 'unknown' ? `${info.commit} · ${formatBuiltAt(info.built_at, timeZone)}` : '构建信息未知'}</small></div><button className="button button--secondary button--small" onClick={() => void checkVersion()} disabled={checking}>{checking ? <LoaderCircle className="spin" /> : <RefreshCw />}检查更新</button></div>{info?.latest_version && <p className="inline-hint">GitHub 最新版本：{info.latest_version}{info.latest_version === info.version ? '，当前已是最新版本' : '，请查看发布页获取更新'}</p>}<div className="about-links"><a href="https://github.com/wang4386/CDT-Monitor" target="_blank" rel="noreferrer"><SiteFavicon domain="github.com" label="GitHub" /><span><b>GitHub 仓库</b><small>源代码、Issue 与 Release</small></span><ExternalLink /></a><a href="https://qninq.cn" target="_blank" rel="noreferrer"><SiteFavicon domain="qninq.cn" label="qninq.cn" /><span><b>作者博客</b><small>qninq.cn</small></span><ExternalLink /></a><a href="https://www.nodeseek.com/" target="_blank" rel="noreferrer"><SiteFavicon domain="nodeseek.com" label="NodeSeek" /><span><b>NodeSeek</b><small>社区交流</small></span><ExternalLink /></a><a href="https://linux.do/" target="_blank" rel="noreferrer"><SiteFavicon domain="linux.do" label="linux.do" /><span><b>Linux.do</b><small>技术社区交流</small></span><ExternalLink /></a></div></div>
-}
-
-function SiteFavicon({ domain, label }: { domain: string; label: string }) {
-  const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading')
-  return <span className="about-link__favicon" data-state={state}><img className={state === 'failed' ? 'is-hidden' : ''} src={`https://a.favicon.im/${domain}`} alt={`${label} favicon`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onLoad={() => setState('loaded')} onError={() => setState('failed')} />{state === 'loading' && <LoaderCircle className="spin" aria-hidden="true" />}{state === 'failed' && <Globe2 aria-hidden="true" />}</span>
+  return <div className="settings-section about-section"><SectionTitle icon={<Info />} title="关于 CDT Monitor" subtitle="PROJECT INFORMATION" /><div className="about-version"><div><span>当前版本</span><b>{info?.version || '加载中...'}</b><small>{info?.commit && info.commit !== 'unknown' ? `${info.commit} · ${formatBuiltAt(info.built_at, timeZone)}` : '构建信息未知'}</small></div><button className="button button--secondary button--small" onClick={() => void checkVersion()} disabled={checking}>{checking ? <LoaderCircle className="spin" /> : <RefreshCw />}检查更新</button></div>{info?.latest_version && <p className="inline-hint">GitHub 最新版本：{info.latest_version}{info.latest_version === info.version ? '，当前已是最新版本' : '，请查看发布页获取更新'}</p>}</div>
 }
 
 function HistoryModal({ account, timeZone, onClose }: { account: AccountSummary; timeZone: string; onClose: () => void }) {
