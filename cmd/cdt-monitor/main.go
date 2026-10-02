@@ -47,7 +47,7 @@ func main() {
 		return
 	}
 	if command == "healthcheck" {
-		client := &http.Client{Timeout: 3 * time.Second}
+		client := healthcheckClient()
 		response, checkErr := client.Get("http://127.0.0.1" + normalizeListen(*listen) + "/healthz")
 		if checkErr != nil || response.StatusCode != http.StatusOK {
 			if response != nil {
@@ -127,6 +127,17 @@ func envInt(key string, fallback int) int {
 		return value
 	}
 	return fallback
+}
+
+var errHealthcheckRedirect = errors.New("healthcheck redirects are not allowed")
+
+func healthcheckClient() *http.Client {
+	return &http.Client{
+		Timeout: 3 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errHealthcheckRedirect
+		},
+	}
 }
 
 func normalizeListen(listen string) string {

@@ -39,14 +39,9 @@ android {
         }
     }
 
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
-        }
-    }
+    // Prototype CI ships one APK per build type plus an AAB. Do not
+    // restore ABI splits without a packaging reason; they multiply
+    // assemble time on the manual widget workflow.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 
 	"github.com/wang4386/CDT-Monitor/internal/security"
 )
@@ -30,7 +31,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     last_keep_alive_at INTEGER NOT NULL DEFAULT 0,
     remark TEXT NOT NULL DEFAULT '',
     site_type TEXT NOT NULL DEFAULT 'china',
-    deleted_at INTEGER NOT NULL DEFAULT 0
+    deleted_at INTEGER NOT NULL DEFAULT 0,
+    daily_report_time TEXT NOT NULL DEFAULT '00:00'
 );
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,6 +143,16 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
     UNIQUE(event_id, channel)
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_claim ON notification_outbox(status, available_at, created_at);
+CREATE TABLE IF NOT EXISTS daily_traffic_snapshots (
+    account_id INTEGER NOT NULL,
+    date_str TEXT NOT NULL,
+    start_traffic REAL NOT NULL DEFAULT -1,
+    stop_traffic REAL NOT NULL DEFAULT -1,
+    start_time TEXT NOT NULL DEFAULT '',
+    stop_time TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(account_id, date_str)
+);
 `
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -151,6 +163,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		{"remark", "TEXT NOT NULL DEFAULT ''"},
 		{"site_type", "TEXT NOT NULL DEFAULT 'china'"},
 		{"deleted_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"keep_alive", "INTEGER"},
+		{"shutdown_mode", "TEXT NOT NULL DEFAULT ''"},
+		{"daily_report", "INTEGER"},
+		{"daily_report_time", "TEXT NOT NULL DEFAULT '00:00'"},
 	} {
 		if err := s.ensureColumn(ctx, "accounts", col.name, col.definition); err != nil {
 			return err
@@ -238,16 +254,28 @@ func (s *Store) ensureColumn(ctx context.Context, table, column, definition stri
 
 func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
-		for _, key := range []string{"notify_password", "notify_tg_token", "notify_tg_proxy_pass", "notify_wh_headers"} {
+		keys := make([]string, 0, len(sensitiveSettings))
+		for key := range sensitiveSettings {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
 			var value string
 			err := tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&value)
-			if err == sql.ErrNoRows || value == "" || security.IsEncrypted(value) {
+			if err == sql.ErrNoRows || value == "" || security.IsBoundCiphertext(value) {
 				continue
 			}
 			if err != nil {
 				return err
 			}
-			encrypted, err := s.Encrypt(value)
+			plain := value
+			if security.IsEncrypted(value) {
+				plain, err = s.Decrypt(value)
+				if err != nil {
+					return err
+				}
+			}
+			encrypted, err := s.EncryptAAD(plain, key)
 			if err != nil {
 				return err
 			}
@@ -255,18 +283,19 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 				return err
 			}
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id, access_key_secret FROM accounts WHERE access_key_secret != ''`)
+		rows, err := tx.QueryContext(ctx, `SELECT id, access_key_id, access_key_secret FROM accounts WHERE access_key_secret != ''`)
 		if err != nil {
 			return err
 		}
 		type item struct {
-			id     int64
-			secret string
+			id          int64
+			accessKeyID string
+			secret      string
 		}
 		var items []item
 		for rows.Next() {
 			var it item
-			if err = rows.Scan(&it.id, &it.secret); err != nil {
+			if err = rows.Scan(&it.id, &it.accessKeyID, &it.secret); err != nil {
 				rows.Close()
 				return err
 			}
@@ -274,17 +303,53 @@ func (s *Store) migratePlaintextSecrets(ctx context.Context) error {
 		}
 		rows.Close()
 		for _, it := range items {
-			if security.IsEncrypted(it.secret) {
-				continue
-			}
-			encrypted, err := s.Encrypt(it.secret)
+			plain, err := s.decryptAccountSecretLegacy(it.secret, it.accessKeyID)
 			if err != nil {
 				return err
+			}
+			encrypted, err := s.EncryptAAD(plain, security.AccountBoundAAD(it.accessKeyID))
+			if err != nil {
+				return err
+			}
+			if encrypted == it.secret {
+				continue
 			}
 			if _, err = tx.ExecContext(ctx, `UPDATE accounts SET access_key_secret=? WHERE id=?`, encrypted, it.id); err != nil {
 				return err
 			}
 		}
-		return nil
+		var password string
+		err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='admin_password'`).Scan(&password)
+		if err == sql.ErrNoRows || password == "" {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if security.IsCurrentPasswordHash(password) {
+			return nil
+		}
+		if security.IsArgon2id(password) {
+			return fmt.Errorf("admin password hash is not a supported argon2id encoding")
+		}
+		hash, err := security.HashLegacyPassword(password)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE settings SET value=? WHERE key='admin_password'`, hash)
+		return err
 	})
+}
+
+func (s *Store) decryptAccountSecretLegacy(encrypted, accessKeyID string) (string, error) {
+	if encrypted == "" {
+		return "", nil
+	}
+	if plain, err := s.DecryptAAD(encrypted, security.AccountBoundAAD(accessKeyID)); err == nil {
+		return plain, nil
+	}
+	if plain, err := s.DecryptAAD(encrypted, security.AccountSecretAAD); err == nil {
+		return plain, nil
+	}
+	return s.Decrypt(encrypted)
 }

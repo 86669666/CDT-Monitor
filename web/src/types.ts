@@ -1,3 +1,61 @@
+export type SiteType = 'china' | 'international'
+export type ShutdownMode = 'KeepCharging' | 'StopCharging'
+export type ThresholdAction = 'stop_and_notify' | 'notify_only'
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type APIKeyScope = 'widget:read' | 'instance:control' | 'cron:run'
+
+export const CLEAR_SECRET_SENTINEL = '__clear__'
+export const MAX_ACCOUNTS = 32
+export const MAX_ACCOUNT_REMARK_RUNES = 64
+export const MAX_ACCOUNT_TRAFFIC_GB = 1_000_000
+export const MAX_ACCESS_KEY_ID_CHARS = 64
+export const MAX_INSTANCE_ID_CHARS = 64
+export const MAX_TELEGRAM_CHAT_RUNES = 64
+export const MAX_NOTIFY_EMAIL_RUNES = 254
+export const MAX_NOTIFY_TCP_PORT = 65535
+export const MAX_WEBHOOK_HEADERS_RUNES = 4096
+export const MAX_WEBHOOK_BODY_RUNES = 8192
+export const MAX_NOTIFY_URL_RUNES = 2048
+export const MAX_NOTIFY_SECRET_RUNES = 255
+export const MAX_NOTIFY_DIAL_HOST_RUNES = 253
+export const MAX_TIMEZONE_RUNES = 64
+export const MAX_PASSWORD_RUNES = 128
+export const MAX_ACCESS_KEY_SECRET_RUNES = 128
+export const MAX_API_KEYS = 16
+export const MAX_PASSKEYS = 8
+export const MAX_PASSKEY_NAME_RUNES = 64
+export const MAX_API_KEY_NAME_RUNES = 64
+
+export function liveNotifyPort(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  return Math.min(MAX_NOTIFY_TCP_PORT, Math.floor(value))
+}
+
+export function liveNotifyPortString(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (!/^\d+$/.test(trimmed)) return trimmed
+  const port = Number(trimmed)
+  if (port < 1) return trimmed
+  return String(Math.min(MAX_NOTIFY_TCP_PORT, port))
+}
+
+export function liveNotifyHeaderText(value: string) {
+  if (value === CLEAR_SECRET_SENTINEL) return value
+  return Array.from(value).filter((ch) => ch !== '\r' && ch !== '\n' && ch !== '\u0000').join('')
+}
+
+export function liveScheduleClock(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const match = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(trimmed)
+  if (!match) return trimmed
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) return trimmed
+  return `${match[1]}:${match[2]}`
+}
+
 export type Account = {
   id: number
   access_key_id: string
@@ -10,23 +68,38 @@ export type Account = {
   start_time: string
   stop_time: string
   remark: string
-  site_type: 'china' | 'international'
+  site_type: SiteType
+  traffic_used?: number
+  instance_status?: string
+  updated_at?: string
+  last_keep_alive_at?: string
+  monthly_cost?: number
+  balance?: number
+  currency?: string
+  billing_error?: string
+  billing_updated_at?: string
+  keep_alive?: boolean | null
+  shutdown_mode?: '' | 'KeepCharging' | 'StopCharging'
+  daily_report?: boolean | null
+  daily_report_time?: string
 }
 
 export type Config = {
   admin_password?: string
   traffic_threshold: number
   enable_schedule_notification: boolean
-  shutdown_mode: 'KeepCharging' | 'StopCharging'
-  threshold_action: 'stop_and_notify' | 'notify_only'
+  shutdown_mode: ShutdownMode
+  threshold_action: ThresholdAction
   keep_alive: boolean
   api_interval: number
   enable_billing: boolean
   timezone: string
+  enable_daily_report: boolean
+  daily_report_time: string
   notifications: {
     email: { enabled: boolean; to: string; host: string; port: number; username: string; password?: string; password_configured: boolean; security: string }
-    telegram: { enabled: boolean; token?: string; token_configured: boolean; chat_id: string; proxy_type: string; proxy_url: string; proxy_ip: string; proxy_port: string; proxy_user: string; proxy_pass?: string; proxy_password_configured: boolean }
-    webhook: { enabled: boolean; url: string; method: string; request_type: string; headers?: string; body: string; provider?: string; secret?: string; secret_configured?: boolean }
+    telegram: { enabled: boolean; token?: string; token_configured: boolean; chat_id: string; proxy_type: string; proxy_url?: string; proxy_url_configured: boolean; proxy_ip: string; proxy_port: string; proxy_user: string; proxy_pass?: string; proxy_password_configured: boolean }
+    webhook: { enabled: boolean; url?: string; method: string; request_type: string; headers?: string; body?: string; provider?: string; secret?: string; secret_configured: boolean; headers_configured: boolean; url_configured: boolean; body_configured: boolean }
   }
   accounts: Account[]
 }
@@ -49,20 +122,49 @@ export type AccountSummary = {
   balance?: number
   currency?: string
   billing_error?: string
+  keep_alive?: boolean | null
+  shutdown_mode?: string
+  schedule_enabled?: boolean
+  start_time?: string
+  stop_time?: string
+  daily_report?: boolean | null
+  daily_report_time?: string
 }
 
 export type StatusResponse = { accounts: AccountSummary[]; system_last_run: string }
-export type Job = { id: string; status: 'queued' | 'running' | 'completed' | 'failed'; result?: string; error?: string }
+export type Job = {
+  id: string
+  type: string
+  account_id?: number
+  status: JobStatus
+  result?: string
+  error?: string
+  attempts: number
+  max_attempts: number
+  available_at: string
+  created_at: string
+  updated_at: string
+}
+export type JobsResponse = { jobs: Job[] }
 export type History = { hourly: { at: string; traffic: number }[]; daily: { at: string; traffic: number }[] }
 export type LogEntry = { id: number; type: string; message: string; created_at: string }
-export type APIKeyRecord = { id: number; name: string; scopes: string[]; created_at: string; last_used_at?: string; expires_at?: string; revoked_at?: string }
+export type LogsResponse = { logs: LogEntry[] | null }
+export type APIKeyRecord = { id: number; name: string; scopes: APIKeyScope[] | null; created_at: string; last_used_at?: string; expires_at?: string; revoked_at?: string }
+export type APIKeysResponse = { keys: APIKeyRecord[] }
+export type CreateAPIKeyRequest = { name: string; scopes: APIKeyScope[]; expires_at?: string }
+export type CreateAPIKeyResponse = { key: APIKeyRecord; token: string }
 export type PasskeyRecord = { id: number; name: string; created_at: string; last_used_at?: string }
+export type PasskeysResponse = { passkeys: PasskeyRecord[] }
+export type PasskeyCeremony = { session_id: string; public_key: { publicKey: Record<string, unknown> } }
+export type InitStatus = { initialized: boolean }
+export type AuthSuccess = { success: true; csrf_token: string }
+export type SuccessResponse = { success: true }
+export type APIErrorBody = { error: { code: string; message: string } }
 export type SystemInfo = { version: string; commit: string; built_at: string; repository: string; release_url: string; latest_version?: string; check_error?: string }
 
 export const emptyAccount = (): Account => ({
   id: 0,
   access_key_id: '',
-  access_key_secret: '',
   secret_configured: false,
   region_id: 'cn-hongkong',
   instance_id: '',
@@ -72,6 +174,10 @@ export const emptyAccount = (): Account => ({
   stop_time: '23:30',
   remark: '',
   site_type: 'china',
+  keep_alive: undefined,
+  shutdown_mode: '',
+  daily_report: undefined,
+  daily_report_time: "00:00",
 })
 
 export const defaultConfig = (): Config => ({
@@ -83,10 +189,12 @@ export const defaultConfig = (): Config => ({
   api_interval: 600,
   enable_billing: false,
   timezone: 'Asia/Shanghai',
+  enable_daily_report: false,
+  daily_report_time: '22:00',
   notifications: {
-    email: { enabled: false, to: '', host: '', port: 465, username: '', password: '', password_configured: false, security: 'ssl' },
-    telegram: { enabled: false, token: '', token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_ip: '', proxy_port: '', proxy_user: '', proxy_pass: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', headers: '', body: '', provider: 'generic', secret: '', secret_configured: false },
+    email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
+    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url_configured: false, proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
+    webhook: { enabled: false, method: 'GET', request_type: 'JSON', provider: 'generic', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false },
   },
   accounts: [],
 })

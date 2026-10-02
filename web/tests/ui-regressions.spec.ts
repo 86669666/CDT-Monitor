@@ -9,10 +9,12 @@ const config = {
   api_interval: 600,
   enable_billing: true,
   timezone: 'Asia/Shanghai',
+  enable_daily_report: false,
+  daily_report_time: '22:00',
   notifications: {
     email: { enabled: false, to: '', host: '', port: 465, username: '', password_configured: false, security: 'ssl' },
-    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url: '', proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
-    webhook: { enabled: false, url: '', method: 'GET', request_type: 'JSON', body: '' },
+    telegram: { enabled: false, token_configured: false, chat_id: '', proxy_type: 'none', proxy_url_configured: false, proxy_ip: '', proxy_port: '', proxy_user: '', proxy_password_configured: false },
+    webhook: { enabled: false, method: 'GET', request_type: 'JSON', provider: 'generic', secret_configured: false, headers_configured: false, url_configured: false, body_configured: false },
   },
   accounts: [{
     id: 1,
@@ -155,13 +157,13 @@ test('top refresh forces every configured instance and reports completion', asyn
   await page.route('**/api/v1/accounts/refresh', (route) => {
     refreshAllCalls += 1
     expect(route.request().method()).toBe('POST')
-    return route.fulfill({ status: 202, json: { jobs: [{ id: 'refresh-1', status: 'pending' }, { id: 'refresh-2', status: 'pending' }] } })
+    return route.fulfill({ status: 202, json: { jobs: [{ id: 'refresh-1', status: 'queued', type: 'refresh_account', account_id: 1, attempts: 0, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { id: 'refresh-2', status: 'queued', type: 'refresh_account', account_id: 2, attempts: 0, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } })
   })
   await page.route('**/api/v1/jobs/**', (route) => {
     const id = route.request().url().split('/').pop() || ''
     const count = (jobPolls.get(id) || 0) + 1
     jobPolls.set(id, count)
-    return route.fulfill({ json: { id, status: count > 1 ? 'completed' : 'running' } })
+    return route.fulfill({ json: { id, type: 'refresh_account', status: count > 1 ? 'completed' : 'running', attempts: count, max_attempts: 3, available_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() } })
   })
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -228,7 +230,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
   const longToken = 'cdt_' + 'A1b2C3d4'.repeat(12)
   await page.route('**/api/v1/api-keys', (route) => {
     if (route.request().method() === 'POST') {
-      return route.fulfill({ status: 201, json: { token: longToken } })
+      return route.fulfill({ status: 201, json: { key: { id: 3, name: '桌面小组件', scopes: ['widget:read'], created_at: new Date().toISOString() }, token: longToken } })
     }
     return route.fulfill({ json: {
       keys: [
@@ -261,6 +263,22 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await expect(page.locator('.metric--amber .metric-icon')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('dashboard-billing-desktop.png'), fullPage: true })
 
+  await page.getByRole('button', { name: '实例设置' }).click()
+  const modal = page.locator('.instance-settings-modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('抢占式保活')).toBeVisible()
+  await expect(modal.getByText('默认停机方式')).toBeVisible()
+  await expect(modal.getByText('每日定时开关机')).toBeVisible()
+  await expect(modal.getByText('参与日报推送')).toBeVisible()
+  // Non-scheduled: daily report time input is visible
+  await expect(modal.getByLabel('日报推送时间')).toBeVisible()
+  // Enable schedule: daily report time picker is hidden, shutdown timing is explained
+  await modal.locator('.toggle-row:has-text("每日定时开关机")').click()
+  await expect(modal.getByLabel('日报推送时间')).not.toBeVisible()
+  await expect(modal.locator('.report-time-note')).toContainText('每日 23:30 关机时')
+  await page.screenshot({ path: testInfo.outputPath('scheduled-report-note-desktop.png') })
+  await modal.locator('header').getByRole('button', { name: '关闭' }).click()
+
   await page.getByRole('button', { name: '查看历史流量' }).click()
   await expect(page.locator('.chart-modal')).toBeVisible()
   const latestSample = page.locator('.chart-area .recharts-line-dot').last()
@@ -277,7 +295,10 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.getByRole('button', { name: '24 小时' }).click()
   await page.locator('.chart-modal').getByRole('button', { name: '关闭' }).click()
 
-  await page.getByRole('button', { name: '设置' }).click()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  // Verify General Settings has daily report toggle but NO time setting option
+  await expect(page.getByText('每日消费与流量日报')).toBeVisible()
+  await expect(page.locator('.settings-panel').getByLabel('日报推送时间')).toHaveCount(0)
   const settingsSection = page.locator('.settings-section')
   const generalSectionWidth = await settingsSection.evaluate((element) => element.clientWidth)
   const refreshSelectDesktop = page.getByRole('combobox', { name: 'API 刷新间隔' })
@@ -301,6 +322,9 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.screenshot({ path: testInfo.outputPath('settings-region-select-desktop.png'), fullPage: true })
   await zhangjiakou.click()
   await expect(page.getByRole('combobox', { name: '地域' })).toContainText('cn-zhangjiakou')
+  await expect(page.getByRole('button', { name: '复制' })).toBeVisible()
+  await page.getByRole('button', { name: '复制' }).click()
+  await expect(page.locator('.account-editor')).toHaveCount(2)
 
   await page.getByRole('button', { name: '通知', exact: true }).click()
   const notificationSectionWidth = await settingsSection.evaluate((element) => element.clientWidth)
@@ -308,6 +332,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
   await page.getByRole('button', { name: 'Webhook' }).click()
   await page.getByTitle('插入 #TITLE#').click()
   await expect(page.getByLabel('Body 模板')).toHaveValue('#TITLE#')
+  await expect(page.getByRole('button', { name: '发送日报测试' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('settings-select-desktop.png'), fullPage: true })
 
   await page.getByRole('button', { name: '关于' }).click()
@@ -335,7 +360,7 @@ test('dashboard billing, history precision and settings remain usable', async ({
 
   await page.setViewportSize({ width: 320, height: 720 })
   await page.getByRole('button', { name: '菜单' }).click()
-  await page.getByRole('button', { name: '设置' }).click()
+  await page.getByRole('button', { name: '设置', exact: true }).click()
   const panel = page.locator('.settings-panel')
   await expect(panel).toBeVisible()
   const panelBox = await panel.boundingBox()
@@ -410,4 +435,120 @@ test('dashboard billing, history precision and settings remain usable', async ({
   const adminOverflow = await page.locator('.admin-settings-panel').evaluate((element) => element.scrollWidth - element.clientWidth)
   expect(adminOverflow).toBeLessThanOrEqual(1)
   await page.screenshot({ path: testInfo.outputPath('admin-settings-mobile.png'), fullPage: true })
+})
+
+test('time picker works in desktop settings and mobile schedule', async ({ page }, testInfo) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({ json: { initialized: true } }))
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: { accounts: [], system_last_run: new Date().toISOString() } }))
+  let savedConfig: typeof config | undefined
+  await page.route('**/api/v1/config', (route) => {
+    if (route.request().method() === 'PUT') {
+      savedConfig = route.request().postDataJSON()
+      return route.fulfill({ json: { success: true } })
+    }
+    return route.fulfill({ json: config })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '实例', exact: true }).click()
+  const editor = page.locator('.account-editor')
+  const daily = editor.getByRole('button', { name: '日报推送时间' })
+  await daily.click()
+  let picker = page.getByRole('dialog', { name: '日报推送时间，选择时间' })
+  await expect(picker).toBeVisible()
+  await picker.getByRole('button', { name: '03 时' }).click()
+  await picker.getByRole('button', { name: '45 分' }).click()
+  await page.screenshot({ path: testInfo.outputPath('time-picker-desktop.png') })
+  await picker.getByRole('button', { name: '确定' }).click()
+  await expect(daily).toContainText('03:45')
+  await expect(editor.locator('.report-time-note')).toContainText('每日 03:45 推送')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await editor.locator('.report-time-note').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('daily-report-note-mobile.png') })
+  await editor.locator('.toggle-row:has-text("每日定时开关机")').click()
+  const shutdown = editor.getByRole('button', { name: '关机时间' })
+  await shutdown.click()
+  picker = page.getByRole('dialog', { name: '关机时间，选择时间' })
+  await expect(picker).toBeVisible()
+  expect(await picker.locator('.time-picker__options').first().evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('none')
+  await expect.poll(async () => {
+    const box = await picker.boundingBox()
+    return box ? Math.ceil(box.y + box.height) : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(844)
+  const panelBox = await picker.boundingBox()
+  expect(panelBox).not.toBeNull()
+  expect(panelBox!.x).toBeGreaterThanOrEqual(0)
+  expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(390)
+  await picker.getByRole('button', { name: '22 时' }).click()
+  await picker.getByRole('button', { name: '15 分' }).click()
+  await page.screenshot({ path: testInfo.outputPath('time-picker-mobile.png') })
+  await picker.getByRole('button', { name: '确定' }).click()
+  await expect(shutdown).toContainText('22:15')
+  await page.getByRole('button', { name: '保存更改' }).click()
+  expect(savedConfig?.accounts[0].daily_report_time).toBe('03:45')
+  expect(savedConfig?.accounts[0].stop_time).toBe('22:15')
+})
+
+test('settings tabs and webhook body remain usable at narrow widths', async ({ page, browser }, testInfo) => {
+  await page.route('**/api/v1/system/init-status', (route) => route.fulfill({ json: { initialized: true } }))
+  await page.route('**/api/v1/status', (route) => route.fulfill({ json: { accounts: [], system_last_run: new Date().toISOString() } }))
+  await page.route('**/api/v1/config', (route) => route.fulfill({ json: config }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  const tabs = page.locator('.settings-tabs')
+  await page.getByRole('button', { name: '关于' }).click()
+  for (const width of [900, 700, 641, 640, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(tabs).toBeVisible()
+    const directions = await tabs.locator('button').evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).flexDirection))
+    expect(directions).toEqual(Array(directions.length).fill(width <= 640 ? 'column' : 'row'))
+    expect(await tabs.evaluate((element) => getComputedStyle(element).scrollbarWidth)).toBe('none')
+    if (width === 641) {
+      const pcScroll = await tabs.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth }))
+      expect(pcScroll.content).toBeGreaterThan(pcScroll.width)
+    }
+    await page.screenshot({ path: testInfo.outputPath(`settings-tabs-${width}.png`) })
+  }
+
+  const scroll = await tabs.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth
+    return { left: element.scrollLeft, width: element.clientWidth, content: element.scrollWidth }
+  })
+  expect(scroll.content).toBeGreaterThan(scroll.width)
+  expect(scroll.left).toBeGreaterThan(0)
+  await page.getByRole('button', { name: '通知', exact: true }).click()
+  await page.getByRole('button', { name: 'Webhook' }).click()
+  const body = page.getByLabel('Body 模板')
+  await body.fill(Array.from({ length: 30 }, (_, index) => `line ${index + 1}: #MSG#`).join('\n'))
+  const bodyScroll = await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    return element.scrollTop
+  })
+  expect(bodyScroll).toBeGreaterThan(0)
+  await body.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('webhook-body-mobile.png') })
+
+  const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  try {
+    const touchPage = await touchContext.newPage()
+    await touchPage.route('**/api/v1/system/init-status', (route) => route.fulfill({ json: { initialized: true } }))
+    await touchPage.route('**/api/v1/status', (route) => route.fulfill({ json: { accounts: [], system_last_run: new Date().toISOString() } }))
+    await touchPage.route('**/api/v1/config', (route) => route.fulfill({ json: config }))
+    await touchPage.goto('/')
+    await touchPage.getByRole('button', { name: '菜单' }).click()
+    await touchPage.getByRole('button', { name: '设置', exact: true }).click()
+    const touchTabs = touchPage.locator('.settings-tabs')
+    expect(await touchTabs.evaluate((element) => matchMedia('(pointer: coarse)').matches && getComputedStyle(element).scrollbarWidth === 'none')).toBe(true)
+    const touchScroll = await touchTabs.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+      return element.scrollLeft
+    })
+    expect(touchScroll).toBeGreaterThan(0)
+    await touchPage.screenshot({ path: testInfo.outputPath('settings-tabs-touch.png') })
+  } finally {
+    await touchContext.close()
+  }
 })
