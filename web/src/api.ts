@@ -70,6 +70,7 @@ export async function waitForJob(jobId: string, onProgress?: (status: JobStatus)
     const job = await api<Job>(`/api/v1/jobs/${jobId}`)
     onProgress?.(job.status)
     if (job.status === 'completed') return job
+    if (job.status === 'interrupted') throw new Error('任务已中断，结果不明。请在中断任务核对中核对远端结果，系统不会自动重发。')
     if (job.status === 'failed') throw new Error(JOB_FAILED_USER_MESSAGE)
     await new Promise((resolve) => window.setTimeout(resolve, 900))
   }

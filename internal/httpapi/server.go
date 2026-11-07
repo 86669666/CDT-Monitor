@@ -112,6 +112,8 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("POST /api/v1/accounts/{id}/actions/{action}", s.require("instance:control", http.HandlerFunc(s.control)))
 	mux.Handle("PATCH /api/v1/accounts/{id}/settings", s.require("admin", http.HandlerFunc(s.updateAccountSettings)))
 	mux.Handle("POST /api/v1/notifications/daily-report", s.require("admin", http.HandlerFunc(s.triggerDailyReport)))
+	mux.Handle("GET /api/v1/recovery", s.require("admin", http.HandlerFunc(s.pendingRecovery)))
+	mux.Handle("POST /api/v1/recovery/{kind}/{id}/resolve", s.require("admin", http.HandlerFunc(s.resolveRecovery)))
 	mux.Handle("GET /api/v1/jobs/{id}", s.requireAny([]string{"widget:read", "instance:control"}, http.HandlerFunc(s.job)))
 	mux.Handle("GET /api/v1/logs", s.require("admin", http.HandlerFunc(s.logs)))
 	mux.Handle("DELETE /api/v1/logs", s.require("admin", http.HandlerFunc(s.clearLogs)))
@@ -179,6 +181,10 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	applyConfigDefaults(&config)
 	if err := s.store.Setup(r.Context(), config); err != nil {
+		if errors.Is(err, store.ErrAlreadyInitialized) {
+			writeError(w, http.StatusConflict, "already_initialized", "系统已初始化")
+			return
+		}
 		writeStoreValidationError(w, "setup_failed", "系统初始化失败", err)
 		return
 	}
@@ -856,14 +862,25 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
-	etag := fmt.Sprintf(`W/"%d-%d"`, lastRun.Unix(), len(accounts))
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
+	body, err := json.Marshal(map[string]any{"accounts": accounts, "system_last_run": lastRun})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
+	body = append(body, '\n')
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(body))
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, max-age=15")
-	writeJSON(w, http.StatusOK, map[string]any{"accounts": accounts, "system_last_run": lastRun})
+	for _, tag := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		tag = strings.TrimSpace(tag)
+		if tag == "*" || strings.TrimPrefix(tag, "W/") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 func (s *Server) widgetSummary(w http.ResponseWriter, r *http.Request) {
@@ -1464,6 +1481,8 @@ func writeStoreValidationError(w http.ResponseWriter, code, fallback string, err
 func safeStoreValidationMessage(msg string) bool {
 	switch msg {
 	case "system is already initialized",
+		"use the administrator password endpoint to change password",
+		"daily report time is invalid",
 		"traffic threshold must be between 1 and 100",
 		"invalid shutdown mode",
 		"invalid threshold action",
@@ -1718,12 +1737,31 @@ func normalizeClockTime(value string, required bool) (string, error) {
 }
 
 func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
-	var body struct {
+	var body *struct {
 		AccountID int64 `json:"account_id"`
 	}
-	_ = decodeJSON(r, &body)
+	defer r.Body.Close()
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || body == nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体必须是有效对象")
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid trailing content")
+		return
+	}
+	if body.AccountID < 0 {
+		writeError(w, http.StatusBadRequest, "invalid_account", "账号无效")
+		return
+	}
 	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, body.AccountID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "account_not_found", "账号不存在")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
 		return
 	}

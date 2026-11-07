@@ -172,6 +172,15 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, col := range []struct{ table, name, definition string }{
+		{"jobs", "reviewed_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"action_events", "target", "TEXT NOT NULL DEFAULT ''"},
+		{"action_events", "reviewed_at", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.ensureColumn(ctx, col.table, col.name, col.definition); err != nil {
+			return err
+		}
+	}
 	if err := s.migrateLegacyStats(ctx); err != nil {
 		return err
 	}

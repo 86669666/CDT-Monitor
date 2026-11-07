@@ -17,10 +17,10 @@ import (
 	_ "time/tzdata"
 
 	"github.com/wang4386/CDT-Monitor/internal/aliyun"
+	"github.com/wang4386/CDT-Monitor/internal/app"
 	"github.com/wang4386/CDT-Monitor/internal/engine"
 	"github.com/wang4386/CDT-Monitor/internal/httpapi"
 	"github.com/wang4386/CDT-Monitor/internal/notify"
-	"github.com/wang4386/CDT-Monitor/internal/store"
 	"github.com/wang4386/CDT-Monitor/internal/web"
 )
 
@@ -58,12 +58,17 @@ func main() {
 		response.Body.Close()
 		return
 	}
-	st, err := store.Open(*dataDir)
+	if command != "serve" && command != "run-once" && command != "migrate" {
+		logger.Error("unknown command", "command", command)
+		os.Exit(2)
+	}
+	dataRuntime, err := app.OpenData(*dataDir, command != "migrate")
 	if err != nil {
-		logger.Error("open data store", "error", err)
+		logger.Error("open runtime", "error", err)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer dataRuntime.Close()
+	st := dataRuntime.Store
 	if command == "migrate" {
 		logger.Info("database migrations complete", "data_dir", *dataDir)
 		return
@@ -75,6 +80,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	eng.Start(ctx)
+	defer func() { stop(); eng.Wait() }()
 
 	if command == "run-once" {
 		if err = eng.RunOnce(ctx); err != nil {

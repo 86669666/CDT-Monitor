@@ -1,3 +1,4 @@
+import { RecoveryPanel } from './RecoveryPanel'
 import { Children, cloneElement, isValidElement, lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { createPortal } from 'react-dom'
@@ -311,6 +312,7 @@ function Login({ onComplete }: { onComplete: () => Promise<void> }) {
 function Dashboard({ status, config, instanceAddresses, addressesUnavailable, onRefresh, onSettings, onAdmin, onHistory, onConfigChange, notify, onLogout }: {
   status: StatusResponse; config: Config; instanceAddresses: InstanceAddresses[]; addressesUnavailable: boolean; onRefresh: (fresh?: boolean) => Promise<void>; onSettings: () => void; onAdmin: () => void; onHistory: (account: AccountSummary) => void; onConfigChange?: (config: Config) => void; notify: (message: string, tone?: Toast['tone']) => void; onLogout: () => void
 }) {
+  const [showRecovery, setShowRecovery] = useState(false)
   const [configuringAccount, setConfiguringAccount] = useState<Account | null>(null)
   const [pendingAction, setPendingAction] = useState<{ account: AccountSummary; action: 'start' | 'stop'; instanceId: string } | null>(null)
   const activeActions = useRef(new Set<number>())
@@ -422,11 +424,13 @@ function Dashboard({ status, config, instanceAddresses, addressesUnavailable, on
 
   return (
     <main className="app-shell">
+      {showRecovery && <RecoveryPanel onClose={() => setShowRecovery(false)} onResolved={() => void onRefresh(true)} />}
       <header className="topbar">
         <div className="brand-lockup"><BrandMark /><div><b>CDT MONITOR</b><span>CONTROL PLANE</span></div></div>
         <div id="dashboard-actions" className={`topbar-actions ${mobileMenu ? 'open' : ''}`} aria-busy={refreshingAll}>
           <div className={`heartbeat ${heartbeatAge > 180 ? 'heartbeat--warn' : ''}`}><i />{heartbeatAge > 180 ? '监控任务延迟' : '自动化运行中'}</div>
           <IconButton label={refreshingAll ? '正在强制刷新全部实例' : '强制刷新全部实例'} disabled={refreshingAll} onClick={() => void refreshAll()}>{refreshingAll ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={18} />}</IconButton>
+          <button className="button" onClick={() => setShowRecovery(true)}>中断任务核对</button>
           <ThemeMenu />
           <IconButton label="设置" onClick={openSettings}><Settings size={18} /></IconButton>
           <IconButton label="管理员" title="管理员设置" onClick={openAdmin}><UserCog size={18} /></IconButton>
@@ -498,6 +502,7 @@ function AccountCard({ account, addresses, hasInstance, addressesUnavailable, bu
           {billingEnabled && <div className="account-billing" aria-label="账单与余额"><div><span>本月费用</span><b>{account.monthly_cost === undefined ? '待同步' : `${currency}${account.monthly_cost.toFixed(2)}`}</b></div><div><span>账户余额</span><b>{account.balance === undefined ? '待同步' : `${currency}${account.balance.toFixed(2)}`}</b></div><small className={account.billing_error ? 'billing-error' : ''}>{account.billing_error || (hasBilling ? '已同步' : '待同步')}</small></div>}
         </div>
       </header>
+      {account.automation_blocked && <p role="status" className="inline-hint">自动控制已暂停：存在结果不明或中断的任务。可刷新只读状态，请在中断任务核对中处理。</p>}
       {hasInstance && <div className="instance-addresses" aria-label="实例地址">
         {addresses?.observed && (addresses.public_ipv4 || addresses.ipv6) ? <>
           {addresses.public_ipv4 && <span>公网 IPv4 <code>{addresses.public_ipv4}</code></span>}

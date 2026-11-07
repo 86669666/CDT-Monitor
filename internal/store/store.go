@@ -54,10 +54,6 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if err = s.recoverInterruptedWork(context.Background()); err != nil {
-		db.Close()
-		return nil, err
-	}
 	if err = restrictDataFiles(dataDir, dbPath); err != nil {
 		db.Close()
 		return nil, err
@@ -81,16 +77,6 @@ func restrictDataFiles(dataDir, dbPath string) error {
 		}
 	}
 	return nil
-}
-
-func (s *Store) recoverInterruptedWork(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `
-UPDATE jobs SET status='queued', locked_at=0, available_at=unixepoch(), updated_at=unixepoch()
-WHERE status='running' AND locked_at < unixepoch()-120;
-UPDATE notification_outbox SET status='queued', available_at=unixepoch(), updated_at=unixepoch()
-WHERE status='sending' AND updated_at < unixepoch()-120;
-`)
-	return err
 }
 
 func (s *Store) Close() error { return s.db.Close() }

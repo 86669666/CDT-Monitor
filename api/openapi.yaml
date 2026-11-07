@@ -253,7 +253,7 @@
       "post": {
         "operationId": "setup",
         "summary": "Setup",
-        "description": "One-time initialization. Applies config defaults and creates an exclusive administrator session. Already initialized returns 400 setup_failed. Limit 5 attempts per client IP per minute. Uses store schedule validation rather than PUT clock normalization.",
+        "description": "One-time atomic initialization: exactly one concurrent request may win. Configuration, accounts and password commit together. Losers return 409 without creating or revoking sessions. Daily-report clocks and account shutdown modes use the same store validation as PUT/PATCH. Limit 5 attempts per client IP per minute.",
         "x-handler": "Server.setup",
         "security": [],
         "responses": {
@@ -307,6 +307,19 @@
             "x-error-codes": [
               "internal_error",
               "session_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error codes: already_initialized.",
+            "x-error-codes": [
+              "already_initialized"
             ],
             "content": {
               "application/json": {
@@ -1278,7 +1291,7 @@
       "get": {
         "operationId": "status",
         "summary": "Status",
-        "description": "Reads database snapshots. Exact If-None-Match match returns 304 with no body. ETag uses last monitor run Unix seconds and account count, not all response fields; manual changes may not alter it.",
+        "description": "Reads database snapshots and serializes once. Strong SHA-256 ETag covers the exact response bytes including changing stale/metadata/billing fields. If-None-Match uses weak comparison and supports lists and wildcard. 304 preserves ETag and private max-age=15.",
         "x-handler": "Server.status",
         "security": [
           {
@@ -1312,12 +1325,26 @@
                 "schema": {
                   "type": "string"
                 },
-                "description": "Weak validator derived from last monitor run and account count."
+                "description": "SHA-256 of exact serialized response bytes."
               }
             }
           },
           "304": {
-            "description": "Exact ETag match, no response body. Current code does not repeat ETag on this response."
+            "description": "Matching representation; no body.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, max-age=15"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "SHA-256 of exact serialized response bytes."
+              }
+            }
           },
           "401": {
             "description": "Error codes: unauthorized.",
@@ -1372,7 +1399,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Exact weak ETag returned by a previous response."
+            "description": "Previous strong or weak ETag, comma-separated list, or *."
           }
         ]
       }
@@ -1529,7 +1556,7 @@
       "put": {
         "operationId": "saveConfig",
         "summary": "Save config",
-        "description": "Full configuration replacement with defaults applied, not a merge/PATCH. Omitted accounts removes all active accounts. Omitted non-secret settings reset to defaults/zero values. Empty sensitive notification values preserve stored values; __clear__ clears them. Empty account secrets are resolved from existing/submitted keys. Current full-config path does not validate global/account daily_report_time or per-account shutdown_mode; this contract does not invent validation. All store errors are currently mapped to 400 config_failed.",
+        "description": "Full configuration replacement with defaults, not a merge. Omitted accounts removes active accounts. Empty sensitive notification values preserve stored values; __clear__ clears them. Nonempty admin_password is rejected; use PUT /admin/password with current password. Daily-report clocks normalize whitespace/full-width colons, default global empty to 22:00 and account empty to 00:00, and reject invalid times. Per-account shutdown_mode is empty (inherit), KeepCharging or StopCharging. Invalid input leaves all settings/accounts/password unchanged.",
         "x-handler": "Server.saveConfig",
         "security": [
           {
@@ -2168,7 +2195,7 @@
       "post": {
         "operationId": "triggerDailyReport",
         "summary": "Trigger daily report",
-        "description": "Enqueues a forced daily_report job, with no deduplication. 0/omitted account_id selects global report. Current handler ignores JSON decode errors and may enqueue from an empty, malformed or partially decoded body. 202 is enqueue acknowledgment, not delivery. This documents the current implementation defect (OAPI-OBS-2), not a compatibility guarantee; an independently authorized validation fix should update this description and the associated characterization assertion.",
+        "description": "Enqueues a forced daily_report job without deduplication. Requires a valid JSON object. Empty/malformed/null/non-object/unknown-field/trailing-content bodies are rejected. {} or account_id=0 explicitly selects global. Negative IDs are invalid; a positive ID must name an active account in the enqueue transaction and again at worker execution. Deletion never falls back to global. 202 acknowledges enqueue, not delivery.",
         "x-handler": "Server.triggerDailyReport",
         "security": [
           {
@@ -2228,12 +2255,39 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Error codes: invalid_request, invalid_account.",
+            "x-error-codes": [
+              "invalid_request",
+              "invalid_account"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: account_not_found.",
+            "x-error-codes": [
+              "account_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "x-api-key-scopes": [],
         "x-session-admin": true,
         "requestBody": {
-          "required": false,
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -3247,6 +3301,240 @@
         "x-api-key-scopes": [],
         "x-session-admin": true
       }
+    },
+    "/api/v1/recovery": {
+      "get": {
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "operationId": "pendingRecovery",
+        "summary": "List interrupted or uncertain outcomes",
+        "description": "Administrator-only outstanding job/action records, plus failed delivery_unknown notifications (informational; never resent).",
+        "x-handler": "Server.pendingRecovery",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "records"
+                  ],
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RecoveryRecord"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: recovery_failed, internal_error.",
+            "x-error-codes": [
+              "recovery_failed",
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recovery/{kind}/{id}/resolve": {
+      "post": {
+        "x-api-key-scopes": [],
+        "x-session-admin": true,
+        "operationId": "resolveRecovery",
+        "summary": "Record explicit review without replay",
+        "description": "Session+CSRF. Review the original target and remote effect before acknowledging exactly this job/action. Keeps history and audit note; releases only this block/key. Does not send the old payload. Notifications are not resolvable here.",
+        "x-handler": "Server.resolveRecovery",
+        "security": [
+          {
+            "Session": [],
+            "CSRFCookie": [],
+            "CSRFHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "job",
+                "action"
+              ]
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reviewed",
+                  "note"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "reviewed": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "resolved"
+                  ],
+                  "properties": {
+                    "resolved": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: review_required, review_failed.",
+            "x-error-codes": [
+              "review_required",
+              "review_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden, csrf_failed.",
+            "x-error-codes": [
+              "forbidden",
+              "csrf_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: record_not_found.",
+            "x-error-codes": [
+              "record_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: internal_error.",
+            "x-error-codes": [
+              "internal_error"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3821,6 +4109,10 @@
           },
           "instance_type_stale": {
             "type": "boolean"
+          },
+          "automation_blocked": {
+            "type": "boolean",
+            "description": "Unresolved job/action prevents automatic cloud mutation; read-only refresh remains allowed."
           }
         },
         "additionalProperties": false,
@@ -3850,7 +4142,8 @@
           "traffic_stale",
           "instance_charge_type",
           "instance_type_updated_at",
-          "instance_type_stale"
+          "instance_type_stale",
+          "automation_blocked"
         ],
         "x-go-type": "domain.AccountSummary"
       },
@@ -3880,7 +4173,8 @@
               "queued",
               "running",
               "completed",
-              "failed"
+              "failed",
+              "interrupted"
             ]
           },
           "result": {
@@ -3920,7 +4214,7 @@
           "updated_at"
         ],
         "x-go-type": "domain.Job",
-        "description": "Persisted asynchronous job. The identifier is id (not job_id). A 202 response acknowledges enqueue/deduplication, not completion. Poll GET /api/v1/jobs/{id}; result is a string, not a decoded JSON object. Payload is never serialized. For refresh_account and control_instance, equal keys deduplicate while queued/running, including queued retry backoff; completion or terminal failure releases the key. A released refresh key can be reused even in the same UTC minute. Completed monitor_account jobs instead retain their key; do not generalize refresh release behavior to every job type. Job status may advance before an enqueue response is read."
+        "description": "Persisted asynchronous job. The identifier is id (not job_id). A 202 response acknowledges enqueue/deduplication, not completion. Poll GET /api/v1/jobs/{id}; result is a string, not a decoded JSON object. Payload is never serialized. For refresh_account and control_instance, equal keys deduplicate while queued/running, including queued retry backoff; completion or terminal failure releases the key. A released refresh key can be reused even in the same UTC minute. Completed monitor_account jobs instead retain their key; do not generalize refresh release behavior to every job type. Job status may advance before an enqueue response is read. Interrupted is terminal pending explicit administrator review, never success or automatic retry; it retains the deduplication key until the specified record is reviewed. No old payload is replayed by review."
       },
       "APIKey": {
         "type": "object",
@@ -4088,8 +4382,8 @@
           "admin_password": {
             "type": "string",
             "writeOnly": true,
-            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Required at setup (at least 10 UTF-8 bytes; at most 128 Unicode characters); empty on config save preserves the existing password.",
-            "maxLength": 128
+            "description": "Must be omitted or empty. A nonempty value is rejected; change password through the dedicated endpoint with current password.",
+            "maxLength": 0
           },
           "traffic_threshold": {
             "type": "integer",
@@ -4125,7 +4419,7 @@
           },
           "daily_report_time": {
             "type": "string",
-            "description": "Empty defaults to 22:00. Current save path does not validate this global clock; subsequent reads can reject it."
+            "description": "Empty defaults to 22:00. Whitespace and full-width colons normalize to HH:MM; invalid clocks reject the complete transaction."
           },
           "notifications": {
             "$ref": "#/components/schemas/NotificationConfigInput",
@@ -4141,7 +4435,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Accepted JSON fields; omitted scalar fields start at Go zero values. Unknown fields are rejected. See operation for defaults and replacement semantics."
+        "description": "Configuration input with atomic validation. Daily-report clocks normalize to HH:MM; empty global defaults to 22:00, account to 00:00. Account shutdown_mode accepts empty (inherit), KeepCharging or StopCharging."
       },
       "AccountInput": {
         "type": "object",
@@ -4260,7 +4554,7 @@
           },
           "shutdown_mode": {
             "type": "string",
-            "description": "Empty inherits global mode. Full config save does not validate this per-account field; PATCH settings restricts it."
+            "description": "Empty inherits global mode. Only empty, KeepCharging and StopCharging are accepted by store save paths; PATCH also accepts default as an alias for empty."
           },
           "daily_report": {
             "type": [
@@ -4271,7 +4565,7 @@
           },
           "daily_report_time": {
             "type": "string",
-            "description": "Empty becomes 00:00. Full config save does not validate this account clock. PATCH settings does validate it."
+            "description": "Empty becomes 00:00. Setup, full config and PATCH share store normalization and validation; invalid clocks reject the complete write."
           }
         },
         "additionalProperties": false,
@@ -4797,11 +5091,12 @@
           "account_id": {
             "type": "integer",
             "format": "int64",
-            "description": "0/omitted selects the global report; positive ID selects an account."
+            "description": "0/omitted selects the global report; positive ID selects an account.",
+            "minimum": 0
           }
         },
         "additionalProperties": false,
-        "description": "Intended request shape. Current handler ignores decode errors (including empty, malformed or unknown-field bodies) and enqueues using the partially decoded/default account_id. No positivity or existence validation is applied to daily-report account IDs before enqueue. This documents the current implementation defect (OAPI-OBS-2), not a compatibility guarantee; an independently authorized validation fix should update this description and the associated characterization assertion."
+        "description": "Explicit report selection: {} or account_id=0 is global; a positive ID must exist and remain active through execution."
       },
       "CredentialDescriptor": {
         "type": "object",
@@ -5144,7 +5439,7 @@
           "admin_password": {
             "type": "string",
             "writeOnly": true,
-            "description": "Sensitive input. Omitted from responses; never place real values in examples or logs. Required at setup (at least 10 UTF-8 bytes; at most 128 Unicode characters); empty on config save preserves the existing password.",
+            "description": "Required initial password; at least 10 UTF-8 bytes and at most 128 Unicode characters.",
             "maxLength": 128
           },
           "traffic_threshold": {
@@ -5181,7 +5476,7 @@
           },
           "daily_report_time": {
             "type": "string",
-            "description": "Empty defaults to 22:00. Current save path does not validate this global clock; subsequent reads can reject it."
+            "description": "Empty defaults to 22:00. Whitespace and full-width colons normalize to HH:MM; invalid clocks reject the complete transaction."
           },
           "notifications": {
             "$ref": "#/components/schemas/NotificationConfigInput",
@@ -5197,7 +5492,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Initial configuration. admin_password is required and must contain at least 10 UTF-8 bytes, at most 128 Unicode characters. Other fields have the same defaults as configuration save; account schedule clocks are store-validated without PUT normalization.",
+        "description": "Configuration input with atomic validation. Daily-report clocks normalize to HH:MM; empty global defaults to 22:00, account to 00:00. Account shutdown_mode accepts empty (inherit), KeepCharging or StopCharging.",
         "required": [
           "admin_password"
         ]
@@ -5294,6 +5589,45 @@
           }
         },
         "description": "Use source_account_id > 0 plus exact expected access_key_id with empty/absent secret, or source_account_id=0 plus new key and secret. Saved credential identity is matched atomically. Query is read-only and never persists credentials or adds instances."
+      },
+      "RecoveryRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "id",
+          "account_id",
+          "status",
+          "detail",
+          "target"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "job",
+              "action",
+              "notification"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Immutable non-secret target JSON; blank for historical records without identity. Never inferred from current account."
+          }
+        }
       }
     }
   }

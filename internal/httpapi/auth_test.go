@@ -1254,7 +1254,7 @@ func TestSetupRateLimitAndRejectsReinit(t *testing.T) {
 	st2 := initializedAuthStore(t)
 	handler2 := testAPIHandler(t, st2)
 	again := doRequest(t, handler2, http.MethodPost, "/api/v1/setup", `{"admin_password":"Another-Password-99!","traffic_threshold":95,"shutdown_mode":"KeepCharging","threshold_action":"stop_and_notify","api_interval":600,"timezone":"Asia/Shanghai"}`, nil, nil)
-	if again.Code != http.StatusBadRequest || !strings.Contains(again.Body.String(), "setup_failed") {
+	if again.Code != http.StatusConflict || !strings.Contains(again.Body.String(), "already_initialized") {
 		t.Fatalf("re-init status = %d body = %s", again.Code, again.Body.String())
 	}
 }

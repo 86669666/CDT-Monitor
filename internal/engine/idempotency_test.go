@@ -318,10 +318,12 @@ func TestThresholdStopIsIdempotentUntilCleared(t *testing.T) {
 	if got := provider.controlActions(); len(got) != 1 || got[0] != "stop" {
 		t.Fatalf("controls = %#v", got)
 	}
+	provider.status = domain.StatusStopped
 	provider.traffic = 1
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
 	}
+	provider.status = domain.StatusRunning
 	provider.traffic = 200
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
@@ -394,7 +396,7 @@ func TestThresholdStopFiresAfterNotifyOnlyPolicyChange(t *testing.T) {
 	}
 }
 
-func TestFailedScheduledActionCanRetry(t *testing.T) {
+func TestUnknownScheduledActionIsNotReplayed(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +424,7 @@ func TestFailedScheduledActionCanRetry(t *testing.T) {
 	if _, err = eng.processAccount(ctx, account.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if got := provider.controlActions(); len(got) != 2 || got[1] != "start" {
-		t.Fatalf("failed schedule should retry, controls = %#v", got)
+	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
+		t.Fatalf("unknown schedule must not retry, controls = %#v", got)
 	}
 }

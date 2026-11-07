@@ -279,8 +279,8 @@ func TestSaveConfigDoesNotKeepUnsupportedPasswordHash(t *testing.T) {
 	injected := "$argon2id$v=19$m=8,t=1,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	config.AdminPassword = injected
 	config.Accounts[0].AccessKeySecret = ""
-	if err = st.SaveConfig(ctx, config); err != nil {
-		t.Fatal(err)
+	if err = st.SaveConfig(ctx, config); err == nil {
+		t.Fatal("nonempty password must be rejected")
 	}
 	var stored string
 	if err = st.db.QueryRow(`SELECT value FROM settings WHERE key='admin_password'`).Scan(&stored); err != nil {
@@ -290,12 +290,12 @@ func TestSaveConfigDoesNotKeepUnsupportedPasswordHash(t *testing.T) {
 		t.Fatalf("unsupported hash was stored: %q", stored)
 	}
 	valid, err := st.VerifyAdminPassword(ctx, injected)
-	if err != nil || !valid {
-		t.Fatalf("injected hash string should be hashed as a new password, valid=%v err=%v", valid, err)
+	if err != nil || valid {
+		t.Fatalf("injected password must not verify, valid=%v err=%v", valid, err)
 	}
 	valid, err = st.VerifyAdminPassword(ctx, "Strong-Password-42!")
-	if err != nil || valid {
-		t.Fatalf("original password must not verify after replacement, valid=%v err=%v", valid, err)
+	if err != nil || !valid {
+		t.Fatalf("original password must remain valid, valid=%v err=%v", valid, err)
 	}
 }
 
@@ -1366,6 +1366,7 @@ func TestAccountSecretsIncludesDeletedAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	config.Accounts = config.Accounts[:1]
+	config.AdminPassword = ""
 	if err = st.SaveConfig(ctx, config); err != nil {
 		t.Fatal(err)
 	}
@@ -4737,7 +4738,7 @@ func TestUpdatePasskeyCredentialRequiresMatchingRow(t *testing.T) {
 	}
 }
 
-func TestInterruptedWorkRecoversOnOpen(t *testing.T) {
+func TestInterruptedWorkIsNotRecoveredByOpen(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
 	if err != nil {
@@ -4757,7 +4758,7 @@ func TestInterruptedWorkRecoversOnOpen(t *testing.T) {
 	if err = st.db.QueryRow(`SELECT status FROM jobs WHERE id='stale'`).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" {
+	if status != "running" {
 		t.Fatalf("status = %s", status)
 	}
 }
@@ -5440,7 +5441,7 @@ func TestOutboxRetriesThenExhausts(t *testing.T) {
 	}
 }
 
-func TestInterruptedOutboxRecoversOnOpen(t *testing.T) {
+func TestInterruptedOutboxIsNotRecoveredByOpen(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
 	if err != nil {
@@ -5460,7 +5461,7 @@ func TestInterruptedOutboxRecoversOnOpen(t *testing.T) {
 	if err = st.db.QueryRow(`SELECT status FROM notification_outbox WHERE id='stale-outbox'`).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" {
+	if status != "sending" {
 		t.Fatalf("status = %s", status)
 	}
 }
@@ -5565,6 +5566,7 @@ func TestCopyAccountReusesSecretUnderSameAK(t *testing.T) {
 
 	config.Accounts = append(config.Accounts, duplicate)
 	config.Accounts[0].AccessKeySecret = "" // Also empty when submitting full config
+	config.AdminPassword = ""
 	if err = st.SaveConfig(ctx, config); err != nil {
 		t.Fatalf("SaveConfig failed on copied account: %v", err)
 	}
