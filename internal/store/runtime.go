@@ -117,7 +117,7 @@ DELETE FROM billing_cache WHERE updated_at<unixepoch()-7776000;
 DELETE FROM sessions WHERE expires_at<unixepoch();
 DELETE FROM login_attempts WHERE attempt_time<unixepoch()-86400;
 DELETE FROM jobs WHERE status IN ('completed','failed') AND updated_at<unixepoch()-604800;
-DELETE FROM notification_outbox WHERE status IN ('sent','failed') AND updated_at<unixepoch()-2592000;
+DELETE FROM notification_outbox WHERE (status='sent' OR (status='failed' AND instr(last_error,'delivery_unknown')=0)) AND updated_at<unixepoch()-2592000;
 DELETE FROM daily_traffic_snapshots WHERE updated_at<unixepoch()-2592000;
 `)
 	return err
@@ -327,7 +327,7 @@ func validJobType(jobType string) bool {
 
 func validJobStatus(status string) bool {
 	switch status {
-	case "queued", "running", "completed", "failed":
+	case "queued", "running", "completed", "failed", "interrupted":
 		return true
 	default:
 		return false
@@ -346,6 +346,10 @@ func validJobPayload(payload string) error {
 
 func validateJobAccount(jobType string, accountID int64) error {
 	switch jobType {
+	case "daily_report":
+		if accountID < 0 {
+			return errors.New("account id is invalid")
+		}
 	case "monitor_account", "refresh_account", "control_instance":
 		if accountID < 1 {
 			return errors.New("account id is invalid")
@@ -400,14 +404,53 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, accountID int64,
 		return domain.Job{}, err
 	}
 	job := domain.Job{ID: id, Type: jobType, AccountID: accountID, Payload: payload, Status: "queued", MaxAttempts: maxAttempts, AvailableAt: time.Now().UTC(), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,unique_key,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?,?,?)`,
-		job.ID, job.Type, job.AccountID, job.Payload, nullableString(uniqueKey), job.MaxAttempts, job.AvailableAt.Unix(), job.CreatedAt.Unix(), job.UpdatedAt.Unix())
-	if err != nil && uniqueKey != "" {
+	refreshTarget := ""
+	if jobType == "refresh_account" {
+		config, err := s.GetConfig(ctx)
+		if err != nil {
+			return domain.Job{}, err
+		}
+		account, err := s.GetAccount(ctx, accountID)
+		if err != nil {
+			return domain.Job{}, err
+		}
+		mode := account.ShutdownMode
+		if mode == "" {
+			mode = config.ShutdownMode
+		}
+		refreshTarget = ActionTarget(account, mode)
+	}
+	insertAttempted := false
+	err = s.WithTx(ctx, func(tx *sql.Tx) error {
+		if jobType == "daily_report" && accountID > 0 {
+			if err := requireActiveAccountOn(ctx, tx, accountID); err != nil {
+				return err
+			}
+		}
+		insertAttempted = true
+		if jobType == "refresh_account" {
+			// Decide and persist the mode in the same write as enqueue. Retain all old keys.
+			_, err = tx.ExecContext(ctx, `WITH recovery(blocked) AS (SELECT
+    EXISTS(SELECT 1 FROM jobs WHERE status='interrupted' AND reviewed_at=0 AND (account_id=? OR (account_id=0 AND type IN ('monitor_account','refresh_account','control_instance')))) OR
+    EXISTS(SELECT 1 FROM action_events WHERE account_id=? AND type='threshold_stop' AND reviewed_at=0 AND (status IN ('attempting','submitted','uncertain') OR (status='confirmed' AND target<>?))))
+    INSERT INTO jobs(id,type,account_id,payload,unique_key,status,max_attempts,available_at,created_at,updated_at)
+    SELECT ?,?,?,CASE WHEN blocked THEN '{"read_only":true}' ELSE ? END,CASE WHEN blocked THEN NULL ELSE ? END,'queued',?,?,?,? FROM recovery`,
+				accountID, accountID, refreshTarget, job.ID, job.Type, job.AccountID, job.Payload, nullableString(uniqueKey), job.MaxAttempts, job.AvailableAt.Unix(), job.CreatedAt.Unix(), job.UpdatedAt.Unix())
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO jobs(id,type,account_id,payload,unique_key,status,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?,?,?)`,
+			job.ID, job.Type, job.AccountID, job.Payload, nullableString(uniqueKey), job.MaxAttempts, job.AvailableAt.Unix(), job.CreatedAt.Unix(), job.UpdatedAt.Unix())
+		return err
+	})
+	if err != nil && insertAttempted && uniqueKey != "" {
 		var existingID string
 		lookupErr := s.db.QueryRowContext(ctx, `SELECT id FROM jobs WHERE unique_key=?`, uniqueKey).Scan(&existingID)
 		if lookupErr == nil {
 			return s.GetJob(ctx, existingID)
 		}
+	}
+	if err == nil {
+		return s.GetJob(ctx, job.ID)
 	}
 	return job, err
 }
@@ -654,7 +697,11 @@ func (s *Store) RecordActionEvent(ctx context.Context, key string, accountID int
 		return false, err
 	}
 	detail = flattenStoredText(detail, maxActionEventDetailRunes)
-	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(event_key,account_id,type,status,detail,created_at,updated_at) VALUES(?,?,?,?,?,unixepoch(),unixepoch())`, key, accountID, eventType, status, detail)
+	attemptID, err := security.NewToken(24)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(attempt_id,event_key,account_id,type,status,detail,created_at,updated_at) VALUES(?,?,?,?,?,?,unixepoch(),unixepoch())`, attemptID, key, accountID, eventType, status, detail)
 	if err != nil {
 		return false, err
 	}

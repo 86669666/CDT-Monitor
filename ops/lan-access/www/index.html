@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>局域网项目导航</title>
+  <style>
+    :root{color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18232d;background:#f5f7fa}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px}
+    main{width:min(720px,100%)}.eyebrow{color:#617283;font-size:13px;letter-spacing:2px}h1{font-size:clamp(28px,5vw,40px);font-weight:650;margin:14px 0 12px}p{color:#617283;line-height:1.6;margin:0 0 32px}
+    .links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}a{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid #e3e8ee;border-radius:18px;padding:28px;transition:transform .15s,box-shadow .15s}a:hover{transform:translateY(-3px);box-shadow:0 12px 30px #16283c0e}a:focus-visible{outline:3px solid #367cff;outline-offset:4px}.symbol{display:grid;place-items:center;width:46px;height:46px;background:#eef4ff;border-radius:12px;color:#2769d7;font-size:22px;margin-bottom:22px}h2{font-size:21px;margin:0 0 9px}.desc{color:#617283;font-size:14px;line-height:1.6}.open{display:block;color:#2769d7;font-size:14px;margin-top:24px}footer{margin-top:28px;color:#8995a2;font-size:12px}@media(max-width:520px){.links{grid-template-columns:1fr}a{padding:24px}}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">10.10.99.99 · 局域网</div>
+    <h1>项目导航</h1>
+    <p>选择项目，打开对应控制台。</p>
+    <div class="links">
+      <a href="https://10.10.99.99/cdt/">
+        <span class="symbol" aria-hidden="true">◷</span>
+        <h2>CDT Monitor</h2>
+        <div class="desc">云资源流量与实例监控</div>
+        <span class="open">打开控制台 →</span>
+      </a>
+      <a href="http://10.10.99.99:8418/">
+        <span class="symbol" aria-hidden="true">↗</span>
+        <h2>upstream-hub</h2>
+        <div class="desc">上游服务与渠道管理</div>
+        <span class="open">打开控制台 →</span>
+      </a>
+    </div>
+    <footer>内网服务入口</footer>
+  </main>
+</body>
+</html>

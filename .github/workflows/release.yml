@@ -89,11 +89,11 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
           VERSION: ${{ inputs.tag || github.ref_name }}
-          COMMIT: ${{ github.sha }}
           BUILT_AT: ${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
+          COMMIT="$(git rev-parse HEAD)"
           mkdir -p release
           ext=""
           arch="$GOARCH"

@@ -84,6 +84,20 @@ func intSetting(settings map[string]string, key string, fallback int) (int, erro
 	return parsed, nil
 }
 
+func monitorIntervalSetting(settings map[string]string) (int, error) {
+	interval, err := intSetting(settings, "api_interval", 600)
+	if err != nil {
+		return 0, err
+	}
+	if interval < minAPIIntervalSeconds {
+		interval = minAPIIntervalSeconds
+	}
+	if interval > 86400 {
+		return 0, errors.New("api interval must be between 30 and 86400 seconds")
+	}
+	return interval, nil
+}
+
 func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM settings`)
 	if err != nil {
@@ -125,15 +139,9 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if accounts == nil {
 		accounts = []domain.Account{}
 	}
-	apiInterval, err := intSetting(settings, "api_interval", 600)
+	apiInterval, err := monitorIntervalSetting(settings)
 	if err != nil {
 		return domain.Config{}, err
-	}
-	if apiInterval < minAPIIntervalSeconds {
-		apiInterval = minAPIIntervalSeconds
-	}
-	if apiInterval > 86400 {
-		return domain.Config{}, errors.New("api interval must be between 30 and 86400 seconds")
 	}
 	trafficThreshold, err := intSetting(settings, "traffic_threshold", 95)
 	if err != nil {
@@ -293,6 +301,20 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	return config, nil
 }
 
+// MonitorInterval reads only the non-sensitive setting needed for cache freshness.
+func (s *Store) MonitorInterval(ctx context.Context) (int, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='api_interval'`).Scan(&raw)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	settings := map[string]string{}
+	if err == nil {
+		settings["api_interval"] = raw
+	}
+	return monitorIntervalSetting(settings)
+}
+
 func valueOr(values map[string]string, key, fallback string) string {
 	if value, ok := values[key]; ok && value != "" {
 		return value
@@ -309,15 +331,29 @@ func (s *Store) IsInitialized(ctx context.Context) (bool, error) {
 	return err == nil && password != "", err
 }
 
+var ErrAlreadyInitialized = errors.New("system is already initialized")
+
 func (s *Store) Setup(ctx context.Context, config domain.Config) error {
-	initialized, err := s.IsInitialized(ctx)
-	if err != nil {
-		return err
-	}
-	if initialized {
-		return errors.New("system is already initialized")
-	}
 	return s.saveConfig(ctx, config, true)
+}
+
+func NormalizeDailyReportTime(value, fallback string) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "：", ":"))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := time.Parse("15:04", value)
+	if err != nil {
+		return "", errors.New("daily report time is invalid")
+	}
+	return parsed.Format("15:04"), nil
+}
+
+func ValidateAccountShutdownMode(value string) error {
+	if value != "" && value != "KeepCharging" && value != "StopCharging" {
+		return errors.New("invalid shutdown mode")
+	}
+	return nil
 }
 
 func (s *Store) SaveConfig(ctx context.Context, config domain.Config) error {
@@ -325,6 +361,15 @@ func (s *Store) SaveConfig(ctx context.Context, config domain.Config) error {
 }
 
 func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool) error {
+	if !setup && config.AdminPassword != "" {
+		return errors.New("use the administrator password endpoint to change password")
+	}
+	var err error
+	config.DailyReportTime, err = NormalizeDailyReportTime(config.DailyReportTime, "22:00")
+	if err != nil {
+		return err
+	}
+
 	if config.TrafficThreshold < 1 || config.TrafficThreshold > 100 {
 		return errors.New("traffic threshold must be between 1 and 100")
 	}
@@ -389,17 +434,27 @@ func (s *Store) saveConfig(ctx context.Context, config domain.Config, setup bool
 		return errors.New("too many accounts")
 	}
 
+	var passwordHash string
+	if setup {
+		var err error
+		passwordHash, err = hashOrKeepPassword(config.AdminPassword)
+		if err != nil {
+			return err
+		}
+	}
 	return s.WithTx(ctx, func(tx *sql.Tx) error {
-		if config.AdminPassword != "" {
-			hash, err := hashOrKeepPassword(config.AdminPassword)
+		if setup {
+			result, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('admin_password',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value=''`, passwordHash)
 			if err != nil {
 				return err
 			}
-			if err = putSettingTx(ctx, tx, "admin_password", hash); err != nil {
+			count, err := result.RowsAffected()
+			if err != nil {
 				return err
 			}
-		} else if setup {
-			return errors.New("administrator password is required")
+			if count != 1 {
+				return ErrAlreadyInitialized
+			}
 		}
 
 		values := map[string]string{
@@ -590,6 +645,13 @@ func saveAccountsTx(ctx context.Context, tx *sql.Tx, s *Store, accounts []domain
 	kept := make(map[int64]bool)
 	poolQuotas := make(map[string]float64)
 	for _, account := range accounts {
+		account.DailyReportTime, err = NormalizeDailyReportTime(account.DailyReportTime, "00:00")
+		if err != nil {
+			return err
+		}
+		if err = ValidateAccountShutdownMode(account.ShutdownMode); err != nil {
+			return err
+		}
 		if hasTextBreak(account.AccessKeyID) {
 			return errors.New("account access_key_id is invalid")
 		}
@@ -812,6 +874,13 @@ func (s *Store) ListAccounts(ctx context.Context) ([]domain.Account, error) {
 		} else {
 			a.DailyReportTime = "00:00"
 		}
+		normalizedTime, err := NormalizeDailyReportTime(a.DailyReportTime, "00:00")
+		if err != nil || normalizedTime != a.DailyReportTime {
+			return nil, errors.New("account daily report time is invalid")
+		}
+		if err = ValidateAccountShutdownMode(a.ShutdownMode); err != nil {
+			return nil, err
+		}
 		accounts = append(accounts, a)
 	}
 	return accounts, rows.Err()
@@ -847,17 +916,18 @@ func (s *Store) UpdateAccountSettings(ctx context.Context, id int64, keepAlive *
 	}
 	startTime = strings.TrimSpace(strings.ReplaceAll(startTime, "：", ":"))
 	stopTime = strings.TrimSpace(strings.ReplaceAll(stopTime, "：", ":"))
-	dailyReportTime = strings.TrimSpace(strings.ReplaceAll(dailyReportTime, "：", ":"))
-	if dailyReportTime == "" {
-		dailyReportTime = "00:00"
+	var err error
+	dailyReportTime, err = NormalizeDailyReportTime(dailyReportTime, "00:00")
+	if err != nil {
+		return err
 	}
-	if !validScheduleClock(startTime) || !validScheduleClock(stopTime) || !validScheduleClock(dailyReportTime) {
-		return errors.New("account schedule or daily report time is invalid")
+	if !validScheduleClock(startTime) || !validScheduleClock(stopTime) {
+		return errors.New("account schedule time is invalid")
 	}
-	if shutdownMode != "" && shutdownMode != "KeepCharging" && shutdownMode != "StopCharging" {
-		return errors.New("invalid shutdown mode")
+	if err = ValidateAccountShutdownMode(shutdownMode); err != nil {
+		return err
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET keep_alive=?, shutdown_mode=?, schedule_enabled=?, start_time=?, stop_time=?, daily_report=?, daily_report_time=? WHERE id=? AND deleted_at=0`,
+	_, err = s.db.ExecContext(ctx, `UPDATE accounts SET keep_alive=?, shutdown_mode=?, schedule_enabled=?, start_time=?, stop_time=?, daily_report=?, daily_report_time=? WHERE id=? AND deleted_at=0`,
 		nullBoolInt(keepAlive), shutdownMode, boolInt(scheduleEnabled), startTime, stopTime, nullBoolInt(dailyReport), dailyReportTime, id)
 	return err
 }

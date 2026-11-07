@@ -1,0 +1,12 @@
+[Unit]
+Description=Check the CDT navigation TLS leaf certificate
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=cdt-lan-certificate.service
+
+[Install]
+WantedBy=timers.target

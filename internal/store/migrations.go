@@ -172,11 +172,41 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, col := range []struct{ table, name, definition string }{
+		{"jobs", "reviewed_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"action_events", "target", "TEXT NOT NULL DEFAULT ''"},
+		{"action_events", "reviewed_at", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.ensureColumn(ctx, col.table, col.name, col.definition); err != nil {
+			return err
+		}
+	}
 	if err := s.migrateLegacyStats(ctx); err != nil {
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, unixepoch())`)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrateActionAttempts(ctx)
+}
+
+// Version 2 preserves historical rows and gives every existing attempt its own identity.
+func (s *Store) migrateActionAttempts(ctx context.Context) error {
+	return s.WithTx(ctx, func(tx *sql.Tx) error {
+		var applied bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=2)`).Scan(&applied); err != nil {
+			return err
+		}
+		if applied {
+			return nil
+		}
+		_, err := tx.ExecContext(ctx, `ALTER TABLE action_events ADD COLUMN attempt_id TEXT NOT NULL DEFAULT '';
+ UPDATE action_events SET attempt_id=lower(hex(randomblob(24)));
+ CREATE UNIQUE INDEX idx_action_attempt_id ON action_events(attempt_id) WHERE attempt_id<>'';
+ INSERT INTO schema_migrations(version,applied_at) VALUES(2,unixepoch());`)
+		return err
+	})
 }
 
 func (s *Store) migrateLegacyStats(ctx context.Context) error {

@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -90,6 +91,7 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("GET /api/v1/system/info", s.require("admin", http.HandlerFunc(s.systemInfo)))
 	mux.HandleFunc("POST /api/v1/setup", s.setup)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
+	mux.HandleFunc("POST /api/v1/auth/lan", s.lanAutoLogin)
 	mux.HandleFunc("POST /api/v1/auth/passkeys/begin", s.beginPasskeyLogin)
 	mux.HandleFunc("POST /api/v1/auth/passkeys/complete", s.completePasskeyLogin)
 	mux.Handle("POST /api/v1/auth/logout", s.require("admin", http.HandlerFunc(s.logout)))
@@ -103,12 +105,15 @@ func New(st *store.Store, eng *engine.Engine, assets fs.FS, logger *slog.Logger,
 	mux.Handle("GET /api/v1/config", s.require("admin", http.HandlerFunc(s.getConfig)))
 	mux.Handle("PUT /api/v1/config", s.require("admin", http.HandlerFunc(s.saveConfig)))
 	mux.Handle("GET /api/v1/accounts/{id}/history", s.require("widget:read", http.HandlerFunc(s.history)))
+	mux.Handle("GET /api/v1/accounts/instance-addresses", s.require("admin", http.HandlerFunc(s.instanceAddresses)))
 	mux.Handle("POST /api/v1/accounts/discover", s.require("admin", http.HandlerFunc(s.discoverInstances)))
 	mux.Handle("POST /api/v1/accounts/refresh", s.require("instance:control", http.HandlerFunc(s.refreshAll)))
 	mux.Handle("POST /api/v1/accounts/{id}/refresh", s.require("instance:control", http.HandlerFunc(s.refresh)))
 	mux.Handle("POST /api/v1/accounts/{id}/actions/{action}", s.require("instance:control", http.HandlerFunc(s.control)))
 	mux.Handle("PATCH /api/v1/accounts/{id}/settings", s.require("admin", http.HandlerFunc(s.updateAccountSettings)))
 	mux.Handle("POST /api/v1/notifications/daily-report", s.require("admin", http.HandlerFunc(s.triggerDailyReport)))
+	mux.Handle("GET /api/v1/recovery", s.require("admin", http.HandlerFunc(s.pendingRecovery)))
+	mux.Handle("POST /api/v1/recovery/{kind}/{id}/resolve", s.require("admin", http.HandlerFunc(s.resolveRecovery)))
 	mux.Handle("GET /api/v1/jobs/{id}", s.requireAny([]string{"widget:read", "instance:control"}, http.HandlerFunc(s.job)))
 	mux.Handle("GET /api/v1/logs", s.require("admin", http.HandlerFunc(s.logs)))
 	mux.Handle("DELETE /api/v1/logs", s.require("admin", http.HandlerFunc(s.clearLogs)))
@@ -176,6 +181,10 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	applyConfigDefaults(&config)
 	if err := s.store.Setup(r.Context(), config); err != nil {
+		if errors.Is(err, store.ErrAlreadyInitialized) {
+			writeError(w, http.StatusConflict, "already_initialized", "系统已初始化")
+			return
+		}
 		writeStoreValidationError(w, "setup_failed", "系统初始化失败", err)
 		return
 	}
@@ -229,6 +238,161 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	setAuthCookies(w, r, token, csrf)
 	_ = s.store.AddLog(r.Context(), "audit", "管理员登录成功 [IP: "+ip+"]")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
+}
+
+func (s *Server) lanAutoLogin(w http.ResponseWriter, r *http.Request) {
+	cidrs := lanAutoLoginNetworks()
+	origins := lanAutoLoginOrigins()
+	if len(cidrs) == 0 || len(origins) == 0 {
+		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
+		return
+	}
+	if !lanAutoLoginRequestAllowed(r, origins) {
+		writeError(w, http.StatusForbidden, "forbidden", "局域网免登录请求来源无效")
+		return
+	}
+	ip := clientIP(r)
+	if !ipAllowedByNetworks(net.ParseIP(ip), cidrs) {
+		writeError(w, http.StatusForbidden, "forbidden", "客户端不在允许的局域网范围内")
+		return
+	}
+	if !s.allowRate("lan-auto-login:"+ip, 20, time.Minute) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "请求过于频繁")
+		return
+	}
+	var request struct{}
+	if err := decodeJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体无效")
+		return
+	}
+	initialized, err := s.store.IsInitialized(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "init_status_failed", "无法读取初始化状态")
+		return
+	}
+	if !initialized {
+		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
+		return
+	}
+
+	if cookie, err := r.Cookie("cdt_session"); err == nil {
+		token := presentedAuthToken(cookie.Value)
+		if token != "" {
+			valid, err := s.store.ValidateSession(r.Context(), token)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "session_failed", "无法验证会话")
+				return
+			}
+			if valid {
+				csrf := csrfToken(token)
+				setAuthCookies(w, r, token, csrf)
+				writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
+				return
+			}
+		}
+	}
+
+	token, err := s.store.CreateSession(r.Context(), ip, r.UserAgent(), 24*time.Hour)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "session_failed", "无法创建会话")
+		return
+	}
+	csrf := csrfToken(token)
+	setAuthCookies(w, r, token, csrf)
+	_ = s.store.AddLog(r.Context(), "audit", "局域网免登录会话创建 [IP: "+ip+"]")
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "csrf_token": csrf})
+}
+
+const (
+	maxLANAutoLoginEnvBytes = 4096
+	maxLANAutoLoginNetworks = 32
+)
+
+func lanAutoLoginNetworks() []*net.IPNet {
+	raw := strings.TrimSpace(os.Getenv("CDT_LAN_AUTOLOGIN_CIDRS"))
+	if raw == "" || len(raw) > maxLANAutoLoginEnvBytes {
+		return nil
+	}
+	networks := make([]*net.IPNet, 0, 4)
+	for _, part := range strings.Split(raw, ",") {
+		if len(networks) >= maxLANAutoLoginNetworks {
+			break
+		}
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			parsed := net.ParseIP(part)
+			if parsed == nil || !parsed.IsPrivate() {
+				continue
+			}
+			if parsed.To4() != nil {
+				part += "/32"
+			} else {
+				part += "/128"
+			}
+		}
+		ip, network, err := net.ParseCIDR(part)
+		if err != nil || !ip.IsPrivate() {
+			continue
+		}
+		prefix, bits := network.Mask.Size()
+		if (bits == 32 && prefix < 16) || (bits == 128 && prefix < 48) {
+			continue
+		}
+		networks = append(networks, network)
+	}
+	return networks
+}
+
+func lanAutoLoginOrigins() map[string]struct{} {
+	raw := strings.TrimSpace(os.Getenv("CDT_LAN_AUTOLOGIN_ORIGINS"))
+	if raw == "" || len(raw) > maxLANAutoLoginEnvBytes {
+		return nil
+	}
+	origins := make(map[string]struct{}, 2)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		parsed, err := url.Parse(part)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			continue
+		}
+		origins["https://"+strings.ToLower(parsed.Host)] = struct{}{}
+	}
+	return origins
+}
+
+func lanAutoLoginRequestAllowed(r *http.Request, origins map[string]struct{}) bool {
+	if !requestSecure(r) || !trustedProxy(remoteIP(r)) {
+		return false
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	canonicalOrigin := "https://" + strings.ToLower(parsed.Host)
+	if _, ok := origins[canonicalOrigin]; !ok || !strings.EqualFold(r.Host, parsed.Host) {
+		return false
+	}
+	if fetchSite := strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")); fetchSite != "" && fetchSite != "same-origin" {
+		return false
+	}
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && strings.EqualFold(mediaType, "application/json")
+}
+
+func ipAllowedByNetworks(ip net.IP, networks []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, network := range networks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) updateAdminPassword(w http.ResponseWriter, r *http.Request) {
@@ -698,14 +862,25 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
-	etag := fmt.Sprintf(`W/"%d-%d"`, lastRun.Unix(), len(accounts))
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
+	body, err := json.Marshal(map[string]any{"accounts": accounts, "system_last_run": lastRun})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status_failed", "状态加载失败")
 		return
 	}
+	body = append(body, '\n')
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(body))
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, max-age=15")
-	writeJSON(w, http.StatusOK, map[string]any{"accounts": accounts, "system_last_run": lastRun})
+	for _, tag := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		tag = strings.TrimSpace(tag)
+		if tag == "*" || strings.TrimPrefix(tag, "W/") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 func (s *Server) widgetSummary(w http.ResponseWriter, r *http.Request) {
@@ -1306,6 +1481,8 @@ func writeStoreValidationError(w http.ResponseWriter, code, fallback string, err
 func safeStoreValidationMessage(msg string) bool {
 	switch msg {
 	case "system is already initialized",
+		"use the administrator password endpoint to change password",
+		"daily report time is invalid",
 		"traffic threshold must be between 1 and 100",
 		"invalid shutdown mode",
 		"invalid threshold action",
@@ -1560,12 +1737,36 @@ func normalizeClockTime(value string, required bool) (string, error) {
 }
 
 func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		AccountID int64 `json:"account_id"`
+	var body *struct {
+		AccountID json.RawMessage `json:"account_id"`
 	}
-	_ = decodeJSON(r, &body)
-	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, body.AccountID)
+	defer r.Body.Close()
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || body == nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求体必须是有效对象")
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid trailing content")
+		return
+	}
+	accountID := int64(0)
+	if len(body.AccountID) > 0 && (string(body.AccountID) == "null" || json.Unmarshal(body.AccountID, &accountID) != nil) {
+		writeError(w, http.StatusBadRequest, "invalid_account", "账号必须是整数，不能为 null")
+		return
+	}
+	if accountID < 0 {
+		writeError(w, http.StatusBadRequest, "invalid_account", "账号无效")
+		return
+	}
+	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, accountID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "account_not_found", "账号不存在")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "enqueue_failed", err.Error())
 		return
 	}

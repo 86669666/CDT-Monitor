@@ -105,6 +105,7 @@ type Config struct {
 }
 
 type AccountSummary struct {
+	AutomationBlocked        bool      `json:"automation_blocked"`
 	InstanceChargeType       string    `json:"instance_charge_type"`
 	InstanceTypeUpdatedAt    time.Time `json:"instance_type_updated_at"`
 	InstanceTypeStale        bool      `json:"instance_type_stale"`

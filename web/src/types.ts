@@ -1,7 +1,7 @@
 export type SiteType = 'china' | 'international'
 export type ShutdownMode = 'KeepCharging' | 'StopCharging'
 export type ThresholdAction = 'stop_and_notify' | 'notify_only'
-export type JobStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted'
 export type APIKeyScope = 'widget:read' | 'instance:control' | 'cron:run'
 
 export const CLEAR_SECRET_SENTINEL = '__clear__'
@@ -106,6 +106,7 @@ export type Config = {
 }
 
 export type AccountSummary = {
+  automation_blocked?: boolean
   instance_charge_type?: 'subscription' | 'spot' | 'pay_as_you_go' | 'unknown'
   instance_type_updated_at?: string
   instance_type_stale?: boolean
@@ -142,6 +143,17 @@ export type AccountSummary = {
 }
 
 export type StatusResponse = { accounts: AccountSummary[]; system_last_run: string }
+export type InstanceAddresses = {
+  account_id: number
+  access_key_id: string
+  region_id: string
+  instance_id: string
+  public_ipv4: string
+  ipv6: string
+  observed_at: string
+  observed: boolean
+  stale: boolean
+}
 export type Job = {
   id: string
   type: string

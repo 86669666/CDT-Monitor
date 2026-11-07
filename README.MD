@@ -42,9 +42,9 @@ Go HTTP API ──► SQLite WAL 状态快照
                                              SMTP / Telegram / Webhook
 ```
 
-状态查询只读取 SQLite 快照，不在页面请求内等待阿里云 API。刷新和控制返回 `202 + job_id`，由后台 Worker 执行。调度租约和动作事件键用于防止任务重叠、重复开关机和重复阈值通知。
+状态查询只读取 SQLite 快照，不在页面请求内等待阿里云 API。单账户刷新和控制返回 HTTP `202` 与 Job 对象（任务标识字段为 `id`），由后台 Worker 执行。调度租约和动作事件键用于防止任务重叠、重复开关机和重复阈值通知。
 
-更完整的现状与技术决策见 [架构分析](docs/architecture-analysis.md)。
+历史背景见 [PHP v1.6.7 架构分析（2026-07-19）](docs/architecture-analysis.md)，其中的现状描述与重构建议不代表当前 Go 版本。
 
 ## Docker 安装
 

@@ -624,6 +624,12 @@ func sendEmail(ctx context.Context, config domain.EmailConfig, event domain.Noti
 	if err != nil {
 		return err
 	}
+	// Close the underlying socket on cancellation, including SMTP greeting,
+	// STARTTLS handshake and protocol reads that do not accept a context.
+	rawConn := conn
+	defer rawConn.Close()
+	stopCancel := context.AfterFunc(ctx, func() { rawConn.Close() })
+	defer stopCancel()
 	if useImplicitTLS {
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12})
 		if err = tlsConn.HandshakeContext(ctx); err != nil {

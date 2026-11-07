@@ -318,16 +318,22 @@ func TestThresholdStopIsIdempotentUntilCleared(t *testing.T) {
 	if got := provider.controlActions(); len(got) != 1 || got[0] != "stop" {
 		t.Fatalf("controls = %#v", got)
 	}
+	provider.status = domain.StatusStopped
 	provider.traffic = 1
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
 	}
+	provider.status = domain.StatusRunning
 	provider.traffic = 200
 	if _, err := eng.processAccount(ctx, account.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := provider.controlActions(); len(got) != 2 || got[1] != "stop" {
 		t.Fatalf("cleared threshold should be allowed to fire again, controls = %#v", got)
+	}
+	var attempts, distinct, retired int
+	if err := st.DB().QueryRow(`SELECT count(*),count(DISTINCT attempt_id),sum(CASE WHEN status='retired' THEN 1 ELSE 0 END) FROM action_events WHERE type='threshold_stop'`).Scan(&attempts, &distinct, &retired); err != nil || attempts != 2 || distinct != 2 || retired != 1 {
+		t.Fatalf("attempt history lost: attempts=%d distinct=%d retired=%d err=%v", attempts, distinct, retired, err)
 	}
 }
 
@@ -394,7 +400,7 @@ func TestThresholdStopFiresAfterNotifyOnlyPolicyChange(t *testing.T) {
 	}
 }
 
-func TestFailedScheduledActionCanRetry(t *testing.T) {
+func TestUnknownScheduledActionIsNotReplayed(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +428,7 @@ func TestFailedScheduledActionCanRetry(t *testing.T) {
 	if _, err = eng.processAccount(ctx, account.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if got := provider.controlActions(); len(got) != 2 || got[1] != "start" {
-		t.Fatalf("failed schedule should retry, controls = %#v", got)
+	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
+		t.Fatalf("unknown schedule must not retry, controls = %#v", got)
 	}
 }

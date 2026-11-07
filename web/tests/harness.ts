@@ -5,6 +5,7 @@ export const TEST_PASSWORD = 'Visual-Test-Password-42!'
 
 export const CONFIG_OBJECT_KEYS = [
   'admin_password',
+  'confirm_instance_actions',
   'traffic_threshold',
   'enable_schedule_notification',
   'shutdown_mode',
@@ -12,6 +13,8 @@ export const CONFIG_OBJECT_KEYS = [
   'keep_alive',
   'api_interval',
   'enable_billing',
+  'enable_daily_report',
+  'daily_report_time',
   'timezone',
   'notifications',
   'accounts',
@@ -39,6 +42,10 @@ export const ACCOUNT_OBJECT_KEYS = [
   'currency',
   'billing_error',
   'billing_updated_at',
+  'keep_alive',
+  'shutdown_mode',
+  'daily_report',
+  'daily_report_time',
 ] as const
 
 export const dashboardConfig: Config = {
@@ -172,6 +179,7 @@ export async function mockInitStatus(page: Page, initialized: boolean) {
 export async function mockDashboardReads(page: Page, status: StatusResponse = dashboardStatus, config: Config = dashboardConfig) {
   await page.route('**/api/v1/status', (route) => route.fulfill({ json: status }))
   await page.route('**/api/v1/config', (route) => route.fulfill({ json: config }))
+  await page.route('**/api/v1/accounts/instance-addresses', (route) => route.fulfill({ json: { instances: [] } }))
 }
 
 export async function mockUnauthorizedSession(page: Page) {

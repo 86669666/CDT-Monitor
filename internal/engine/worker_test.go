@@ -33,7 +33,7 @@ func TestProcessJobsCompletesRefreshFromFakeAliyun(t *testing.T) {
 	}
 }
 
-func TestProcessJobsRequeuesFailedControl(t *testing.T) {
+func TestProcessJobsInterruptsUnknownControl(t *testing.T) {
 	st, account := setupAccount(t, nil)
 	defer st.Close()
 	provider := newFakeProvider()
@@ -49,7 +49,7 @@ func TestProcessJobsRequeuesFailedControl(t *testing.T) {
 	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || jobErr == "" {
+	if status != "interrupted" || jobErr == "" {
 		t.Fatalf("failed control status=%q error=%q", status, jobErr)
 	}
 	if got := provider.controlActions(); len(got) != 1 || got[0] != "start" {
@@ -256,7 +256,7 @@ func TestProcessJobsRecoversFromControlPanic(t *testing.T) {
 	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || jobErr != errJobPanic.Error() {
+	if status != "interrupted" || !strings.Contains(jobErr, "control outcome unknown") {
 		t.Fatalf("panicked control status=%q error=%q", status, jobErr)
 	}
 	if strings.Contains(jobErr, "ecs-secret-should-not-leak") {
@@ -287,7 +287,7 @@ func TestProcessJobsControlErrorRedactsAccessKeyMaterial(t *testing.T) {
 	if err = st.DB().QueryRowContext(ctx, `SELECT status,error FROM jobs WHERE id=?`, job.ID).Scan(&status, &jobErr); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || jobErr == "" {
+	if status != "interrupted" || jobErr == "" {
 		t.Fatalf("failed control status=%q error=%q", status, jobErr)
 	}
 	if strings.Contains(jobErr, "secret") || strings.Contains(jobErr, "LTAItest") {

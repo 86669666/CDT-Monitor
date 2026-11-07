@@ -350,13 +350,15 @@ func TestOpenAPIHTTPResponses(t *testing.T) {
 		t.Helper()
 		return check(method, template, doRequest(t, handler, method, path, body, cookies, headers), expected)
 	}
-	for _, path := range []string{"/healthz", "/readyz", "/api/v1/system/init-status", "/api/v1/system/info", "/api/v1/widget/summary", "/api/v1/admin/passkeys", "/api/v1/api-keys", "/api/v1/logs", "/api/v1/accounts/1/history"} {
+	for _, path := range []string{"/healthz", "/readyz", "/api/v1/system/init-status", "/api/v1/system/info", "/api/v1/widget/summary", "/api/v1/admin/passkeys", "/api/v1/api-keys", "/api/v1/logs", "/api/v1/accounts/1/history", "/api/v1/accounts/instance-addresses"} {
 		template := path
 		if strings.HasSuffix(path, "/history") {
 			template = "/api/v1/accounts/{id}/history"
 		}
 		request("GET", template, path, "", 200)
 	}
+	request("GET", "/api/v1/recovery", "/api/v1/recovery", "", 200)
+	request("POST", "/api/v1/recovery/{kind}/{id}/resolve", "/api/v1/recovery/job/missing/resolve", `{"reviewed":true,"note":"reviewed original record"}`, 404)
 	config := request("GET", "/api/v1/config", "/api/v1/config", "", 200)
 	configBody, _ := json.Marshal(config)
 	request("PUT", "/api/v1/config", "/api/v1/config", string(configBody), 200)
@@ -372,10 +374,9 @@ func TestOpenAPIHTTPResponses(t *testing.T) {
 	request("POST", "/api/v1/accounts/{id}/actions/{action}", "/api/v1/accounts/1/actions/start", "", 202)
 	request("POST", "/api/v1/accounts/{id}/actions/{action}", "/api/v1/accounts/1/actions/restart", "", 400)
 	request("POST", "/api/v1/accounts/{id}/refresh", "/api/v1/accounts/999/refresh", "", 500)
-	request("POST", "/api/v1/notifications/daily-report", "/api/v1/notifications/daily-report", "", 202)
-	// OAPI-OBS-2 characterization only, not a compatibility guarantee. An independently
-	// authorized decoder-validation fix should update this assertion and the contract.
-	request("POST", "/api/v1/notifications/daily-report", "/api/v1/notifications/daily-report", `{"account_id":`, 202)
+	request("POST", "/api/v1/notifications/daily-report", "/api/v1/notifications/daily-report", "{}", 202)
+	// Malformed input must not enqueue partially decoded work.
+	request("POST", "/api/v1/notifications/daily-report", "/api/v1/notifications/daily-report", `{"account_id":`, 400)
 	request("POST", "/api/v1/notifications/test/{channel}", "/api/v1/notifications/test/email", "", 202)
 	request("DELETE", "/api/v1/logs", "/api/v1/logs?tab=action", "", 200)
 	key := request("POST", "/api/v1/api-keys", "/api/v1/api-keys", `{"name":"contract-fixture","scopes":["widget:read","instance:control","cron:run"]}`, 201)
@@ -412,6 +413,9 @@ func TestOpenAPIHTTPResponses(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = fresh.Close() })
 	check("POST", "/api/v1/setup", doRequest(t, testAPIHandler(t, fresh), "POST", "/api/v1/setup", `{"admin_password":"Contract-Setup-42!"}`, nil, nil), 201)
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.10.99.0/24")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "https://10.10.99.99")
+	check("POST", "/api/v1/auth/lan", doLANAutoLoginRequest(t, handler, "10.10.99.115", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", nil), 200)
 	for path, methods := range spec.Paths {
 		for method := range methods {
 			if !seen[strings.ToUpper(method)+" "+path] {
