@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh the CDT navigation TLS leaf certificate
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/cdt-lan-navigation/reload-certificate.py
+TimeoutStartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

@@ -360,11 +360,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	var trafficErr, statusErr error
 	if due {
 		var wait sync.WaitGroup
-		wait.Add(3)
-		go func() {
-			defer wait.Done()
-			e.refreshInstanceMetadata(ctx, account, secret)
-		}()
+		wait.Add(1)
 		go func() {
 			defer wait.Done()
 			defer func() {
@@ -375,16 +371,25 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			}()
 			traffic, trafficErr = e.provider.GetTraffic(ctx, account, secret)
 		}()
-		go func() {
-			defer wait.Done()
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					e.logger.Error("status fetch panic", "account_id", accountID)
-					statusErr = errProviderPanic
-				}
+		if account.InstanceID != "" {
+			wait.Add(2)
+			go func() {
+				defer wait.Done()
+				e.refreshInstanceMetadata(ctx, account, secret)
 			}()
-			status, statusErr = e.provider.GetInstanceStatus(ctx, account, secret)
-		}()
+			go func() {
+				defer wait.Done()
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						e.logger.Error("status fetch panic", "account_id", accountID)
+						statusErr = errProviderPanic
+					}
+				}()
+				status, statusErr = e.provider.GetInstanceStatus(ctx, account, secret)
+			}()
+		} else {
+			status = domain.StatusUnknown
+		}
 		wait.Wait()
 		if trafficErr != nil {
 			traffic = account.TrafficUsed

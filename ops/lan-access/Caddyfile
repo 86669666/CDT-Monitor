@@ -1,0 +1,55 @@
+{
+    admin 127.0.0.1:2020
+    persist_config off
+    auto_https off
+    default_sni 10.10.99.99
+    servers {
+        protocols h1 h2
+    }
+}
+
+(cdt_backend) {
+    reverse_proxy 127.0.0.1:43210 {
+        header_up Host {host}
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote_host}
+    }
+}
+
+http://10.10.99.99 {
+    bind 10.10.99.99
+    @outside not remote_ip 10.10.99.0/24
+    route {
+        respond @outside "仅限局域网访问" 403
+        header {
+            X-Content-Type-Options nosniff
+            Referrer-Policy no-referrer
+            X-Frame-Options DENY
+        }
+        root * /srv
+        file_server
+    }
+}
+
+https://10.10.99.99 {
+    bind 10.10.99.99
+    tls /certs/current/10.10.99.99.crt /certs/current/10.10.99.99.key
+    @outside not remote_ip 10.10.99.0/24
+    route {
+        respond @outside "仅限局域网访问" 403
+        header Strict-Transport-Security "max-age=31536000"
+        redir /cdt /cdt/ 308
+        handle_path /cdt/* {
+            import cdt_backend
+        }
+        @cdt_public path /api/* /assets/* /icon.png
+        handle @cdt_public {
+            import cdt_backend
+        }
+        handle {
+            root * /srv
+            file_server
+        }
+    }
+}

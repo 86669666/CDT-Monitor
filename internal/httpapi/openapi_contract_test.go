@@ -350,7 +350,7 @@ func TestOpenAPIHTTPResponses(t *testing.T) {
 		t.Helper()
 		return check(method, template, doRequest(t, handler, method, path, body, cookies, headers), expected)
 	}
-	for _, path := range []string{"/healthz", "/readyz", "/api/v1/system/init-status", "/api/v1/system/info", "/api/v1/widget/summary", "/api/v1/admin/passkeys", "/api/v1/api-keys", "/api/v1/logs", "/api/v1/accounts/1/history"} {
+	for _, path := range []string{"/healthz", "/readyz", "/api/v1/system/init-status", "/api/v1/system/info", "/api/v1/widget/summary", "/api/v1/admin/passkeys", "/api/v1/api-keys", "/api/v1/logs", "/api/v1/accounts/1/history", "/api/v1/accounts/instance-addresses"} {
 		template := path
 		if strings.HasSuffix(path, "/history") {
 			template = "/api/v1/accounts/{id}/history"
@@ -412,6 +412,9 @@ func TestOpenAPIHTTPResponses(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = fresh.Close() })
 	check("POST", "/api/v1/setup", doRequest(t, testAPIHandler(t, fresh), "POST", "/api/v1/setup", `{"admin_password":"Contract-Setup-42!"}`, nil, nil), 201)
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.10.99.0/24")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "https://10.10.99.99")
+	check("POST", "/api/v1/auth/lan", doLANAutoLoginRequest(t, handler, "10.10.99.115", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", nil), 200)
 	for path, methods := range spec.Paths {
 		for method := range methods {
 			if !seen[strings.ToUpper(method)+" "+path] {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -136,6 +137,165 @@ func loginCookies(t *testing.T, handler http.Handler) (session, csrf *http.Cooki
 		t.Fatalf("csrf cookie %q is not bound to session", csrf.Value)
 	}
 	return session, csrf
+}
+
+func doLANAutoLoginRequest(t *testing.T, handler http.Handler, forwardedIP, origin, host, fetchSite, remoteAddr string, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "https://10.10.99.99/api/v1/auth/lan", strings.NewReader(`{}`))
+	request.Host = host
+	request.RemoteAddr = remoteAddr
+	request.TLS = &tls.ConnectionState{}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", origin)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-For", forwardedIP)
+	request.Header.Set("Sec-Fetch-Site", fetchSite)
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func doLANAutoLoginHTTPSProxyRequest(t *testing.T, handler http.Handler, forwardedIP, remoteAddr string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "http://10.10.99.99/api/v1/auth/lan", strings.NewReader(`{}`))
+	request.Host = "10.10.99.99"
+	request.RemoteAddr = remoteAddr
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://10.10.99.99")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-For", forwardedIP)
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func TestLANAutoLoginIsDisabledByDefault(t *testing.T) {
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "")
+	response := doLANAutoLoginRequest(t, testAPIHandler(t, initializedAuthStore(t)), "10.10.99.115", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", nil)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestLANAutoLoginDoesNotInitializeTheApplication(t *testing.T) {
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.10.99.0/24")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "https://10.10.99.99")
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	response := doLANAutoLoginRequest(t, testAPIHandler(t, st), "10.10.99.115", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", nil)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("uninitialized auto-login status = %d, want 404; body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestLANAutoLoginAcceptsHTTPSFromTrustedHTTPProxy(t *testing.T) {
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.10.99.0/24")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "https://10.10.99.99")
+	response := doLANAutoLoginHTTPSProxyRequest(t, testAPIHandler(t, initializedAuthStore(t)), "10.10.99.115", "127.0.0.1:43210")
+	if response.Code != http.StatusOK {
+		t.Fatalf("trusted HTTPS proxy status = %d, want 200; body = %s", response.Code, response.Body.String())
+	}
+	if session := cookieNamed(response.Result().Cookies(), "cdt_session"); session == nil || !session.Secure {
+		t.Fatalf("trusted HTTPS proxy did not issue a Secure session cookie: %#v", response.Result().Cookies())
+	}
+}
+
+func TestLANAutoLoginCreatesReusesAndKeepsIndependentSessions(t *testing.T) {
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.10.99.0/24")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "https://10.10.99.99")
+	st := initializedAuthStore(t)
+	handler := testAPIHandler(t, st)
+
+	first := doLANAutoLoginRequest(t, handler, "10.10.99.115", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", nil)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first auto-login status = %d, body = %s", first.Code, first.Body.String())
+	}
+	firstCookies := first.Result().Cookies()
+	firstSession := cookieNamed(firstCookies, "cdt_session")
+	firstCSRF := cookieNamed(firstCookies, "cdt_csrf")
+	if firstSession == nil || firstCSRF == nil || !firstSession.HttpOnly || firstCSRF.HttpOnly || !firstSession.Secure || !firstCSRF.Secure {
+		t.Fatalf("auto-login cookies are incomplete or unsafe: %#v", firstCookies)
+	}
+	if firstCSRF.Value != csrfToken(firstSession.Value) {
+		t.Fatal("auto-login CSRF cookie is not bound to the session")
+	}
+	if valid, err := st.ValidateSession(t.Context(), firstSession.Value); err != nil || !valid {
+		t.Fatalf("auto-login session valid = %v, err = %v", valid, err)
+	}
+
+	reused := doLANAutoLoginRequest(t, handler, "10.10.99.115", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", firstCookies)
+	reusedSession := cookieNamed(reused.Result().Cookies(), "cdt_session")
+	if reused.Code != http.StatusOK || reusedSession == nil || reusedSession.Value != firstSession.Value {
+		t.Fatalf("existing session was not reused: status=%d body=%s", reused.Code, reused.Body.String())
+	}
+
+	second := doLANAutoLoginRequest(t, handler, "10.10.99.116", "https://10.10.99.99", "10.10.99.99", "same-origin", "127.0.0.1:43210", nil)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second client auto-login status = %d, body = %s", second.Code, second.Body.String())
+	}
+	secondSession := cookieNamed(second.Result().Cookies(), "cdt_session")
+	if secondSession == nil || secondSession.Value == firstSession.Value {
+		t.Fatal("second client did not receive an independent session")
+	}
+	for _, token := range []string{firstSession.Value, secondSession.Value} {
+		if valid, err := st.ValidateSession(t.Context(), token); err != nil || !valid {
+			t.Fatalf("independent session valid = %v, err = %v", valid, err)
+		}
+	}
+
+	config := doRequest(t, handler, http.MethodGet, "/api/v1/config", "", firstCookies, nil)
+	if config.Code != http.StatusOK {
+		t.Fatalf("auto-login did not unlock admin API: status=%d body=%s", config.Code, config.Body.String())
+	}
+	writeWithoutCSRF := doRequest(t, handler, http.MethodPut, "/api/v1/config", `{}`, []*http.Cookie{firstSession}, nil)
+	if writeWithoutCSRF.Code != http.StatusForbidden {
+		t.Fatalf("write without CSRF status = %d, want 403", writeWithoutCSRF.Code)
+	}
+}
+
+func TestLANAutoLoginRejectsUntrustedSources(t *testing.T) {
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.10.99.0/24")
+	t.Setenv("CDT_LAN_AUTOLOGIN_ORIGINS", "https://10.10.99.99")
+	handler := testAPIHandler(t, initializedAuthStore(t))
+	tests := []struct {
+		name        string
+		forwardedIP string
+		origin      string
+		host        string
+		fetchSite   string
+		remoteAddr  string
+	}{
+		{name: "outside CIDR", forwardedIP: "10.10.100.4", origin: "https://10.10.99.99", host: "10.10.99.99", fetchSite: "same-origin", remoteAddr: "127.0.0.1:43210"},
+		{name: "wrong origin", forwardedIP: "10.10.99.115", origin: "https://evil.example", host: "evil.example", fetchSite: "same-origin", remoteAddr: "127.0.0.1:43210"},
+		{name: "plain HTTP origin", forwardedIP: "10.10.99.115", origin: "http://10.10.99.99", host: "10.10.99.99", fetchSite: "same-origin", remoteAddr: "127.0.0.1:43210"},
+		{name: "wrong host", forwardedIP: "10.10.99.115", origin: "https://10.10.99.99", host: "evil.example", fetchSite: "same-origin", remoteAddr: "127.0.0.1:43210"},
+		{name: "cross-site fetch", forwardedIP: "10.10.99.115", origin: "https://10.10.99.99", host: "10.10.99.99", fetchSite: "cross-site", remoteAddr: "127.0.0.1:43210"},
+		{name: "untrusted proxy", forwardedIP: "10.10.99.115", origin: "https://10.10.99.99", host: "10.10.99.99", fetchSite: "same-origin", remoteAddr: "192.0.2.5:43210"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := doLANAutoLoginRequest(t, handler, test.forwardedIP, test.origin, test.host, test.fetchSite, test.remoteAddr, nil)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403; body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestLANAutoLoginCIDRsRejectBroadAndPublicNetworks(t *testing.T) {
+	t.Setenv("CDT_LAN_AUTOLOGIN_CIDRS", "10.0.0.0/8,0.0.0.0/0,10.10.99.0/24")
+	networks := lanAutoLoginNetworks()
+	if len(networks) != 1 || !ipAllowedByNetworks(net.ParseIP("10.10.99.115"), networks) || ipAllowedByNetworks(net.ParseIP("10.10.100.4"), networks) {
+		t.Fatalf("unexpected LAN auto-login networks: %#v", networks)
+	}
 }
 
 func TestLoginCookiesAndConfigRedaction(t *testing.T) {

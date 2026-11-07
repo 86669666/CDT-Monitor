@@ -88,6 +88,69 @@ func TestTrafficResponseIgnoresInvalidRegions(t *testing.T) {
 	}
 }
 
+func TestTrafficResponseDoesNotTreatOnlyInvalidRegionsAsZero(t *testing.T) {
+	for _, details := range [][]any{
+		{map[string]any{}},
+		{map[string]any{"BusinessRegionId": "bad region", "Traffic": 0}},
+	} {
+		if _, err := trafficFromResponse(map[string]any{"TrafficDetails": details}, "china"); err == nil {
+			t.Fatal("invalid traffic details must not become a zero-usage sample")
+		}
+	}
+}
+
+func TestTrafficRetryRetainsUnknownEmptyResponse(t *testing.T) {
+	a := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-hangzhou"}
+	for _, recoverOnRetry := range []bool{true, false} {
+		client := NewClient()
+		calls := 0
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			body := `{"TrafficDetails":[]}`
+			if recoverOnRetry && calls > 1 {
+				body = `{"TrafficDetails":[{"BusinessRegionId":"cn-hangzhou","Traffic":1073741824}]}`
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: r}, nil
+		})}
+		traffic, err := client.GetTraffic(context.Background(), a, "secret")
+		if recoverOnRetry && (err != nil || traffic != 1 || calls < 2) {
+			t.Fatalf("retry did not recover: traffic=%v err=%v calls=%d", traffic, err, calls)
+		}
+		if !recoverOnRetry && (err == nil || calls != maxAliyunAttempts) {
+			t.Fatalf("empty response should remain unknown: err=%v calls=%d", err, calls)
+		}
+	}
+}
+
+func TestTimestampRetryIsLimitedToReadOnlyCalls(t *testing.T) {
+	account := domain.Account{AccessKeyID: "LTAItest", RegionID: "cn-beijing", InstanceID: "i-test"}
+	for _, action := range []string{"read", "read-200", "start", "stop"} {
+		t.Run(action, func(t *testing.T) {
+			client := NewClient()
+			calls := 0
+			client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				status, body := http.StatusBadRequest, `{"Code":"InvalidTimeStamp.Expired","Message":"Timestamp expired"}`
+				if action == "read-200" {
+					status = http.StatusOK
+				}
+				if calls > 1 {
+					status, body = http.StatusOK, `{"InstanceStatuses":{"InstanceStatus":[{"Status":"Running"}]}}`
+				}
+				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: r}, nil
+			})}
+			if action == "read" || action == "read-200" {
+				status, err := client.GetInstanceStatus(context.Background(), account, "secret")
+				if err != nil || status != domain.StatusRunning || calls != 2 {
+					t.Fatalf("status=%q err=%v calls=%d", status, err, calls)
+				}
+			} else if err := client.ControlInstance(context.Background(), account, "secret", action, "KeepCharging"); err == nil || calls != 1 {
+				t.Fatalf("control timestamp error was retried: err=%v calls=%d", err, calls)
+			}
+		})
+	}
+}
+
 func TestAsSliceSupportsSingleBssItem(t *testing.T) {
 	items := asSlice(map[string]any{"Item": map[string]any{"PretaxAmount": "23.456"}})
 	if len(items) != 1 {

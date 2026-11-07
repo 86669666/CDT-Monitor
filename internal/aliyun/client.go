@@ -665,17 +665,48 @@ func (c *Client) callOnce(ctx context.Context, accessKeyID, secret, region, host
 		return nil, false, fmt.Errorf("aliyun %s invalid response: %s", action, reason)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, compactMessage(result, body))
+		message := compactMessage(result, body)
+		retryTimestamp := readOnlyAliyunAction(action) && retryableTimestampError(stringValue(result["Code"]), message)
+		return nil, resp.StatusCode >= 500 || resp.StatusCode == 429 || retryTimestamp, fmt.Errorf("aliyun %s http %d: %s", action, resp.StatusCode, message)
 	}
 	if code := stringValue(result["Code"]); code != "" {
 		if len([]rune(code)) > maxAliyunCodeRunes {
 			return nil, false, fmt.Errorf("aliyun %s invalid response: code is too long", action)
 		}
 		if !isSuccessCode(code) {
-			return nil, strings.Contains(strings.ToLower(code), "throttl"), fmt.Errorf("aliyun %s %s: %s", action, clipAliyunErrorText(code), clipAliyunErrorText(stringValue(result["Message"])))
+			message := stringValue(result["Message"])
+			retryTimestamp := readOnlyAliyunAction(action) && retryableTimestampError(code, message)
+			return nil, strings.Contains(strings.ToLower(code), "throttl") || retryTimestamp, fmt.Errorf("aliyun %s %s: %s", action, clipAliyunErrorText(code), clipAliyunErrorText(message))
 		}
 	}
+	if action == "ListCdtInternetTraffic" && !hasTrafficDetails(result) {
+		return nil, true, errors.New("CDT response has no TrafficDetails")
+	}
 	return result, false, nil
+}
+
+// Timestamp retries added for observation calls do not change control actions.
+func readOnlyAliyunAction(action string) bool {
+	switch action {
+	case "ListCdtInternetTraffic", "DescribeInstances", "DescribeInstanceStatus", "QueryAccountBalance", "DescribeInstanceBill":
+		return true
+	default:
+		return false
+	}
+}
+
+func retryableTimestampError(code, message string) bool {
+	text := strings.ToLower(strings.ReplaceAll(code+" "+message, " ", ""))
+	return strings.Contains(text, "timestamp") &&
+		(strings.Contains(text, "expired") || strings.Contains(text, "notsupplied") || strings.Contains(text, "missing"))
+}
+
+func hasTrafficDetails(result map[string]any) bool {
+	if len(asSlice(result["TrafficDetails"])) > 0 {
+		return true
+	}
+	data, ok := result["Data"].(map[string]any)
+	return ok && len(asSlice(data["TrafficDetails"])) > 0
 }
 
 const (
@@ -839,6 +870,7 @@ func trafficFromResponse(result map[string]any, class string) (float64, error) {
 		return 0, errors.New("CDT response has no TrafficDetails")
 	}
 	var total float64
+	validRegions := 0
 	for _, item := range items {
 		obj, ok := item.(map[string]any)
 		if !ok {
@@ -848,6 +880,7 @@ func trafficFromResponse(result map[string]any, class string) (float64, error) {
 		if !validECSRegion(region) {
 			continue
 		}
+		validRegions++
 		if trafficClass(region) == class {
 			amount, err := parseFiniteNumber(obj["Traffic"])
 			if err != nil {
@@ -855,6 +888,9 @@ func trafficFromResponse(result map[string]any, class string) (float64, error) {
 			}
 			total += amount
 		}
+	}
+	if validRegions == 0 {
+		return 0, errors.New("CDT response has no valid traffic regions")
 	}
 	return total / (1024 * 1024 * 1024), nil
 }

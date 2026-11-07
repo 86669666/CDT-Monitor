@@ -423,6 +423,112 @@
         }
       }
     },
+    "/api/v1/auth/lan": {
+      "post": {
+        "operationId": "lanAutoLogin",
+        "summary": "LAN auto-login bootstrap",
+        "description": "Optional passwordless session bootstrap. Disabled unless both CDT_LAN_AUTOLOGIN_CIDRS and CDT_LAN_AUTOLOGIN_ORIGINS contain valid, narrow private-network and HTTPS-origin allowlists. Requires same-origin HTTPS through a trusted proxy, a matching Host and Origin, and a client IP in the configured CIDR. Creates or reuses a 24-hour admin session; protected writes still require the normal CSRF token. Limit 20 requests per client IP per minute.",
+        "x-handler": "Server.lanAutoLogin",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSuccess"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "description": "Two Set-Cookie headers for cdt_session and cdt_csrf; see security scheme descriptions.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: invalid_request.",
+            "x-error-codes": [
+              "invalid_request"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Disabled, uninitialized, or unavailable.",
+            "x-error-codes": [
+              "not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error codes: rate_limited.",
+            "x-error-codes": [
+              "rate_limited"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: init_status_failed, session_failed.",
+            "x-error-codes": [
+              "init_status_failed",
+              "session_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/passkeys/begin": {
       "post": {
         "operationId": "beginPasskeyLogin",
@@ -3019,6 +3125,127 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/accounts/instance-addresses": {
+      "get": {
+        "operationId": "instanceAddresses",
+        "summary": "Cached instance addresses",
+        "description": "Administrator session only. Reads cached metadata; never invokes Aliyun, and returns identity fields to prevent displaying an address for a changed target.",
+        "x-handler": "Server.instanceAddresses",
+        "security": [
+          {
+            "Session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "instances": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "account_id": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "access_key_id": {
+                            "type": "string"
+                          },
+                          "region_id": {
+                            "type": "string"
+                          },
+                          "instance_id": {
+                            "type": "string"
+                          },
+                          "public_ipv4": {
+                            "type": "string"
+                          },
+                          "ipv6": {
+                            "type": "string"
+                          },
+                          "observed_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "observed": {
+                            "type": "boolean"
+                          },
+                          "stale": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "account_id",
+                          "access_key_id",
+                          "region_id",
+                          "instance_id",
+                          "public_ipv4",
+                          "ipv6",
+                          "observed_at",
+                          "observed",
+                          "stale"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "instances"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: unauthorized.",
+            "x-error-codes": [
+              "unauthorized"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: forbidden.",
+            "x-error-codes": [
+              "forbidden"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error codes: instance_addresses_failed.",
+            "x-error-codes": [
+              "instance_addresses_failed"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-api-key-scopes": [],
+        "x-session-admin": true
       }
     }
   },

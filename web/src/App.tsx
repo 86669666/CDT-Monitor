@@ -14,9 +14,10 @@ import TimePicker from './TimePicker'
 import InstanceImportWizard from './InstanceImportWizard'
 import InstanceActionConfirmation from './InstanceActionConfirmation'
 import { defaultTrafficQuota, trafficClass, trafficClassLabel, updateTrafficAccount, totalPoolTraffic, trafficOverviews, instanceChargeLabel } from './traffic'
+import { ThemeMenu } from './Appearance'
 import {
   APIKeyRecord, APIKeysResponse, APIKeyScope, Account, AccountSummary, AuthSuccess, Config, CreateAPIKeyRequest, CreateAPIKeyResponse,
-  History, InitStatus, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
+  History, InitStatus, InstanceAddresses, Job, JobsResponse, LogEntry, LogsResponse, PasskeyCeremony, PasskeyRecord,
   PasskeysResponse, StatusResponse, SystemInfo, CLEAR_SECRET_SENTINEL, MAX_ACCOUNTS, MAX_ACCOUNT_REMARK_RUNES, MAX_ACCOUNT_TRAFFIC_GB, MAX_ACCESS_KEY_ID_CHARS, MAX_INSTANCE_ID_CHARS, MAX_TELEGRAM_CHAT_RUNES, MAX_NOTIFY_EMAIL_RUNES, MAX_NOTIFY_TCP_PORT, MAX_WEBHOOK_HEADERS_RUNES, MAX_WEBHOOK_BODY_RUNES, MAX_NOTIFY_URL_RUNES, MAX_NOTIFY_SECRET_RUNES, MAX_NOTIFY_DIAL_HOST_RUNES, MAX_TIMEZONE_RUNES, MAX_PASSWORD_RUNES, MAX_ACCESS_KEY_SECRET_RUNES, MAX_API_KEYS, MAX_PASSKEYS, MAX_PASSKEY_NAME_RUNES, MAX_API_KEY_NAME_RUNES, defaultConfig, emptyAccount, liveScheduleClock, liveNotifyPort, liveNotifyPortString, liveNotifyHeaderText,
 } from './types'
 
@@ -50,6 +51,23 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [historyAccount, setHistoryAccount] = useState<AccountSummary | null>(null)
+  const [instanceAddresses, setInstanceAddresses] = useState<InstanceAddresses[]>([])
+  const [addressesUnavailable, setAddressesUnavailable] = useState(false)
+  const addressRequest = useRef(0)
+
+  const refreshAddresses = useCallback(async () => {
+    const request = ++addressRequest.current
+    try {
+      const result = await api<{ instances: InstanceAddresses[] }>('/api/v1/accounts/instance-addresses', { cache: 'no-store' })
+      if (!result || !Array.isArray(result.instances)) throw new Error('invalid instance addresses response')
+      if (request === addressRequest.current) {
+        setInstanceAddresses(result.instances)
+        setAddressesUnavailable(false)
+      }
+    } catch {
+      if (request === addressRequest.current) setAddressesUnavailable(true)
+    }
+  }, [])
 
   const notify = useCallback((message: string, tone: Toast['tone'] = 'info') => {
     const id = Date.now() + Math.random()
@@ -65,15 +83,17 @@ export default function App() {
     setStatus(nextStatus)
     setConfig(nextConfig)
     setPhase('dashboard')
-  }, [])
+    void refreshAddresses()
+  }, [refreshAddresses])
 
   const refreshStatus = useCallback(async (fresh = false) => {
     try {
       setStatus(await api<StatusResponse>('/api/v1/status', fresh ? { cache: 'no-store' } : {}))
+      void refreshAddresses()
     } catch (error) {
       if (error instanceof APIError && error.status === 401) setPhase('login')
     }
-  }, [])
+  }, [refreshAddresses])
 
   useEffect(() => {
     void (async () => {
@@ -85,8 +105,15 @@ export default function App() {
         }
         try {
           await loadDashboard()
+          return
         } catch (error) {
-          if (error instanceof APIError && error.status === 401) setPhase('login')
+          if (!(error instanceof APIError) || error.status !== 401) throw error
+        }
+        try {
+          await api<AuthSuccess>('/api/v1/auth/lan', { method: 'POST', body: '{}' })
+          await loadDashboard()
+        } catch (error) {
+          if (error instanceof APIError && [401, 403, 404, 429].includes(error.status)) setPhase('login')
           else throw error
         }
       } catch (error) {
@@ -112,13 +139,15 @@ export default function App() {
       <Dashboard
         status={status}
         config={config!}
+        instanceAddresses={instanceAddresses}
+        addressesUnavailable={addressesUnavailable}
         onRefresh={refreshStatus}
         onSettings={() => setSettingsOpen(true)}
         onAdmin={() => setAdminOpen(true)}
         onHistory={setHistoryAccount}
         onConfigChange={setConfig}
         notify={notify}
-        onLogout={() => setPhase('login')}
+        onLogout={() => { addressRequest.current++; setInstanceAddresses([]); setPhase('login') }}
       />
       {settingsOpen && config && (
         <SettingsPanel
@@ -193,7 +222,7 @@ function SetupWizard({ onComplete, notify }: { onComplete: () => Promise<void>; 
 
   return (
     <main className="setup-shell">
-      <header className="setup-header"><div className="brand-lockup"><BrandMark /><div><b>CDT MONITOR</b><span>SECURE SETUP</span></div></div><StepDots current={step} /></header>
+      <header className="setup-header"><div className="brand-lockup"><BrandMark /><div><b>CDT MONITOR</b><span>SECURE SETUP</span></div></div><div className="setup-header-actions"><StepDots current={step} /><ThemeMenu /></div></header>
       <section className="glass-card setup-card">
         <div className="setup-copy">
           <p className="eyebrow">STEP {step + 1} OF 3</p>
@@ -263,6 +292,7 @@ function Login({ onComplete }: { onComplete: () => Promise<void> }) {
   }
   return (
     <main className="login-shell">
+      <div className="auth-appearance"><ThemeMenu /></div>
       <div className="login-card-stack">
         <div className="login-brand"><div className="brand-lockup"><BrandMark /><div><b>CDT MONITOR</b><span>CONTROL PLANE</span></div></div><p>阿里云 CDT 流量与实例自动化控制台</p></div>
         <form className="glass-card auth-card" onSubmit={submit}>
@@ -278,8 +308,8 @@ function Login({ onComplete }: { onComplete: () => Promise<void> }) {
   )
 }
 
-function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, onConfigChange, notify, onLogout }: {
-  status: StatusResponse; config: Config; onRefresh: (fresh?: boolean) => Promise<void>; onSettings: () => void; onAdmin: () => void; onHistory: (account: AccountSummary) => void; onConfigChange?: (config: Config) => void; notify: (message: string, tone?: Toast['tone']) => void; onLogout: () => void
+function Dashboard({ status, config, instanceAddresses, addressesUnavailable, onRefresh, onSettings, onAdmin, onHistory, onConfigChange, notify, onLogout }: {
+  status: StatusResponse; config: Config; instanceAddresses: InstanceAddresses[]; addressesUnavailable: boolean; onRefresh: (fresh?: boolean) => Promise<void>; onSettings: () => void; onAdmin: () => void; onHistory: (account: AccountSummary) => void; onConfigChange?: (config: Config) => void; notify: (message: string, tone?: Toast['tone']) => void; onLogout: () => void
 }) {
   const [configuringAccount, setConfiguringAccount] = useState<Account | null>(null)
   const [pendingAction, setPendingAction] = useState<{ account: AccountSummary; action: 'start' | 'stop'; instanceId: string } | null>(null)
@@ -397,6 +427,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         <div id="dashboard-actions" className={`topbar-actions ${mobileMenu ? 'open' : ''}`} aria-busy={refreshingAll}>
           <div className={`heartbeat ${heartbeatAge > 180 ? 'heartbeat--warn' : ''}`}><i />{heartbeatAge > 180 ? '监控任务延迟' : '自动化运行中'}</div>
           <IconButton label={refreshingAll ? '正在强制刷新全部实例' : '强制刷新全部实例'} disabled={refreshingAll} onClick={() => void refreshAll()}>{refreshingAll ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={18} />}</IconButton>
+          <ThemeMenu />
           <IconButton label="设置" onClick={openSettings}><Settings size={18} /></IconButton>
           <IconButton label="管理员" title="管理员设置" onClick={openAdmin}><UserCog size={18} /></IconButton>
           <IconButton label="退出" onClick={leave}><LogOut size={18} /></IconButton>
@@ -427,7 +458,11 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
         <button className="empty-state" onClick={onSettings}><Cloud /><h3>添加第一个云端实例</h3><p>进入设置完成 AccessKey 与实例信息配置</p><span>打开设置<ChevronRight size={16} /></span></button>
       ) : (
         <section className="account-grid">
-          {status.accounts.map((account) => <AccountCard key={account.id} account={account} busy={refreshingAll ? 'refresh' : busy[account.id]} keepAlive={config.keep_alive} billingEnabled={config.enable_billing} timeZone={config.timezone} onAction={(action) => requestAction(account, action)} onConfigure={() => openInstanceSettings(account)} onHistory={() => onHistory(account)} />)}
+          {status.accounts.map((account) => {
+            const target = config.accounts.find((item) => item.id === account.id)
+            const addresses = target?.instance_id ? instanceAddresses.find((item) => item.account_id === target.id && item.access_key_id === target.access_key_id && item.region_id === target.region_id && item.instance_id === target.instance_id) : undefined
+            return <AccountCard key={account.id} account={account} addresses={addresses} hasInstance={!!target?.instance_id} addressesUnavailable={addressesUnavailable} busy={refreshingAll ? 'refresh' : busy[account.id]} keepAlive={config.keep_alive} billingEnabled={config.enable_billing} timeZone={config.timezone} onAction={(action) => requestAction(account, action)} onConfigure={() => openInstanceSettings(account)} onHistory={() => onHistory(account)} />
+          })}
         </section>
       )}
       {pendingAction && <InstanceActionConfirmation account={pendingAction.account} instanceId={pendingAction.instanceId} action={pendingAction.action} onCancel={()=>setPendingAction(null)} onConfirm={confirmAction} />}
@@ -448,7 +483,7 @@ function Dashboard({ status, config, onRefresh, onSettings, onAdmin, onHistory, 
   )
 }
 
-function AccountCard({ account, busy, keepAlive, billingEnabled, timeZone, onAction, onConfigure, onHistory }: { account: AccountSummary; busy?: string; keepAlive: boolean; billingEnabled: boolean; timeZone: string; onAction: (action: 'start' | 'stop' | 'refresh') => void; onConfigure: () => void; onHistory: () => void }) {
+function AccountCard({ account, addresses, hasInstance, addressesUnavailable, busy, keepAlive, billingEnabled, timeZone, onAction, onConfigure, onHistory }: { account: AccountSummary; addresses?: InstanceAddresses; hasInstance: boolean; addressesUnavailable: boolean; busy?: string; keepAlive: boolean; billingEnabled: boolean; timeZone: string; onAction: (action: 'start' | 'stop' | 'refresh') => void; onConfigure: () => void; onHistory: () => void }) {
   const statusTone = statusClass(account.instance_status)
   const currency = account.currency === 'USD' ? '$' : '¥'
   const hasBilling = account.monthly_cost !== undefined || account.balance !== undefined
@@ -463,6 +498,13 @@ function AccountCard({ account, busy, keepAlive, billingEnabled, timeZone, onAct
           {billingEnabled && <div className="account-billing" aria-label="账单与余额"><div><span>本月费用</span><b>{account.monthly_cost === undefined ? '待同步' : `${currency}${account.monthly_cost.toFixed(2)}`}</b></div><div><span>账户余额</span><b>{account.balance === undefined ? '待同步' : `${currency}${account.balance.toFixed(2)}`}</b></div><small className={account.billing_error ? 'billing-error' : ''}>{account.billing_error || (hasBilling ? '已同步' : '待同步')}</small></div>}
         </div>
       </header>
+      {hasInstance && <div className="instance-addresses" aria-label="实例地址">
+        {addresses?.observed && (addresses.public_ipv4 || addresses.ipv6) ? <>
+          {addresses.public_ipv4 && <span>公网 IPv4 <code>{addresses.public_ipv4}</code></span>}
+          {addresses.ipv6 && <span>IPv6 <code>{addresses.ipv6}</code></span>}
+          {(addresses.stale || addressesUnavailable) && <small>地址待刷新 · {formatTime(addresses.observed_at, timeZone)}</small>}
+        </> : <span>{addresses?.observed && !addresses.stale && !addressesUnavailable ? '实例地址待确认' : '实例地址待同步'}</span>}
+      </div>}
       <div className="traffic-value"><div><span>{trafficClassLabel(account.region)}共享池本月用量</span><strong>{account.flow_used.toFixed(2)}</strong><small> / {account.flow_total.toFixed(0)} GB</small></div><button className="mini-icon" onClick={onHistory} aria-label="查看历史流量"><HistoryIcon size={17} /></button></div>
       <p className="inline-hint">本系统 {account.traffic_pool_instance_count || 1} 台实例共用此池（含账号下其他 CDT 产品用量，不按实例累加）{account.traffic_pool_quota_conflict ? ' · 额度冲突，请在设置→云端实例中统一额度；自动监控已暂停' : ''}{account.traffic_stale ? ' · 池用量待刷新' : ''}</p>
       <div className="progress-track"><i style={{ width: `${Math.min(100, account.percentage)}%` }} className={account.over_threshold ? 'danger' : account.percentage >= account.threshold * .8 ? 'warning' : ''} /></div>
@@ -626,15 +668,22 @@ function SettingsPanel({ initial, onClose, onSaved, notify }: { initial: Config;
     setBusy(true)
     try {
       await api('/api/v1/config', { method: 'PUT', body: JSON.stringify(config) })
+      let saved: Config
+      try {
+        saved = await api<Config>('/api/v1/config', { cache: 'no-store' })
+      } catch {
+        notify('配置已保存，但读取最新配置失败；请刷新页面后继续', 'error')
+        return
+      }
       if (config.enable_billing && !initial.enable_billing) {
-        const refreshes = config.accounts.filter((account) => account.id > 0).map((account) => api(`/api/v1/accounts/${account.id}/refresh`, { method: 'POST', body: '{}' }))
+        const refreshes = saved.accounts.filter((account) => account.id > 0).map((account) => api(`/api/v1/accounts/${account.id}/refresh`, { method: 'POST', body: '{}' }))
         const results = await Promise.allSettled(refreshes)
         if (results.some((result) => result.status === 'fulfilled')) notify('配置已保存，账单同步已开始', 'success')
         else notify('配置已保存，账单将在下次同步时更新', 'info')
       } else {
         notify('配置已安全保存', 'success')
       }
-      onSaved(config)
+      onSaved(saved)
     } catch (error) { notify(error instanceof Error ? error.message : '配置保存失败', 'error') }
     finally { setBusy(false) }
   }

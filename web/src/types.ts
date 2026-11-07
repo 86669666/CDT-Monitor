@@ -142,6 +142,17 @@ export type AccountSummary = {
 }
 
 export type StatusResponse = { accounts: AccountSummary[]; system_last_run: string }
+export type InstanceAddresses = {
+  account_id: number
+  access_key_id: string
+  region_id: string
+  instance_id: string
+  public_ipv4: string
+  ipv6: string
+  observed_at: string
+  observed: boolean
+  stale: boolean
+}
 export type Job = {
   id: string
   type: string

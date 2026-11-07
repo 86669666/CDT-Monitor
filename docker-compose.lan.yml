@@ -1,0 +1,8 @@
+services:
+  cdt-monitor:
+    image: cdt-monitor:lan-aliyun-candidate
+    pull_policy: never
+    environment:
+      CDT_TRUSTED_PROXIES: 172.21.0.1/32
+      CDT_LAN_AUTOLOGIN_CIDRS: 10.10.99.0/24
+      CDT_LAN_AUTOLOGIN_ORIGINS: https://10.10.99.99

@@ -84,6 +84,20 @@ func intSetting(settings map[string]string, key string, fallback int) (int, erro
 	return parsed, nil
 }
 
+func monitorIntervalSetting(settings map[string]string) (int, error) {
+	interval, err := intSetting(settings, "api_interval", 600)
+	if err != nil {
+		return 0, err
+	}
+	if interval < minAPIIntervalSeconds {
+		interval = minAPIIntervalSeconds
+	}
+	if interval > 86400 {
+		return 0, errors.New("api interval must be between 30 and 86400 seconds")
+	}
+	return interval, nil
+}
+
 func (s *Store) getSettings(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM settings`)
 	if err != nil {
@@ -125,15 +139,9 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 	if accounts == nil {
 		accounts = []domain.Account{}
 	}
-	apiInterval, err := intSetting(settings, "api_interval", 600)
+	apiInterval, err := monitorIntervalSetting(settings)
 	if err != nil {
 		return domain.Config{}, err
-	}
-	if apiInterval < minAPIIntervalSeconds {
-		apiInterval = minAPIIntervalSeconds
-	}
-	if apiInterval > 86400 {
-		return domain.Config{}, errors.New("api interval must be between 30 and 86400 seconds")
 	}
 	trafficThreshold, err := intSetting(settings, "traffic_threshold", 95)
 	if err != nil {
@@ -291,6 +299,20 @@ func (s *Store) GetConfig(ctx context.Context) (domain.Config, error) {
 		return domain.Config{}, err
 	}
 	return config, nil
+}
+
+// MonitorInterval reads only the non-sensitive setting needed for cache freshness.
+func (s *Store) MonitorInterval(ctx context.Context) (int, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='api_interval'`).Scan(&raw)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	settings := map[string]string{}
+	if err == nil {
+		settings["api_interval"] = raw
+	}
+	return monitorIntervalSetting(settings)
 }
 
 func valueOr(values map[string]string, key, fallback string) string {
