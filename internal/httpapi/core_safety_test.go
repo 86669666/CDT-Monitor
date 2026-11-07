@@ -127,7 +127,7 @@ func TestCoreHTTPDailyReportInputMatrixHasNoPartialJobs(t *testing.T) {
 	session, csrf := loginCookies(t, h)
 	cookies := []*http.Cookie{session, csrf}
 	headers := map[string]string{"X-CDT-CSRF": csrf.Value}
-	for _, body := range []string{"", "null", "[]", "1", `{"account_id":`, `{"account_id":-1}`, `{"account_id":1.5}`, `{"account_id":9223372036854775808}`, `{"account_id":1,"extra":true}`, `{} {}`, `{}]`, `{"account_id":999}`} {
+	for _, body := range []string{"", "null", "[]", "1", `{"account_id":`, `{"account_id":-1}`, `{"account_id":null}`, `{"account_id":1.5}`, `{"account_id":9223372036854775808}`, `{"account_id":1,"extra":true}`, `{} {}`, `{}]`, `{"account_id":999}`} {
 		r := doRequest(t, h, "POST", "/api/v1/notifications/daily-report", body, cookies, headers)
 		want := 400
 		if strings.Contains(body, "999") {

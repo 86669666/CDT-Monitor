@@ -32,7 +32,7 @@ export function RecoveryPanel({ onClose, onResolved }: { onClose: () => void; on
     {!records.length && !error && <p>没有待核对记录</p>}
     <div className="recovery-records">{records.map(record => <article className="recovery-record" key={`${record.kind}:${record.id}`}>
       <strong>{record.kind === 'notification' ? '通知投递结果不明 · 已停止重发' : record.status === 'submitted' ? '请求已受理 · 等待状态核对' : '任务中断 · 结果不明'}</strong>
-      <p>账号 {record.account_id || '全局'} · 记录 <code>{record.id}</code></p>
+      <p>账号 {record.account_id || '全局'} · {record.kind === 'action' ? '动作尝试' : '记录'} <code>{record.id}</code></p>
       <p>{record.detail}</p>
       {record.target ? <p>原目标：{targetLabel(record.target)}</p> : record.kind !== 'notification' && <p>旧记录缺少目标身份，请根据原任务核对，不能用当前实例代替。</p>}
       {record.kind !== 'notification' && <button className="button" disabled={busy} onClick={() => { setSelected(record); setNote(''); setReviewed(false) }}>核对此记录</button>}

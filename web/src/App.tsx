@@ -502,7 +502,7 @@ function AccountCard({ account, addresses, hasInstance, addressesUnavailable, bu
           {billingEnabled && <div className="account-billing" aria-label="账单与余额"><div><span>本月费用</span><b>{account.monthly_cost === undefined ? '待同步' : `${currency}${account.monthly_cost.toFixed(2)}`}</b></div><div><span>账户余额</span><b>{account.balance === undefined ? '待同步' : `${currency}${account.balance.toFixed(2)}`}</b></div><small className={account.billing_error ? 'billing-error' : ''}>{account.billing_error || (hasBilling ? '已同步' : '待同步')}</small></div>}
         </div>
       </header>
-      {account.automation_blocked && <p role="status" className="inline-hint">自动控制已暂停：存在结果不明或中断的任务。可刷新只读状态，请在中断任务核对中处理。</p>}
+      {account.automation_blocked && <p role="status" className="inline-hint">自动控制已暂停：存在结果不明或中断的任务。刷新仅查询状态，不执行云控制或通知；请在中断任务核对中处理。</p>}
       {hasInstance && <div className="instance-addresses" aria-label="实例地址">
         {addresses?.observed && (addresses.public_ipv4 || addresses.ipv6) ? <>
           {addresses.public_ipv4 && <span>公网 IPv4 <code>{addresses.public_ipv4}</code></span>}

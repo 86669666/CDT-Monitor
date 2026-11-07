@@ -1738,7 +1738,7 @@ func normalizeClockTime(value string, required bool) (string, error) {
 
 func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
 	var body *struct {
-		AccountID int64 `json:"account_id"`
+		AccountID json.RawMessage `json:"account_id"`
 	}
 	defer r.Body.Close()
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -1752,11 +1752,16 @@ func (s *Server) triggerDailyReport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid trailing content")
 		return
 	}
-	if body.AccountID < 0 {
+	accountID := int64(0)
+	if len(body.AccountID) > 0 && (string(body.AccountID) == "null" || json.Unmarshal(body.AccountID, &accountID) != nil) {
+		writeError(w, http.StatusBadRequest, "invalid_account", "账号必须是整数，不能为 null")
+		return
+	}
+	if accountID < 0 {
 		writeError(w, http.StatusBadRequest, "invalid_account", "账号无效")
 		return
 	}
-	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, body.AccountID)
+	job, err := s.engine.EnqueueDailyReportForAccount(r.Context(), true, accountID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "account_not_found", "账号不存在")

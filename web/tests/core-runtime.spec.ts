@@ -11,13 +11,16 @@ test('real SQLite HTTP worker crash exposes uncertainty and explicit review neve
   const root = await mkdtemp(join(runtime!, 'browser-data-'))
   let child: ChildProcess | undefined
   let cloudControls = 0
+  let cloudReads = 0
+  let notifications = 0
   let cloudStatus = 'Running'
   let cloudTraffic = 200
   let pendingControl: (() => void) | undefined
   const accepted = new Promise<void>(resolve => { pendingControl = resolve })
   const cloud = createServer((req, res) => {
-    if (req.url === '/traffic') res.end(JSON.stringify(cloudTraffic))
+    if (req.url === '/traffic') { cloudReads++; res.end(JSON.stringify(cloudTraffic)) }
     else if (req.url === '/status') res.end(JSON.stringify(cloudStatus))
+    else if (req.url === '/notify') { notifications++; req.resume(); res.end('ok') }
     else if (req.url === '/control') { req.resume(); cloudControls++; pendingControl?.() }
     else { res.statusCode = 404; res.end() }
   })
@@ -49,6 +52,7 @@ test('real SQLite HTTP worker crash exposes uncertainty and explicit review neve
     // Preparation and requests use the actual server; no page.route/response fixture.
     const setup = await context.request.post(`${url}/api/v1/setup`, { data: {
       admin_password: 'Browser-Test-password', traffic_threshold: 95, shutdown_mode: 'KeepCharging', threshold_action: 'stop_and_notify', api_interval: 600,
+      notifications: { webhook: { enabled: true, url: `${cloudURL}/notify`, method: 'POST' } },
       timezone: 'Asia/Shanghai', accounts: [{ access_key_id: 'LTAIbrowser', access_key_secret: 'test-only-secret', region_id: 'cn-hongkong', instance_id: 'i-browser-original', max_traffic: 200, site_type: 'china', remark: 'Restart verification' }],
     } })
     expect(setup.status()).toBe(201)
@@ -69,8 +73,23 @@ test('real SQLite HTTP worker crash exposes uncertainty and explicit review neve
     await page.goto(url)
     await expect(page.getByRole('heading', { name: '资源控制台' })).toBeVisible()
     await expect(page.getByText('自动控制已暂停：', { exact: false })).toBeVisible()
+    cloudTraffic = 201
+    const readsBefore = cloudReads
+    const newRefreshResponse = page.waitForResponse(r => r.url().endsWith('/api/v1/accounts/1/refresh') && r.request().method() === 'POST')
     await page.getByRole('button', { name: '刷新实例', exact: true }).click()
-    await expect(page.getByText('任务已中断，结果不明。', { exact: false })).toBeVisible({ timeout: 5000 })
+    const newResponse = await newRefreshResponse
+    expect(newResponse.status()).toBe(202)
+    const newJob = await newResponse.json()
+    expect(newJob.id).not.toBe(job.id)
+    await expect.poll(async () => (await (await context.request.get(`${url}/api/v1/jobs/${newJob.id}`)).json()).status).toBe('completed')
+    await expect(page.getByText('实例状态已刷新', { exact: true })).toBeVisible()
+    expect(cloudReads).toBeGreaterThan(readsBefore)
+    expect(cloudControls).toBe(1)
+    expect(notifications).toBe(0)
+    const freshStatus = await (await context.request.get(`${url}/api/v1/status`, { headers: { 'Cache-Control': 'no-cache' } })).json()
+    expect(freshStatus.accounts[0].flow_used).toBe(201)
+    expect((await (await context.request.get(`${url}/api/v1/jobs/${job.id}`)).json()).status).toBe('interrupted')
+    await page.screenshot({ path: testInfo.outputPath('real-readonly-refresh.png'), fullPage: true })
     await page.getByRole('button', { name: '中断任务核对', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '中断任务与不明结果' })
     await expect(dialog).toBeVisible()
@@ -98,7 +117,7 @@ test('real SQLite HTTP worker crash exposes uncertainty and explicit review neve
     await page.screenshot({ path: testInfo.outputPath('real-recovery-reviewed.png'), fullPage: true })
     await dialog.getByRole('button', { name: '关闭核对窗口' }).click()
     await expect(page.getByText('自动控制已暂停：', { exact: false })).toHaveCount(0)
-    await writeFile(testInfo.outputPath('real-chain.json'), JSON.stringify({ job_id: job.id, cloud_control_calls: cloudControls, crash_restart_ms: restartMs, backend: 'production app.OpenData + HTTP + SQLite + worker', cloud_boundary: 'loopback fake accepted control then disconnected', fixtures: false }, null, 2))
+    await writeFile(testInfo.outputPath('real-chain.json'), JSON.stringify({ job_id: job.id, new_readonly_job_id: newJob.id, new_job_status: 'completed', provider_read_delta: cloudReads - readsBefore, persisted_traffic: freshStatus.accounts[0].flow_used, notification_calls: notifications, cloud_control_calls: cloudControls, crash_restart_ms: restartMs, backend: 'production app.OpenData + HTTP + SQLite + worker', cloud_boundary: 'loopback fake accepted control then disconnected', fixtures: false }, null, 2))
   } finally {
     await stop('SIGTERM')
     cloud.closeAllConnections()

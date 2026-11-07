@@ -1764,7 +1764,7 @@
       "post": {
         "operationId": "refreshAll",
         "summary": "Refresh all",
-        "description": "Enqueues one refresh_account job per active account using account ID and the UTC minute captured for this call. Equal keys deduplicate while the existing refresh job is queued/running, including queued retry backoff. Completion or terminal failure releases the key, allowing a new job for that account in the same UTC minute. This is not a once-per-minute execution limit; a different minute uses a different key even if an older job is still active. Empty list returns jobs:[]. Partial enqueue is possible before a later error. Body ignored.",
+        "description": "Enqueues one refresh_account job per active account using account ID and the UTC minute captured for this call. Equal keys deduplicate while the existing refresh job is queued/running, including queued retry backoff. Completion or terminal failure releases the key, allowing a new job for that account in the same UTC minute. This is not a once-per-minute execution limit; a different minute uses a different key even if an older job is still active. Empty list returns jobs:[]. Partial enqueue is possible before a later error. Body ignored. While recovery is pending, each refresh creates a distinct job with persisted payload.read_only=true, preserving the interrupted job and its deduplication key. The worker performs fresh reads and persists status without cloud control or notifications, even if recovery is resolved before execution.",
         "x-handler": "Server.refreshAll",
         "security": [
           {
@@ -1854,7 +1854,7 @@
       "post": {
         "operationId": "refresh",
         "summary": "Refresh",
-        "description": "Enqueues refresh_account using a key composed of account ID and UTC minute. Equal keys deduplicate only while the existing refresh job retains the key in queued/running state, including queued retry backoff. Completion or terminal failure releases the key, so another request in the same UTC minute can enqueue a new job. This is not a once-per-minute execution limit; a different minute uses a different key even if an older job is still active. The body is ignored. A positive nonexistent account currently produces 500 enqueue_failed.",
+        "description": "Enqueues refresh_account using a key composed of account ID and UTC minute. Equal keys deduplicate only while the existing refresh job retains the key in queued/running state, including queued retry backoff. Completion or terminal failure releases the key, so another request in the same UTC minute can enqueue a new job. This is not a once-per-minute execution limit; a different minute uses a different key even if an older job is still active. The body is ignored. A positive nonexistent account currently produces 500 enqueue_failed. While recovery is pending, each refresh creates a distinct job with persisted payload.read_only=true, preserving the interrupted job and its deduplication key. The worker performs fresh reads and persists status without cloud control or notifications, even if recovery is resolved before execution.",
         "x-handler": "Server.refresh",
         "security": [
           {
@@ -5091,7 +5091,7 @@
           "account_id": {
             "type": "integer",
             "format": "int64",
-            "description": "0/omitted selects the global report; positive ID selects an account.",
+            "description": "Omitted or integer 0 selects all accounts; a positive integer selects one active account. Explicit null is invalid.",
             "minimum": 0
           }
         },
@@ -5611,7 +5611,8 @@
             ]
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Immutable record identity. For actions this is a unique persisted attempt ID, never the reusable event/deduplication key. A resolved or stale attempt cannot resolve any later attempt."
           },
           "account_id": {
             "type": "integer",

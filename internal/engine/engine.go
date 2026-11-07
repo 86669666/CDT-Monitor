@@ -248,7 +248,13 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 	case JobMonitorAccount:
 		return e.processAccount(ctx, job.AccountID, false)
 	case JobRefreshAccount:
-		return e.processAccount(ctx, job.AccountID, true)
+		var payload struct {
+			ReadOnly bool `json:"read_only"`
+		}
+		if err := decodeJobPayload(job.Payload, &payload); err != nil {
+			return "", err
+		}
+		return e.processAccountMode(ctx, job.AccountID, true, payload.ReadOnly)
 	case JobControlInstance:
 		var payload struct {
 			Action string `json:"action"`
@@ -325,6 +331,10 @@ func (e *Engine) runJob(ctx context.Context, job domain.Job) (string, error) {
 }
 
 func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool) (string, error) {
+	return e.processAccountMode(ctx, accountID, force, false)
+}
+
+func (e *Engine) processAccountMode(ctx context.Context, accountID int64, force, readOnly bool) (string, error) {
 	lock := e.accountLock(accountID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -355,7 +365,8 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 	if err != nil {
 		return "", err
 	}
-	if account.ScheduleEnabled && !blocked {
+	readOnly = readOnly || blocked
+	if account.ScheduleEnabled && !readOnly {
 		if dueWithin(now, account.StartTime, 10*time.Minute) {
 			changed, runErr := e.executeScheduledAction(ctx, config, account, secret, "start", now)
 			if runErr != nil {
@@ -475,6 +486,7 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 	}
 
+	percentage := usagePercent(traffic, account.MaxTraffic)
 	// Only a fresh read of the exact recorded target can confirm completion.
 	effectiveShutdownMode := resolveShutdownMode(account, config)
 	if due && statusErr == nil && status == domain.StatusStopped {
@@ -482,80 +494,83 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 			return "", err
 		}
 	}
-	blocked, err = e.store.AutomationBlocked(ctx, accountID, store.ActionTarget(account, resolveShutdownMode(account, config)))
-	if err != nil {
-		return "", err
-	}
-	percentage := usagePercent(traffic, account.MaxTraffic)
 	overThreshold := percentage >= float64(config.TrafficThreshold)
 	thresholdKey := fmt.Sprintf("threshold:%d:active", account.ID)
+	// Fresh observations may retire confirmed local evidence; no remote work is dispatched.
 	if !overThreshold && trafficErr == nil {
 		_ = e.store.DeleteActionEvent(ctx, thresholdKey)
 		if err = e.store.ClearConfirmedThreshold(ctx, account, effectiveShutdownMode); err != nil {
 			return "", err
 		}
 	}
-	if overThreshold && due && trafficErr == nil {
-		if !blocked && config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && !inFlight(status) {
-			// Known-before-send validation leaves the action eligible for a later try.
-			if err = ctx.Err(); err != nil {
-				return "", err
+
+	if !readOnly {
+		blocked, err = e.store.AutomationBlocked(ctx, accountID, store.ActionTarget(account, resolveShutdownMode(account, config)))
+		if err != nil {
+			return "", err
+		}
+		if overThreshold && due && trafficErr == nil {
+			if !blocked && config.ThresholdAction == "stop_and_notify" && status != domain.StatusStopped && !inFlight(status) {
+				// Known-before-send validation leaves the action eligible for a later try.
+				if err = ctx.Err(); err != nil {
+					return "", err
+				}
+				attemptID, recordErr := e.store.BeginThresholdStop(ctx, account, effectiveShutdownMode)
+				if recordErr != nil {
+					return "", recordErr
+				}
+				if attemptID != "" {
+					if err = e.callControl(ctx, account, secret, "stop", effectiveShutdownMode); err != nil {
+						persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						_ = e.store.SetThresholdOutcome(persistCtx, account, effectiveShutdownMode, attemptID, "uncertain")
+						cancel()
+						return "", err
+					}
+					if err = e.store.SetThresholdOutcome(ctx, account, effectiveShutdownMode, attemptID, "submitted"); err != nil {
+						return "", fmt.Errorf("%w: persist threshold outcome: %v", errControlOutcomeUnknown, err)
+					}
+					status = domain.StatusStopping
+					if err = e.store.UpdateInstanceStatusForAccount(ctx, account, status); err != nil {
+						return "", fmt.Errorf("%w: persist threshold outcome: %v", errControlOutcomeUnknown, err)
+					}
+					actions = append(actions, "threshold_stop")
+				}
 			}
-			freshStop, recordErr := e.store.BeginThresholdStop(ctx, account, effectiveShutdownMode)
+			recorded, recordErr := e.store.RecordActionEvent(ctx, thresholdKey, account.ID, "threshold", "detected", fmt.Sprintf("%.2f%%", percentage))
 			if recordErr != nil {
 				return "", recordErr
 			}
-			if freshStop {
-				if err = e.callControl(ctx, account, secret, "stop", effectiveShutdownMode); err != nil {
-					persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					_ = e.store.SetThresholdOutcome(persistCtx, account, effectiveShutdownMode, "uncertain")
-					cancel()
+			if recorded {
+				event := newEvent("threshold", "流量阈值告警", fmt.Sprintf("账号 %s 的流量使用率达到 %.2f%%。", masked(account.AccessKeyID), percentage), account.ID, map[string]string{
+					"当前流量": fmt.Sprintf("%.2f GB", traffic), "设定阈值": fmt.Sprintf("%d%%", config.TrafficThreshold), "实例状态": status,
+				})
+				_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
+				_ = e.addLog(ctx, "warning", event.Summary)
+			}
+		}
+
+		effectiveKeepAlive := resolveKeepAlive(account, config)
+		if !blocked && effectiveKeepAlive && trafficErr == nil && (due || domain.TrafficMonth(account.UpdatedAt) == domain.TrafficMonth(time.Now())) && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && statusErr == nil && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
+			key := fmt.Sprintf("keepalive:%d:%s", account.ID, now.Format("200601021504"))
+			fresh, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "keepalive", "attempting", "")
+			if recordErr != nil {
+				return "", recordErr
+			}
+			if fresh {
+				effectiveShutdownMode := resolveShutdownMode(account, config)
+				if err = e.callControl(ctx, account, secret, "start", effectiveShutdownMode); err != nil {
 					return "", err
 				}
-				if err = e.store.SetThresholdOutcome(ctx, account, effectiveShutdownMode, "submitted"); err != nil {
-					return "", fmt.Errorf("%w: persist threshold outcome: %v", errControlOutcomeUnknown, err)
-				}
-				status = domain.StatusStopping
-				if err = e.store.UpdateInstanceStatusForAccount(ctx, account, status); err != nil {
-					return "", fmt.Errorf("%w: persist threshold outcome: %v", errControlOutcomeUnknown, err)
-				}
-				actions = append(actions, "threshold_stop")
+				status = domain.StatusStarting
+				_ = e.store.UpdateInstanceStatusForAccount(ctx, account, status)
+				_ = e.store.UpdateKeepAliveAt(ctx, account.ID, time.Now().UTC())
+				actions = append(actions, "keepalive_start")
+				event := newEvent("keepalive", "实例保活启动", "检测到实例在允许运行时段意外停止，已发送启动指令。", account.ID, map[string]string{"账号": masked(account.AccessKeyID), "实例": account.InstanceID})
+				_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
 			}
 		}
-		recorded, recordErr := e.store.RecordActionEvent(ctx, thresholdKey, account.ID, "threshold", "detected", fmt.Sprintf("%.2f%%", percentage))
-		if recordErr != nil {
-			return "", recordErr
-		}
-		if recorded {
-			event := newEvent("threshold", "流量阈值告警", fmt.Sprintf("账号 %s 的流量使用率达到 %.2f%%。", masked(account.AccessKeyID), percentage), account.ID, map[string]string{
-				"当前流量": fmt.Sprintf("%.2f GB", traffic), "设定阈值": fmt.Sprintf("%d%%", config.TrafficThreshold), "实例状态": status,
-			})
-			_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
-			_ = e.addLog(ctx, "warning", event.Summary)
-		}
-	}
 
-	effectiveKeepAlive := resolveKeepAlive(account, config)
-	if !blocked && effectiveKeepAlive && trafficErr == nil && (due || domain.TrafficMonth(account.UpdatedAt) == domain.TrafficMonth(time.Now())) && !overThreshold && !statusChangedBySchedule && status == domain.StatusStopped && statusErr == nil && (!account.ScheduleEnabled || inTimeRange(now.Format("15:04"), account.StartTime, account.StopTime)) {
-		key := fmt.Sprintf("keepalive:%d:%s", account.ID, now.Format("200601021504"))
-		fresh, recordErr := e.store.RecordActionEvent(ctx, key, account.ID, "keepalive", "attempting", "")
-		if recordErr != nil {
-			return "", recordErr
-		}
-		if fresh {
-			effectiveShutdownMode := resolveShutdownMode(account, config)
-			if err = e.callControl(ctx, account, secret, "start", effectiveShutdownMode); err != nil {
-				return "", err
-			}
-			status = domain.StatusStarting
-			_ = e.store.UpdateInstanceStatusForAccount(ctx, account, status)
-			_ = e.store.UpdateKeepAliveAt(ctx, account.ID, time.Now().UTC())
-			actions = append(actions, "keepalive_start")
-			event := newEvent("keepalive", "实例保活启动", "检测到实例在允许运行时段意外停止，已发送启动指令。", account.ID, map[string]string{"账号": masked(account.AccessKeyID), "实例": account.InstanceID})
-			_ = e.store.AddOutbox(ctx, event, notify.EnabledChannels(config))
-		}
 	}
-
 	if config.EnableBilling {
 		var balance aliyun.BillingBalance
 		balanceCached, _ := e.store.BillingCache(ctx, account.ID, "balance", "", 6*time.Hour, &balance)
@@ -571,6 +586,9 @@ func (e *Engine) processAccount(ctx context.Context, accountID int64, force bool
 		}
 	}
 	message := fmt.Sprintf("[%s] 流量 %.2fGB / %.2fGB (%.2f%%) · 状态 %s", masked(account.AccessKeyID), traffic, account.MaxTraffic, percentage, status)
+	if readOnly {
+		message += " · 只读刷新（不执行云控制或通知）"
+	}
 	if blocked {
 		message += " · 自动控制已暂停：存在待核对动作"
 	}

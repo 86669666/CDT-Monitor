@@ -222,7 +222,11 @@ func TestCoreOwnedRecoveryPreservesEvidenceAndKeys(t *testing.T) {
 		t.Fatalf("bad recovered job: %+v %v", got, err)
 	}
 	same, err := st.EnqueueJob(t.Context(), "refresh_account", 1, `{}`, "refresh:recovery", 3)
-	if err != nil || same.ID != job.ID {
+	if err != nil || same.ID == job.ID || same.Payload != `{"read_only":true}` {
+		t.Fatal("new read-only refresh missing")
+	}
+	var retained string
+	if err := st.db.QueryRow(`SELECT id FROM jobs WHERE unique_key='refresh:recovery' AND status='interrupted'`).Scan(&retained); err != nil || retained != job.ID {
 		t.Fatal("unresolved dedupe key released")
 	}
 	stillQueued, _ := st.GetJob(t.Context(), queued.ID)
@@ -245,7 +249,9 @@ func TestCoreOwnedRecoveryPreservesEvidenceAndKeys(t *testing.T) {
 	if err != nil || !blocked {
 		t.Fatal("resolving job also resolved action")
 	}
-	if err = st.ResolveRecovery(t.Context(), "action", "threshold:1:stop", "reviewed legacy target separately"); err != nil {
+	var attemptID string
+	st.db.QueryRow(`SELECT attempt_id FROM action_events WHERE event_key='threshold:1:stop'`).Scan(&attemptID)
+	if err = st.ResolveRecovery(t.Context(), "action", attemptID, "reviewed legacy target separately"); err != nil {
 		t.Fatal(err)
 	}
 	blocked, err = st.AutomationBlocked(t.Context(), 1, ActionTarget(account, "KeepCharging"))
@@ -283,5 +289,51 @@ func TestCoreDailyReportDeletedAccountCannotDeduplicate(t *testing.T) {
 	got, _ := st.GetJob(t.Context(), job.ID)
 	if got.Status != "queued" {
 		t.Fatal("test precondition")
+	}
+}
+
+func TestCoreV2MigrationPreservesLegacyAttemptIdentity(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reconstruct the already-applied v1 table; the new migration must upgrade it once.
+	_, err = st.db.Exec(`DROP INDEX idx_action_attempt_id; ALTER TABLE action_events DROP COLUMN attempt_id; DELETE FROM schema_migrations WHERE version=2;
+ INSERT INTO action_events(event_key,account_id,type,status,detail,target,reviewed_at,created_at,updated_at) VALUES('threshold:1:stop',1,'threshold_stop','uncertain','legacy pending','',0,123,124),('old:reviewed',1,'threshold_stop','resolved','prior reviewed','',125,120,125);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	st, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id, target, detail string
+	var created, reviewed int64
+	if err = st.db.QueryRow(`SELECT attempt_id,target,detail,created_at,reviewed_at FROM action_events WHERE event_key='threshold:1:stop'`).Scan(&id, &target, &detail, &created, &reviewed); err != nil || id == "" || target != "" || detail != "legacy pending" || created != 123 || reviewed != 0 {
+		t.Fatalf("legacy mutated id=%s target=%s detail=%s created=%d reviewed=%d err=%v", id, target, detail, created, reviewed, err)
+	}
+	st.Close()
+	st, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var again string
+	st.db.QueryRow(`SELECT attempt_id FROM action_events WHERE event_key='threshold:1:stop'`).Scan(&again)
+	if again != id {
+		t.Fatal("migration regenerated identity")
+	}
+	var count int
+	st.db.QueryRow(`SELECT count(DISTINCT attempt_id) FROM action_events`).Scan(&count)
+	if count != 2 {
+		t.Fatal("historical attempt identity lost")
+	}
+	if err = st.ResolveRecovery(t.Context(), "action", "threshold:1:stop", "old key must not resolve"); err != sql.ErrNoRows {
+		t.Fatalf("legacy key resolved: %v", err)
+	}
+	if err = st.ResolveRecovery(t.Context(), "action", id, "verified original legacy request"); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -167,7 +167,7 @@ func TestCoreProcessRestartHTTPWorkerChain(t *testing.T) {
 	for _, stopSignal := range []os.Signal{os.Kill, syscall.SIGTERM} {
 		t.Run(stopSignal.String(), func(t *testing.T) {
 			var mu sync.Mutex
-			controls, notifications := 0, 0
+			controls, notifications, trafficReads := 0, 0, 0
 			status := "Running"
 			traffic := 200.0
 			controlAccepted := make(chan struct{}, 8)
@@ -177,6 +177,7 @@ func TestCoreProcessRestartHTTPWorkerChain(t *testing.T) {
 				case "/traffic":
 					mu.Lock()
 					v := traffic
+					trafficReads++
 					mu.Unlock()
 					json.NewEncoder(w).Encode(v)
 				case "/status":
@@ -293,11 +294,45 @@ func TestCoreProcessRestartHTTPWorkerChain(t *testing.T) {
 			if outboxStatus != "failed" || !strings.Contains(outboxError, "delivery_unknown") {
 				t.Fatalf("outbox=%s %s", outboxStatus, outboxError)
 			}
-			// A distinct formal refresh executes read-only while uncertainty remains.
+			// Wait for the exact newly returned ID, then prove new provider reads and persistence.
+			mu.Lock()
+			beforeReads := trafficReads
+			traffic = 201
+			mu.Unlock()
 			code, raw = request("POST", "/api/v1/accounts/1/refresh", "")
 			if code != 202 {
 				t.Fatal(code)
 			}
+			var refresh domain.Job
+			if err := json.Unmarshal(raw, &refresh); err != nil || refresh.ID == job.ID {
+				t.Fatalf("not a new refresh: %s", raw)
+			}
+			deadline := time.Now().Add(8 * time.Second)
+			for {
+				code, raw = request("GET", "/api/v1/jobs/"+refresh.ID, "")
+				if code != 200 || json.Unmarshal(raw, &refresh) != nil {
+					t.Fatalf("refresh lookup=%d %s", code, raw)
+				}
+				if refresh.Status == "completed" {
+					break
+				}
+				if refresh.Status == "failed" || refresh.Status == "interrupted" || time.Now().After(deadline) {
+					t.Fatalf("new refresh did not complete: %s", raw)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			var freshTraffic float64
+			var freshStatus, persistedMode, retainedKey string
+			db.QueryRow(`SELECT traffic_used,instance_status FROM accounts WHERE id=1`).Scan(&freshTraffic, &freshStatus)
+			db.QueryRow(`SELECT payload FROM jobs WHERE id=?`, refresh.ID).Scan(&persistedMode)
+			db.QueryRow(`SELECT unique_key FROM jobs WHERE id=? AND status='interrupted'`, job.ID).Scan(&retainedKey)
+			mu.Lock()
+			deltaReads := trafficReads - beforeReads
+			mu.Unlock()
+			if freshTraffic != 201 || freshStatus != "Running" || persistedMode != `{"read_only":true}` || retainedKey == "" || deltaReads < 1 {
+				t.Fatalf("fresh proof: traffic=%v status=%s mode=%s retained=%s reads=%d", freshTraffic, freshStatus, persistedMode, retainedKey, deltaReads)
+			}
+			t.Logf("read_only_proof: old_job=%s new_job=%s terminal=%s reads_delta=%d persisted_traffic=%v old_key_retained=true", job.ID, refresh.ID, refresh.Status, deltaReads, freshTraffic)
 			code, raw = request("GET", "/api/v1/status", "")
 			if code != 200 || !bytes.Contains(raw, []byte(`"automation_blocked":true`)) {
 				t.Fatalf("missing visible block %d %s", code, raw)

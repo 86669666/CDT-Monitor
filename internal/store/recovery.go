@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/wang4386/CDT-Monitor/internal/domain"
 	"github.com/wang4386/CDT-Monitor/internal/runtimeowner"
+	"github.com/wang4386/CDT-Monitor/internal/security"
 )
 
 // Recovery is a startup operation, never an incidental effect of opening a DB.
@@ -46,23 +46,30 @@ func ActionTarget(account domain.Account, mode string) string {
 	return string(data)
 }
 
-func (s *Store) BeginThresholdStop(ctx context.Context, account domain.Account, mode string) (bool, error) {
+func (s *Store) BeginThresholdStop(ctx context.Context, account domain.Account, mode string) (string, error) {
 	if account.InstanceID == "" {
-		return false, errors.New("instance is required")
+		return "", errors.New("instance is required")
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(event_key,account_id,type,status,detail,target,created_at,updated_at) VALUES(?,?,'threshold_stop','attempting','request outcome pending',?,unixepoch(),unixepoch())`, fmt.Sprintf("threshold:%d:stop", account.ID), account.ID, ActionTarget(account, mode))
+	attemptID, err := security.NewToken(24)
 	if err != nil {
-		return false, err
+		return "", err
+	}
+	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO action_events(attempt_id,event_key,account_id,type,status,detail,target,created_at,updated_at) VALUES(?,?,?,'threshold_stop','attempting','request outcome pending',?,unixepoch(),unixepoch())`, attemptID, fmt.Sprintf("threshold:%d:stop", account.ID), account.ID, ActionTarget(account, mode))
+	if err != nil {
+		return "", err
 	}
 	n, err := res.RowsAffected()
-	return n == 1, err
+	if err != nil || n != 1 {
+		return "", err
+	}
+	return attemptID, nil
 }
 
-func (s *Store) SetThresholdOutcome(ctx context.Context, account domain.Account, mode, status string) error {
+func (s *Store) SetThresholdOutcome(ctx context.Context, account domain.Account, mode, attemptID, status string) error {
 	if status != "submitted" && status != "uncertain" {
 		return errors.New("invalid threshold outcome")
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE action_events SET status=?,updated_at=unixepoch() WHERE event_key=? AND target=? AND status='attempting' AND reviewed_at=0`, status, fmt.Sprintf("threshold:%d:stop", account.ID), ActionTarget(account, mode))
+	res, err := s.db.ExecContext(ctx, `UPDATE action_events SET status=?,updated_at=unixepoch() WHERE event_key=? AND target=? AND attempt_id=? AND status='attempting' AND reviewed_at=0`, status, fmt.Sprintf("threshold:%d:stop", account.ID), ActionTarget(account, mode), attemptID)
 	if err != nil {
 		return err
 	}
@@ -75,7 +82,7 @@ func (s *Store) ConfirmThresholdStopped(ctx context.Context, account domain.Acco
 }
 
 func (s *Store) ClearConfirmedThreshold(ctx context.Context, account domain.Account, mode string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM action_events WHERE event_key=? AND target=? AND status IN ('confirmed','resolved')`, fmt.Sprintf("threshold:%d:stop", account.ID), ActionTarget(account, mode))
+	_, err := s.db.ExecContext(ctx, `UPDATE action_events SET event_key=event_key || ':retired:' || attempt_id,status='retired',updated_at=unixepoch() WHERE event_key=? AND target=? AND status IN ('confirmed','resolved')`, fmt.Sprintf("threshold:%d:stop", account.ID), ActionTarget(account, mode))
 	return err
 }
 
@@ -100,7 +107,7 @@ type RecoveryRecord struct {
 }
 
 func (s *Store) PendingRecovery(ctx context.Context) ([]RecoveryRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT 'job',id,account_id,status,error,'' FROM jobs WHERE status='interrupted' AND reviewed_at=0 UNION ALL SELECT 'action',event_key,account_id,status,detail,target FROM action_events WHERE type='threshold_stop' AND reviewed_at=0 AND status IN ('attempting','submitted','uncertain','confirmed') UNION ALL SELECT 'notification',id,0,status,last_error,'' FROM notification_outbox WHERE status='failed' AND last_error LIKE '%delivery_unknown%' ORDER BY 1,2`)
+	rows, err := s.db.QueryContext(ctx, `SELECT 'job',id,account_id,status,error,'' FROM jobs WHERE status='interrupted' AND reviewed_at=0 UNION ALL SELECT 'action',attempt_id,account_id,status,detail,target FROM action_events WHERE type='threshold_stop' AND reviewed_at=0 AND status IN ('attempting','submitted','uncertain','confirmed') UNION ALL SELECT 'notification',id,0,status,last_error,'' FROM notification_outbox WHERE status='failed' AND last_error LIKE '%delivery_unknown%' ORDER BY 1,2`)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +164,7 @@ func (s *Store) ResolveRecovery(ctx context.Context, kind, id, note string) erro
 		case "job":
 			res, err = tx.ExecContext(ctx, `UPDATE jobs SET reviewed_at=unixepoch(),unique_key=NULL,updated_at=unixepoch() WHERE id=? AND status='interrupted' AND reviewed_at=0`, id)
 		case "action":
-			res, err = tx.ExecContext(ctx, `UPDATE action_events SET event_key=?,reviewed_at=unixepoch(),status='resolved',updated_at=unixepoch() WHERE event_key=? AND type='threshold_stop' AND status IN ('attempting','submitted','uncertain','confirmed') AND reviewed_at=0`, fmt.Sprintf("%s:reviewed:%d", id, time.Now().UnixNano()), id)
+			res, err = tx.ExecContext(ctx, `UPDATE action_events SET event_key=?,reviewed_at=unixepoch(),status='resolved',updated_at=unixepoch() WHERE attempt_id=? AND type='threshold_stop' AND status IN ('attempting','submitted','uncertain','confirmed') AND reviewed_at=0`, "reviewed:"+id, id)
 		default:
 			return errors.New("invalid recovery kind")
 		}
